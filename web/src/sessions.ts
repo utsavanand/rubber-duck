@@ -39,13 +39,16 @@ export function applyEvent(
     // only overwrite what this event actually carries.
     ...prev,
     key,
-    label: e.session_name || e.source_app || prev?.label || key.slice(0, 8),
+    // Keep the seeded label (which honors a user-set name) once it exists; only
+    // derive one for a brand-new session we haven't seen from /sessions yet.
+    label: prev?.label || e.session_name || e.source_app || key.slice(0, 8),
     state: deriveState(e, prev?.state),
     lastEventType: e.event_type ?? prev?.lastEventType ?? "",
     lastTool: e.tool_name ?? prev?.lastTool,
-    cwd: e.cwd ?? prev?.cwd,
-    branch: e.branch ?? prev?.branch,
-    parentKey: e.parent_session_key ?? prev?.parentKey,
+    // Don't let a live event without these fields overwrite the seeded values.
+    cwd: prev?.cwd ?? e.cwd,
+    branch: prev?.branch ?? e.branch,
+    parentKey: prev?.parentKey ?? e.parent_session_key,
     startedAt: prev?.startedAt ?? e._ts,
     updatedAt: e._ts,
     eventCount: (prev?.eventCount ?? 0) + 1,

@@ -37,10 +37,11 @@ import json
 import shlex
 import subprocess
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
-from rubberduck import gitdetect
+from rubberduck import browse, gitdetect
 from rubberduck.approvals import ApprovalRegistry
 from rubberduck.checkpoints import build_checkpoint
 from rubberduck.eventbus import Event, EventBus
@@ -61,7 +62,20 @@ from rubberduck.websocket import (
 from rubberduck.worktrees import GitError
 
 
-def _build_runtime(name: str, command: str) -> StateRuntime:
+def infer_runtime(command: str) -> str:
+    """Guess the runtime from the command's first word, so callers don't have to
+    pass a separate runtime — `claude …` -> claude-code, `codex …` -> codex,
+    anything else -> generic."""
+    first = (command.strip().split() or [""])[0].rsplit("/", 1)[-1]
+    if first.startswith("claude"):
+        return "claude-code"
+    if first.startswith("codex"):
+        return "codex"
+    return "generic"
+
+
+def _build_runtime(name: str | None, command: str) -> StateRuntime:
+    name = name or infer_runtime(command)
     if name == "claude-code":
         return ClaudeCodeRuntime(command)
     if name == "codex":
@@ -125,6 +139,7 @@ _ROUTES: list[Route] = [
     Route("GET", "/events", lambda s, r, w, h, b, seg: s._recent(w)),
     Route("GET", "/sessions", lambda s, r, w, h, b, seg: s._sessions(w)),
     Route("GET", "/tree", lambda s, r, w, h, b, seg: s._tree(w)),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._browse(w, seg), prefix="/browse"),
     Route("GET", "/approvals", lambda s, r, w, h, b, seg: s._list_approvals(w)),
     Route("GET", "/terminals", lambda s, r, w, h, b, seg: s._terminals(w)),
     Route("GET", "/snapshots", lambda s, r, w, h, b, seg: s._list_snapshots(w)),
@@ -136,6 +151,8 @@ _ROUTES: list[Route] = [
     Route("POST", "/sessions/compare", lambda s, r, w, h, b, seg: s._compare(w, b)),
     Route("POST", "/sessions/clear-terminated",
           lambda s, r, w, h, b, seg: s._clear_terminated(w)),
+    Route("PATCH", "", lambda s, r, w, h, b, seg: s._update_session(w, seg, b),
+          prefix="/sessions/"),
     Route("DELETE", "", lambda s, r, w, h, b, seg: s._delete_session(w, seg),
           prefix="/sessions/"),
     Route("POST", "", lambda s, r, w, h, b, seg: s._fork_conversation(w, seg, b),
@@ -294,7 +311,7 @@ class Server:
             return
         try:
             key = await self.orchestrator.launch(
-                runtime=_build_runtime(req.get("runtime", "generic"), command),
+                runtime=_build_runtime(req.get("runtime"), command),
                 cwd=cwd,
                 repo_path=repo_path,
                 branch=req.get("branch"),
@@ -304,6 +321,8 @@ class Server:
         except (GitError, ValueError) as e:
             await _write_json(writer, 400, {"error": str(e)})
             return
+        if req.get("name") or req.get("notes"):
+            self.history.set_meta(key, name=req.get("name"), notes=req.get("notes"))
         await _write_json(writer, 200, {"session_key": key})
 
     async def _fork(self, writer: asyncio.StreamWriter, parent_key: str, body: bytes) -> None:
@@ -446,6 +465,18 @@ class Server:
         status = 200 if deleted else 404
         await _write_json(writer, status, {"deleted": deleted, "session_key": session_key})
 
+    async def _update_session(
+        self, writer: asyncio.StreamWriter, session_key: str, body: bytes
+    ) -> None:
+        """Set a user-given name and/or personal notes on a session (local)."""
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        ok = self.history.set_meta(session_key, name=req.get("name"), notes=req.get("notes"))
+        await _write_json(writer, 200 if ok else 404, {"updated": ok})
+
     async def _clear_terminated(self, writer: asyncio.StreamWriter) -> None:
         keys = self.history.clear_terminated()
         await _write_json(writer, 200, {"cleared": len(keys), "session_keys": keys})
@@ -455,6 +486,12 @@ class Server:
 
     async def _terminals(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"terminals": available_terminals()})
+
+    async def _browse(self, writer: asyncio.StreamWriter, seg: str) -> None:
+        # seg is the part of the path after "/browse", e.g. "?path=/Users/x".
+        query = urllib.parse.urlparse("/browse" + seg).query
+        path = urllib.parse.parse_qs(query).get("path", [None])[0]
+        await _write_json(writer, 200, browse.listing(path))
 
     async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
         pending = [

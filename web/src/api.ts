@@ -30,6 +30,20 @@ export interface LaunchRequest {
   branch?: string;
   prompt?: string;
   session_key?: string;
+  name?: string;
+  notes?: string;
+}
+
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  is_git: boolean;
+}
+export interface BrowseResult {
+  path: string;
+  parent: string | null;
+  is_git: boolean;
+  entries: BrowseEntry[];
 }
 
 export interface CompareVariant {
@@ -40,6 +54,16 @@ export interface CompareVariant {
 export const api = {
   launch: (req: LaunchRequest) =>
     post<{ session_key: string }>("/sessions/launch", req),
+  browse: (path?: string) =>
+    get<BrowseResult>(
+      `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+    ),
+  updateSession: (key: string, meta: { name?: string; notes?: string }) =>
+    fetch(`/sessions/${key}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(meta),
+    }).then((r) => r.json()),
   fork: (
     key: string,
     opts: {

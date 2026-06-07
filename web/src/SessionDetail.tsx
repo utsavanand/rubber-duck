@@ -4,7 +4,7 @@ import { LiveOutput } from "./LiveOutput";
 import { SessionView } from "./types";
 import { useToast } from "./ui";
 
-type Tab = "timeline" | "output" | "diff" | "checkpoints";
+type Tab = "timeline" | "output" | "diff" | "checkpoints" | "notes";
 
 export function SessionDetail({
   session,
@@ -143,7 +143,9 @@ export function SessionDetail({
             borderBottom: "1px solid #e5e7eb",
           }}
         >
-          {(["timeline", "output", "diff", "checkpoints"] as Tab[]).map((t) => (
+          {(
+            ["timeline", "output", "diff", "checkpoints", "notes"] as Tab[]
+          ).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -172,6 +174,9 @@ export function SessionDetail({
               checkpoints={checkpoints}
               onCapture={captureCheckpoint}
             />
+          )}
+          {tab === "notes" && (
+            <Notes sessionKey={session.key} initial={session.notes ?? ""} />
           )}
         </div>
       </div>
@@ -338,6 +343,68 @@ function Section({
     <div style={{ marginBottom: 8 }}>
       <div style={{ fontWeight: 600, marginBottom: 2 }}>{title}</div>
       <ul style={{ margin: 0, paddingLeft: 18 }}>{children}</ul>
+    </div>
+  );
+}
+
+function Notes({
+  sessionKey,
+  initial,
+}: {
+  sessionKey: string;
+  initial: string;
+}) {
+  const toast = useToast();
+  const [text, setText] = useState(initial);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.updateSession(sessionKey, { notes: text });
+      toast("Notes saved");
+    } catch {
+      toast("Couldn't save notes", "err");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)" }}>
+        Your private notes for this session — things to do, reminders, context.
+        Local only, never sent anywhere.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={
+          "- ask it to add tests\n- check the auth flow\n- TODO: rename the module"
+        }
+        style={{
+          width: "100%",
+          minHeight: 220,
+          padding: "10px 12px",
+          border: "1px solid var(--border-strong)",
+          borderRadius: 8,
+          fontSize: 13,
+          fontFamily: "inherit",
+          background: "var(--bg)",
+          color: "var(--text)",
+          resize: "vertical",
+          boxSizing: "border-box",
+        }}
+      />
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          className="rd-btn rd-btn-sm rd-btn-primary"
+          onClick={save}
+          disabled={saving}
+        >
+          {saving ? "Saving…" : "Save notes"}
+        </button>
+      </div>
     </div>
   );
 }

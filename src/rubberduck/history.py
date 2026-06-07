@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     compare_group       TEXT,
     intention           TEXT,
     outcome_summary     TEXT,
+    name                TEXT,
+    notes               TEXT,
     state               TEXT NOT NULL DEFAULT 'busy',
     source_app          TEXT,
     cwd                 TEXT,
@@ -98,6 +100,8 @@ _SESSIONS_COLUMNS = {
     "compare_group": "TEXT",
     "intention": "TEXT",
     "outcome_summary": "TEXT",
+    "name": "TEXT",
+    "notes": "TEXT",
     "source_app": "TEXT",
     "cwd": "TEXT",
     "last_event_type": "TEXT",
@@ -237,6 +241,16 @@ class HistoryStore:
             "UPDATE sessions SET intention = ? WHERE session_key = ?", (intention, key)
         )
         self._conn.commit()
+
+    def set_meta(self, key: str, *, name: str | None = None, notes: str | None = None) -> bool:
+        """Set a user-given name and/or personal notes on a session (local only,
+        never sent anywhere). Returns whether the session exists."""
+        if name is not None:
+            self._conn.execute("UPDATE sessions SET name = ? WHERE session_key = ?", (name, key))
+        if notes is not None:
+            self._conn.execute("UPDATE sessions SET notes = ? WHERE session_key = ?", (notes, key))
+        self._conn.commit()
+        return self.session(key) is not None
 
     def set_outcome(self, key: str, outcome: str) -> None:
         self._conn.execute(

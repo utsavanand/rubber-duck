@@ -1,33 +1,37 @@
-import { useState } from "react";
-import { api } from "./api";
+import { useEffect, useState } from "react";
+import { api, BrowseResult } from "./api";
 import { Button, Field, inputStyle, Modal, useToast } from "./ui";
 
+// New session: a command (runtime is inferred from it), a path picked by
+// browsing the filesystem (git-detected), an optional name + prompt.
 export function LaunchModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const [command, setCommand] = useState("claude");
-  const [runtime, setRuntime] = useState<"generic" | "claude-code" | "codex">(
-    "claude-code",
-  );
-  const [repoPath, setRepoPath] = useState("");
-  const [branch, setBranch] = useState("");
+  const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [picked, setPicked] = useState<BrowseResult | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const path = picked?.path;
+  const isGit = picked?.is_git ?? false;
+
   async function submit() {
-    if (!command.trim() || !repoPath.trim()) {
-      toast("Command and repo path are required", "err");
+    if (!command.trim() || !path) {
+      toast("A command and a folder are required", "err");
       return;
     }
     setBusy(true);
     try {
+      // A git folder gets an isolated worktree (repo_path); a plain folder runs
+      // in place (cwd).
       const { session_key } = await api.launch({
         command,
-        runtime,
-        repo_path: repoPath,
-        branch: branch || undefined,
+        name: name || undefined,
         prompt: prompt || undefined,
+        ...(isGit ? { repo_path: path } : { cwd: path }),
       });
-      toast(`Launched ${session_key.slice(0, 8)} on a new worktree`);
+      toast(`Launched ${name || session_key.slice(0, 8)}`);
       onClose();
     } catch (e) {
       toast(`Launch failed: ${(e as Error).message}`, "err");
@@ -38,42 +42,70 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="New session" onClose={onClose}>
-      <Field label="Agent command">
+      <Field label="Command (the agent to run — runtime is detected automatically)">
         <input
           style={inputStyle}
           value={command}
           onChange={(e) => setCommand(e.target.value)}
-          placeholder='e.g. claude -p "fix the parser"'
+          placeholder='claude   ·   codex   ·   claude -p "fix the bug"'
         />
       </Field>
-      <Field label="Runtime">
-        <select
-          style={inputStyle}
-          value={runtime}
-          onChange={(e) => setRuntime(e.target.value as typeof runtime)}
-        >
-          <option value="claude-code">claude-code</option>
-          <option value="codex">codex</option>
-          <option value="generic">generic</option>
-        </select>
+
+      <Field label="Folder to work in">
+        {path ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 10px",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 8,
+              fontSize: 13,
+            }}
+          >
+            <span className="mono" style={{ flex: 1, wordBreak: "break-all" }}>
+              {path}
+            </span>
+            <span
+              style={{
+                color: isGit ? "var(--idle)" : "var(--muted)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {isGit ? "git repo" : "plain folder"}
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => setBrowsing(true)}>
+              Change
+            </Button>
+          </div>
+        ) : (
+          <Button variant="ghost" onClick={() => setBrowsing(true)}>
+            Browse…
+          </Button>
+        )}
       </Field>
-      <Field label="Repo path (a git repo — the agent runs in an isolated worktree)">
+
+      {browsing && (
+        <DirBrowser
+          start={path}
+          onPick={(r) => {
+            setPicked(r);
+            setBrowsing(false);
+          }}
+          onCancel={() => setBrowsing(false)}
+        />
+      )}
+
+      <Field label="Name (optional)">
         <input
           style={inputStyle}
-          value={repoPath}
-          onChange={(e) => setRepoPath(e.target.value)}
-          placeholder="/Users/you/code/myrepo"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. login refactor"
         />
       </Field>
-      <Field label="Branch (optional — defaults to a generated name)">
-        <input
-          style={inputStyle}
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-          placeholder="feature/login"
-        />
-      </Field>
-      <Field label="Intention / prompt (optional — captured for the summary)">
+      <Field label="Prompt / what you want it to do (optional)">
         <input
           style={inputStyle}
           value={prompt}
@@ -81,6 +113,7 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
           placeholder="add a healthcheck endpoint"
         />
       </Field>
+
       <div
         style={{
           display: "flex",
@@ -97,5 +130,111 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
         </Button>
       </div>
     </Modal>
+  );
+}
+
+// A simple server-backed folder navigator: lists subdirectories, flags git
+// repos, lets you go up / into / select the current folder.
+function DirBrowser({
+  start,
+  onPick,
+  onCancel,
+}: {
+  start?: string;
+  onPick: (r: BrowseResult) => void;
+  onCancel: () => void;
+}) {
+  const [data, setData] = useState<BrowseResult | null>(null);
+
+  function load(path?: string) {
+    api
+      .browse(path)
+      .then(setData)
+      .catch(() => undefined);
+  }
+  useEffect(() => {
+    load(start);
+  }, [start]);
+
+  if (!data)
+    return <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading…</p>;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        marginBottom: 12,
+        background: "var(--bg-soft)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <button
+          className="rd-btn rd-btn-sm rd-btn-ghost"
+          disabled={!data.parent}
+          onClick={() => data.parent && load(data.parent)}
+        >
+          ↑ Up
+        </button>
+        <span
+          className="mono"
+          style={{ flex: 1, fontSize: 12, wordBreak: "break-all" }}
+        >
+          {data.path}
+        </span>
+      </div>
+      <div style={{ maxHeight: 200, overflowY: "auto", padding: 6 }}>
+        {data.entries.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--muted)", padding: 8 }}>
+            No subfolders.
+          </div>
+        )}
+        {data.entries.map((e) => (
+          <div
+            key={e.path}
+            onClick={() => load(e.path)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "5px 8px",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: 13,
+            }}
+          >
+            <span>📁</span>
+            <span style={{ flex: 1 }}>{e.name}</span>
+            {e.is_git && (
+              <span style={{ fontSize: 11, color: "var(--idle)" }}>git</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 8,
+          padding: "8px 10px",
+          borderTop: "1px solid var(--border)",
+        }}
+      >
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button size="sm" onClick={() => onPick(data)}>
+          Use this folder{data.is_git ? " (git)" : ""}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -35,6 +35,7 @@ export interface SessionView {
   repoName?: string; // git repo basename, when the session is on a repo
   worktreePath?: string; // set only when the session runs in a Rubberduck worktree
   parentKey?: string; // session this was forked from, if any
+  notes?: string; // personal, local-only notes
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -58,12 +59,14 @@ export interface PersistedSession {
   repo_path?: string | null;
   worktree_path?: string | null;
   parent_session_key?: string | null;
+  name?: string | null;
+  notes?: string | null;
 }
 
 export function viewFromPersisted(s: PersistedSession): SessionView {
   return {
     key: s.session_key,
-    label: s.source_app || s.session_key.slice(0, 8),
+    label: s.name || s.source_app || s.session_key.slice(0, 8),
     state: s.state,
     lastEventType: s.last_event_type ?? "",
     lastTool: s.last_tool ?? undefined,
@@ -82,6 +85,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
       : undefined,
     worktreePath: s.worktree_path ?? undefined,
     parentKey: s.parent_session_key ?? undefined,
+    notes: s.notes ?? undefined,
   };
 }
 
