@@ -47,6 +47,10 @@ export const api = {
       `/sessions/${key}/fork-conversation`,
     ),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
+  remove: (key: string) =>
+    fetch(`/sessions/${key}`, { method: "DELETE" }).then((r) => r.json()),
+  clearTerminated: () =>
+    post<{ cleared: number }>("/sessions/clear-terminated"),
   checkpoint: (key: string, label: string) =>
     post<{ id: string; label: string; summary: string }>(
       `/sessions/${key}/checkpoint`,

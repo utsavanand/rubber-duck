@@ -144,6 +144,13 @@ function SessionCard({
             Stop
           </button>
         )}
+        <button
+          className="rd-btn rd-btn-sm rd-btn-danger"
+          title="Remove this session from history"
+          onClick={() => act("Deleted", () => api.remove(session.key))}
+        >
+          Delete
+        </button>
       </div>
     </div>
   );
@@ -154,6 +161,7 @@ type Filter = "active" | "all";
 
 function Dashboard() {
   const { sessions, connected } = useEventStream();
+  const toast = useToast();
   const now = useNow(1000);
   const [tab, setTab] = useState<Tab>("sessions");
   const [filter, setFilter] = useState<Filter>("active");
@@ -237,6 +245,21 @@ function Dashboard() {
                 All ({sessions.length})
               </button>
             </div>
+            <span className="rd-spacer" />
+            {sessions.some((s) => s.state === "terminated") && (
+              <button
+                className="rd-btn rd-btn-sm rd-btn-ghost"
+                title="Delete all terminated sessions from history"
+                onClick={async () => {
+                  const r = await api.clearTerminated();
+                  toast(
+                    `Cleared ${r.cleared} terminated session${r.cleared === 1 ? "" : "s"}`,
+                  );
+                }}
+              >
+                Clear terminated
+              </button>
+            )}
           </div>
 
           {shown.length === 0 ? (

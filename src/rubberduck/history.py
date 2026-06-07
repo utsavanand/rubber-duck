@@ -357,5 +357,25 @@ class HistoryStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def delete_session(self, key: str) -> bool:
+        """Remove a session and everything attached to it (events, metrics,
+        checkpoints). Returns whether a row was removed."""
+        cur = self._conn.execute("DELETE FROM sessions WHERE session_key = ?", (key,))
+        self._conn.execute("DELETE FROM events WHERE session_key = ?", (key,))
+        self._conn.execute("DELETE FROM metrics WHERE session_key = ?", (key,))
+        self._conn.execute("DELETE FROM checkpoints WHERE session_key = ?", (key,))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def clear_terminated(self) -> list[str]:
+        """Delete all terminated sessions. Returns the keys removed."""
+        rows = self._conn.execute(
+            "SELECT session_key FROM sessions WHERE state = 'terminated'"
+        ).fetchall()
+        keys = [r["session_key"] for r in rows]
+        for key in keys:
+            self.delete_session(key)
+        return keys
+
     def close(self) -> None:
         self._conn.close()

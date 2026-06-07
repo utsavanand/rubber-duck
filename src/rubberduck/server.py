@@ -11,6 +11,8 @@
     POST /sessions/:key/fork  fork a session: child worktree off parent's branch
     POST /sessions/:key/fork-conversation  branch the Claude conversation (--fork-session)
     POST /sessions/:key/stop  terminate a supervised agent
+    DELETE /sessions/:key     remove a session and its events/metrics/checkpoints
+    POST /sessions/clear-terminated  delete all terminated sessions
     POST /sessions/:key/checkpoint   record what was done (prompts/files/tools/git + summary)
     GET  /sessions/:key/checkpoints   list checkpoint records
     POST /sessions/:key/spotlight     apply worktree changes onto the main checkout
@@ -128,6 +130,10 @@ _ROUTES: list[Route] = [
     # ── control ──
     Route("POST", "/sessions/launch", lambda s, r, w, h, b, seg: s._launch(w, b)),
     Route("POST", "/sessions/compare", lambda s, r, w, h, b, seg: s._compare(w, b)),
+    Route("POST", "/sessions/clear-terminated",
+          lambda s, r, w, h, b, seg: s._clear_terminated(w)),
+    Route("DELETE", "", lambda s, r, w, h, b, seg: s._delete_session(w, seg),
+          prefix="/sessions/"),
     Route("POST", "", lambda s, r, w, h, b, seg: s._fork_conversation(w, seg, b),
           **_mid("/sessions/", "/fork-conversation")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._fork(w, seg, b),
@@ -352,6 +358,18 @@ class Server:
         stopped = await self.orchestrator.stop(session_key)
         status = 200 if stopped else 404
         await _write_json(writer, status, {"stopped": stopped, "session_key": session_key})
+
+    async def _delete_session(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        # Stop it first if it's live (best-effort), then drop it from the DB.
+        await self.orchestrator.stop(session_key)
+        deleted = self.history.delete_session(session_key)
+        self.approvals.drop_session(session_key)
+        status = 200 if deleted else 404
+        await _write_json(writer, status, {"deleted": deleted, "session_key": session_key})
+
+    async def _clear_terminated(self, writer: asyncio.StreamWriter) -> None:
+        keys = self.history.clear_terminated()
+        await _write_json(writer, 200, {"cleared": len(keys), "session_keys": keys})
 
     async def _tree(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"nodes": self.history.fork_tree()})
