@@ -19,6 +19,13 @@ export function SessionDetail({
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [diff, setDiff] = useState<string>("");
 
+  // Esc closes the panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const loadCheckpoints = useCallback(() => {
     api
       .checkpoints(session.key)
@@ -55,110 +62,118 @@ export function SessionDetail({
 
   return (
     <div
+      onClick={onClose}
       style={{
         position: "fixed",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 560,
-        maxWidth: "94vw",
-        background: "var(--card)",
-        color: "var(--text)",
-        borderLeft: "1px solid var(--border)",
-        boxShadow: "-12px 0 40px rgba(0,0,0,0.4)",
+        inset: 0,
+        background: "rgba(0,0,0,0.35)",
         zIndex: 90,
-        display: "flex",
-        flexDirection: "column",
       }}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          padding: "16px 20px",
-          borderBottom: "1px solid var(--border)",
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 560,
+          maxWidth: "94vw",
+          background: "var(--card)",
+          color: "var(--text)",
+          borderLeft: "1px solid var(--border)",
+          boxShadow: "-12px 0 40px rgba(0,0,0,0.4)",
+          zIndex: 91,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
           }}
         >
-          <strong style={{ fontSize: 16 }}>{session.label}</strong>
-          <button
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "none",
-              fontSize: 18,
-              cursor: "pointer",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-          {session.state} · {session.runtime ?? "—"} · {session.eventCount}{" "}
-          events
-          {session.branch ? ` · ${session.branch}` : ""}
-        </div>
-        {session.intention && (
           <div
             style={{
-              fontSize: 13,
-              marginTop: 8,
-              fontStyle: "italic",
-              color: "#374151",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
-            intent: {session.intention}
+            <strong style={{ fontSize: 16 }}>{session.label}</strong>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="rd-btn rd-btn-ghost rd-btn-sm"
+              style={{ lineHeight: 1 }}
+            >
+              ✕ Close
+            </button>
           </div>
-        )}
-        {session.outcome && (
-          <div style={{ fontSize: 13, marginTop: 4, color: "#4b5563" }}>
-            {session.outcome}
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            {session.state} · {session.runtime ?? "—"} · {session.eventCount}{" "}
+            events
+            {session.branch ? ` · ${session.branch}` : ""}
           </div>
-        )}
-      </div>
+          {session.intention && (
+            <div
+              style={{
+                fontSize: 13,
+                marginTop: 8,
+                fontStyle: "italic",
+                color: "#374151",
+              }}
+            >
+              intent: {session.intention}
+            </div>
+          )}
+          {session.outcome && (
+            <div style={{ fontSize: 13, marginTop: 4, color: "#4b5563" }}>
+              {session.outcome}
+            </div>
+          )}
+        </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          padding: "8px 16px",
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
-        {(["timeline", "output", "diff", "checkpoints"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              border: "none",
-              background: tab === t ? "#eff6ff" : "transparent",
-              color: tab === t ? "#2563eb" : "#6b7280",
-              padding: "6px 12px",
-              borderRadius: 6,
-              fontSize: 13,
-              cursor: "pointer",
-              fontWeight: tab === t ? 600 : 400,
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            padding: "8px 16px",
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          {(["timeline", "output", "diff", "checkpoints"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                border: "none",
+                background: tab === t ? "#eff6ff" : "transparent",
+                color: tab === t ? "#2563eb" : "#6b7280",
+                padding: "6px 12px",
+                borderRadius: 6,
+                fontSize: 13,
+                cursor: "pointer",
+                fontWeight: tab === t ? 600 : 400,
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-        {tab === "timeline" && <Timeline events={events} />}
-        {tab === "output" && <LiveOutput sessionKey={session.key} />}
-        {tab === "diff" && <DiffView diff={diff} />}
-        {tab === "checkpoints" && (
-          <Checkpoints
-            checkpoints={checkpoints}
-            onCapture={captureCheckpoint}
-          />
-        )}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+          {tab === "timeline" && <Timeline events={events} />}
+          {tab === "output" && <LiveOutput sessionKey={session.key} />}
+          {tab === "diff" && <DiffView diff={diff} />}
+          {tab === "checkpoints" && (
+            <Checkpoints
+              checkpoints={checkpoints}
+              onCapture={captureCheckpoint}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

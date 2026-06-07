@@ -10,6 +10,8 @@ export interface RubberduckEvent {
   tool_name?: string;
   session_name?: string;
   lifecycle?: string;
+  branch?: string;
+  parent_session_key?: string;
 }
 
 export type SessionState = "idle" | "busy" | "waiting" | "terminated";
@@ -31,6 +33,7 @@ export interface SessionView {
   runtime?: string;
   branch?: string;
   repoName?: string; // git repo basename, when the session is on a repo
+  parentKey?: string; // session this was forked from, if any
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -52,6 +55,7 @@ export interface PersistedSession {
   runtime?: string | null;
   branch?: string | null;
   repo_path?: string | null;
+  parent_session_key?: string | null;
 }
 
 export function viewFromPersisted(s: PersistedSession): SessionView {
@@ -74,6 +78,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     repoName: s.repo_path
       ? s.repo_path.split("/").filter(Boolean).pop()
       : undefined,
+    parentKey: s.parent_session_key ?? undefined,
   };
 }
 

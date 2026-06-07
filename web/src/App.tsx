@@ -31,12 +31,14 @@ function uptime(startedAt: number, now: number): string {
 function SessionCard({
   session,
   now,
+  parentLabel,
   onOpen,
   onFork,
   onDelete,
 }: {
   session: SessionView;
   now: number;
+  parentLabel?: string;
   onOpen: () => void;
   onFork: () => void;
   onDelete: () => void;
@@ -78,6 +80,11 @@ function SessionCard({
         {session.metrics?.test ? ` · ${session.metrics.test} tests` : ""}
       </div>
       {session.intention && <div className="intent">{session.intention}</div>}
+      {session.parentKey && (
+        <div className="sub">
+          ↳ forked from {parentLabel ?? session.parentKey.slice(0, 8)}
+        </div>
+      )}
       <div className="sub mono">
         {session.branch ? (
           <>
@@ -325,6 +332,7 @@ function Dashboard() {
                   key={s.key}
                   session={s}
                   now={now}
+                  parentLabel={s.parentKey ? labels[s.parentKey] : undefined}
                   onOpen={() => setOpenKey(s.key)}
                   onFork={() => setForkKey(s.key)}
                   onDelete={() => deleteSession(s.key)}

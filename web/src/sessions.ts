@@ -35,12 +35,17 @@ export function applyEvent(
   const next = new Map(sessions);
   const prev = next.get(key);
   next.set(key, {
+    // Preserve fields seeded from /sessions (metrics, intention, repoName, …);
+    // only overwrite what this event actually carries.
+    ...prev,
     key,
-    label: e.session_name || e.source_app || key.slice(0, 8),
+    label: e.session_name || e.source_app || prev?.label || key.slice(0, 8),
     state: deriveState(e, prev?.state),
     lastEventType: e.event_type ?? prev?.lastEventType ?? "",
     lastTool: e.tool_name ?? prev?.lastTool,
     cwd: e.cwd ?? prev?.cwd,
+    branch: e.branch ?? prev?.branch,
+    parentKey: e.parent_session_key ?? prev?.parentKey,
     startedAt: prev?.startedAt ?? e._ts,
     updatedAt: e._ts,
     eventCount: (prev?.eventCount ?? 0) + 1,
