@@ -608,6 +608,9 @@ class Server:
                 await writer.drain()
 
     async def serve(self, host: str, port: int) -> None:
+        adopted = await self.orchestrator.reconcile()
+        if adopted:
+            print(f"re-adopted {len(adopted)} tmux session(s): {', '.join(adopted)}")
         server = await asyncio.start_server(self.handle, host, port)
         async with server:
             await server.serve_forever()

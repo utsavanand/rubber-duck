@@ -13,6 +13,7 @@ the same as in a real terminal.
 import asyncio
 import os
 import pty
+import shlex
 import signal
 import uuid
 from collections import deque
@@ -20,6 +21,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Protocol
 
+from rubberduck import paths, tmux
 from rubberduck.eventbus import EventBus
 from rubberduck.history import HistoryStore
 from rubberduck.runtimes.base import SessionState
@@ -64,6 +66,8 @@ class SessionSupervisor:
         self._state: SessionState = "busy"
         self._task: asyncio.Task[None] | None = None
         self._primary_fd: int | None = None  # PTY master, for writing input
+        self._tmux_target: str | None = None  # set when tmux-backed
+        self._pipe_path: str = ""  # tmux pane output file
         self._output = deque[str](maxlen=2000)  # recent output lines, for the UI
         self._output_subs: set[asyncio.Queue[str]] = set()
 
@@ -81,6 +85,12 @@ class SessionSupervisor:
         )
 
     async def start(self) -> None:
+        if tmux.has_tmux():
+            await self._start_tmux()
+        else:
+            await self._start_pty()
+
+    async def _start_pty(self) -> None:
         argv = self.runtime.launch_command(
             cwd=Path(self.cwd), session_key=self.session_key, initial_prompt=self.initial_prompt
         )
@@ -97,6 +107,55 @@ class SessionSupervisor:
         self._primary_fd = primary
         self._emit("SessionStart")
         self._task = asyncio.create_task(self._pump(primary))
+
+    async def _start_tmux(self) -> None:
+        """Run the agent inside tmux so it survives the server restarting. Output
+        streams to a pipe file we tail; input goes via tmux send-keys."""
+        argv = self.runtime.launch_command(
+            cwd=Path(self.cwd), session_key=self.session_key, initial_prompt=self.initial_prompt
+        )
+        command = shlex.join(argv)
+        self._pipe_path = str(paths.home() / "panes" / f"{self.session_key}.log")
+        Path(self._pipe_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self._pipe_path).write_text("")
+        self._tmux_target = tmux.spawn_piped(self.session_key, command, self.cwd, self._pipe_path)
+        self._emit("SessionStart")
+        self._task = asyncio.create_task(self._tail_pipe())
+
+    async def reattach(self) -> None:
+        """Reconnect to an already-running tmux session after a server restart.
+        Re-tails its pipe and resumes state/output without re-spawning."""
+        self._tmux_target = tmux.target_for(self.session_key)
+        self._pipe_path = str(paths.home() / "panes" / f"{self.session_key}.log")
+        if not Path(self._pipe_path).exists():
+            Path(self._pipe_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(self._pipe_path).write_text("")
+        self._task = asyncio.create_task(self._tail_pipe())
+
+    async def _tail_pipe(self) -> None:
+        """Follow the tmux pane's output file, applying the same state/tool
+        detection as the PTY pump. Ends when the tmux session is gone."""
+        assert self._tmux_target is not None
+        target = self._tmux_target
+        path = Path(self._pipe_path)
+        with path.open("r", errors="replace") as fh:
+            fh.seek(0, os.SEEK_END)
+            while True:
+                line = fh.readline()
+                if line:
+                    self._record_output(line)
+                    tool = self.runtime.tool_in(line)
+                    if tool is not None:
+                        self._emit("PreToolUse", tool_name=tool)
+                    new_state = self.runtime.detect_state(line)
+                    if new_state != self._state:
+                        self._state = new_state
+                        self._emit(_STATE_EVENT[new_state])
+                    continue
+                if not tmux.session_exists(target):
+                    break
+                await asyncio.sleep(0.15)
+        self._emit("SessionEnd")
 
     async def _pump(self, primary: int) -> None:
         loop = asyncio.get_running_loop()
@@ -142,12 +201,18 @@ class SessionSupervisor:
             self._output_subs.discard(queue)
 
     def write_input(self, text: str) -> bool:
-        """Write to the agent's stdin (terminal-attach). Returns False if the
-        session isn't running."""
-        if self._primary_fd is None or not self.running:
-            return False
-        os.write(self._primary_fd, text.encode())
-        return True
+        """Write to the agent's stdin (terminal-attach / approvals). Routes to
+        tmux send-keys or the PTY depending on how the session is backed."""
+        if self._tmux_target is not None and self.running:
+            stripped = text.rstrip("\r\n")
+            enter = text.endswith(("\r", "\n"))
+            if stripped == "\x1b":  # Escape (a denial)
+                return tmux.send_special(self._tmux_target, "Escape")
+            return tmux.send_keys(self._tmux_target, stripped, enter=enter)
+        if self._primary_fd is not None and self.running:
+            os.write(self._primary_fd, text.encode())
+            return True
+        return False
 
     async def _finish(self) -> None:
         if self._proc is not None:
@@ -155,13 +220,17 @@ class SessionSupervisor:
         self._emit("SessionEnd")
 
     async def stop(self) -> None:
-        if self._proc is not None and self._proc.returncode is None:
+        if self._tmux_target is not None:
+            tmux.kill_session(self._tmux_target)
+        elif self._proc is not None and self._proc.returncode is None:
             os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
         if self._task is not None:
             await self._task
 
     @property
     def running(self) -> bool:
+        if self._tmux_target is not None:
+            return tmux.session_exists(self._tmux_target)
         return self._proc is not None and self._proc.returncode is None
 
 
@@ -176,6 +245,28 @@ class Orchestrator:
         self.worktrees = worktrees if worktrees is not None else WorktreeManager()
         self.history = history
         self._supervisors: dict[str, SessionSupervisor] = {}
+
+    async def reconcile(self) -> list[str]:
+        """On startup, re-adopt tmux sessions that outlived a previous server
+        run. Each is matched to its DB row (for cwd/runtime) and re-tailed.
+        Returns the session keys re-adopted."""
+        if not tmux.has_tmux():
+            return []
+        from rubberduck.runtimes.generic import GenericRuntime
+
+        adopted: list[str] = []
+        for key in tmux.list_rubberduck_sessions():
+            if key in self._supervisors:
+                continue
+            row = self.history.session(key) if self.history else None
+            cwd = str(row.get("cwd") or ".") if row else "."
+            supervisor = SessionSupervisor(
+                bus=self.bus, runtime=GenericRuntime("true"), session_key=key, cwd=cwd
+            )
+            self._supervisors[key] = supervisor
+            await supervisor.reattach()
+            adopted.append(key)
+        return adopted
 
     async def launch(
         self,
