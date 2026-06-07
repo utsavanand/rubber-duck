@@ -8,7 +8,25 @@ Codex, any CLI agent) into isolated git worktrees, supervises them, lets you
 fork a running session into a tree of parallel attempts, and keeps durable
 history with an intention → outcome summary per session.
 
-Design: [`rubberduck-design.md`](./rubberduck-design.md). Built Act by Act.
+Design: [`rubberduck-design.md`](./rubberduck-design.md). Built Act by Act
+(0–10 complete).
+
+## Run
+
+```sh
+pip install -e .
+rubberduck serve                       # http://127.0.0.1:4200
+# in another shell:
+rubberduck launch "claude" --cwd ~/myrepo --prompt "add a healthcheck"
+rubberduck snapshot                    # bundle active sessions
+
+cd web && npm install && npm run dev   # dashboard (proxies to the server)
+```
+
+Launch on a repo to get an isolated git worktree per session; fork a session
+to branch it; sessions are tracked live and persisted with an intention →
+outcome summary. Runtimes: `generic` (any CLI), `claude-code` (richest —
+hook events + JSONL transcript), `codex`.
 
 ## Develop
 

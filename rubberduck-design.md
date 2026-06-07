@@ -1,6 +1,6 @@
 # Rubberduck — Orchestrator Design
 
-**Status:** Design (approved to build, no code yet)
+**Status:** Built — Acts 0–10 complete and on `main`. Act 11 (Conductor-style extras) is the remaining optional follow-up.
 **Supersedes the scope of:** `rubberduck-extraction.md` (that doc described a passive observer; this describes the active orchestrator it grew into)
 **Stack:** Python (server) + React (dashboard) + SQLite (history)
 
