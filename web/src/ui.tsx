@@ -26,15 +26,16 @@ export function Modal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#fff",
+          background: "var(--card)",
+          color: "var(--text)",
           borderRadius: 16,
           padding: 28,
           width: 480,
           maxWidth: "90vw",
           maxHeight: "85vh",
           overflowY: "auto",
-          boxShadow: "0 24px 60px -12px rgba(0,0,0,0.25)",
-          border: "1px solid #e8e8eb",
+          boxShadow: "0 24px 60px -12px rgba(0,0,0,0.45)",
+          border: "1px solid var(--border)",
         }}
       >
         <div
@@ -101,12 +102,12 @@ export function Field({
 export const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "10px 12px",
-  border: "1px solid #d4d4d8",
+  border: "1px solid var(--border-strong)",
   borderRadius: 8,
   fontSize: 14,
   boxSizing: "border-box",
-  background: "#fff",
-  color: "#0d0d0d",
+  background: "var(--bg)",
+  color: "var(--text)",
 };
 
 export function Button({

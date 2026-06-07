@@ -62,15 +62,21 @@ export function SessionDetail({
         bottom: 0,
         width: 560,
         maxWidth: "94vw",
-        background: "#fff",
-        borderLeft: "1px solid #e5e7eb",
-        boxShadow: "-12px 0 40px rgba(0,0,0,0.12)",
+        background: "var(--card)",
+        color: "var(--text)",
+        borderLeft: "1px solid var(--border)",
+        boxShadow: "-12px 0 40px rgba(0,0,0,0.4)",
         zIndex: 90,
         display: "flex",
         flexDirection: "column",
       }}
     >
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #e5e7eb" }}>
+      <div
+        style={{
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
         <div
           style={{
             display: "flex",

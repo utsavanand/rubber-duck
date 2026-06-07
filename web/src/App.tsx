@@ -10,6 +10,7 @@ import { SnapshotsModal } from "./SnapshotsModal";
 import { SessionView } from "./types";
 import { ToastProvider, useToast } from "./ui";
 import { useEventStream } from "./useEventStream";
+import { useTheme } from "./useTheme";
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(Date.now());
@@ -175,6 +176,7 @@ function Dashboard() {
   const { sessions, connected, removeSessions } = useEventStream();
   const toast = useToast();
   const now = useNow(1000);
+  const { theme, cycle: cycleTheme } = useTheme();
 
   async function deleteSession(key: string) {
     try {
@@ -231,6 +233,14 @@ function Dashboard() {
           {connected ? "Live" : "Disconnected"}
         </span>
         <span className="rd-spacer" />
+        <button
+          className="rd-btn rd-btn-ghost rd-btn-sm"
+          title={`Theme: ${theme} (click to change)`}
+          onClick={cycleTheme}
+          aria-label="Toggle theme"
+        >
+          {theme === "light" ? "☀︎" : theme === "dark" ? "☾" : "◐"}
+        </button>
         <button
           className="rd-btn rd-btn-primary"
           onClick={() => setModal("launch")}
