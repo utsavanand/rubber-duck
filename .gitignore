@@ -11,3 +11,4 @@ node_modules/
 web/dist/
 .rubberduck/
 .uv-suite-state/
+*.tsbuildinfo
