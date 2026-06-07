@@ -30,6 +30,7 @@ export interface SessionView {
   compareGroup?: string;
   runtime?: string;
   branch?: string;
+  repoName?: string; // git repo basename, when the session is on a repo
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -50,6 +51,7 @@ export interface PersistedSession {
   compare_group?: string | null;
   runtime?: string | null;
   branch?: string | null;
+  repo_path?: string | null;
 }
 
 export function viewFromPersisted(s: PersistedSession): SessionView {
@@ -69,6 +71,9 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     compareGroup: s.compare_group ?? undefined,
     runtime: s.runtime ?? undefined,
     branch: s.branch ?? undefined,
+    repoName: s.repo_path
+      ? s.repo_path.split("/").filter(Boolean).pop()
+      : undefined,
   };
 }
 

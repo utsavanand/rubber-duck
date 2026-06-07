@@ -10,9 +10,8 @@
     POST /sessions/compare    launch one prompt as N variants side by side
     POST /sessions/:key/fork  fork a session: child worktree off parent's branch
     POST /sessions/:key/stop  terminate a supervised agent
-    POST /sessions/:key/checkpoint   snapshot the session worktree
-    GET  /sessions/:key/checkpoints   list checkpoints
-    POST /sessions/:key/rollback      restore worktree to a checkpoint {commit}
+    POST /sessions/:key/checkpoint   record what was done (prompts/files/tools/git + summary)
+    GET  /sessions/:key/checkpoints   list checkpoint records
     POST /sessions/:key/spotlight     apply worktree changes onto the main checkout
     GET  /sessions/:key/diff          git diff of the session's worktree
     GET  /sessions/:key/output        SSE: live agent output (PTY) lines
@@ -38,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from rubberduck.approvals import ApprovalRegistry
-from rubberduck.checkpoints import create_checkpoint, rollback
+from rubberduck.checkpoints import build_checkpoint
 from rubberduck.eventbus import Event, EventBus
 from rubberduck.history import HistoryStore
 from rubberduck.orchestrator import Orchestrator, StateRuntime
@@ -134,8 +133,6 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/stop")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._checkpoint(w, seg, b),
           **_mid("/sessions/", "/checkpoint")),
-    Route("POST", "", lambda s, r, w, h, b, seg: s._rollback(w, seg, b),
-          **_mid("/sessions/", "/rollback")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._spotlight(w, seg),
           **_mid("/sessions/", "/spotlight")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._input(w, seg, b),
@@ -354,37 +351,34 @@ class Server:
     async def _checkpoint(
         self, writer: asyncio.StreamWriter, session_key: str, body: bytes
     ) -> None:
-        worktree = self._worktree_of(session_key)
-        if not worktree:
-            await _write_json(writer, 400, {"error": "session has no worktree"})
+        row = self.history.session(session_key)
+        if row is None:
+            await _write_json(writer, 404, {"error": f"no session {session_key}"})
             return
         label = json.loads(body or b"{}").get("label", "checkpoint")
-        try:
-            cp = create_checkpoint(Path(worktree), label=label, now_ms=int(time.time() * 1000))
-        except GitError as e:
-            await _write_json(writer, 400, {"error": str(e)})
-            return
-        self.history.add_checkpoint(session_key, cp.commit, cp.label, cp.created_at)
-        await _write_json(writer, 200, {"commit": cp.commit, "label": cp.label})
+        cwd = Path(str(row.get("worktree_path") or row.get("cwd") or "."))
+        cp = await asyncio.to_thread(
+            build_checkpoint,
+            session_key=session_key,
+            label=label,
+            cwd=cwd,
+            events=self.history.events_for(session_key),
+            intention=str(row.get("intention") or ""),
+            now_ms=int(time.time() * 1000),
+        )
+        self.history.add_checkpoint(
+            checkpoint_id=cp.id,
+            session_key=cp.session_key,
+            label=cp.label,
+            summary=cp.summary,
+            record=cp.record,
+            markdown_path=cp.markdown_path,
+            created_at=cp.created_at,
+        )
+        await _write_json(writer, 200, {"id": cp.id, "label": cp.label, "summary": cp.summary})
 
     async def _list_checkpoints(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         await _write_json(writer, 200, {"checkpoints": self.history.checkpoints(session_key)})
-
-    async def _rollback(self, writer: asyncio.StreamWriter, session_key: str, body: bytes) -> None:
-        worktree = self._worktree_of(session_key)
-        if not worktree:
-            await _write_json(writer, 400, {"error": "session has no worktree"})
-            return
-        commit = json.loads(body or b"{}").get("commit")
-        if not commit:
-            await _write_json(writer, 400, {"error": "commit is required"})
-            return
-        try:
-            rollback(Path(worktree), commit)
-        except GitError as e:
-            await _write_json(writer, 400, {"error": str(e)})
-            return
-        await _write_json(writer, 200, {"rolled_back_to": commit})
 
     async def _spotlight(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         row = self.history.session(session_key)

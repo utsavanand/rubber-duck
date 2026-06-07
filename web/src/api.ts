@@ -44,13 +44,12 @@ export const api = {
     post<{ session_key: string }>(`/sessions/${key}/fork`, opts),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
   checkpoint: (key: string, label: string) =>
-    post<{ commit: string }>(`/sessions/${key}/checkpoint`, { label }),
+    post<{ id: string; label: string; summary: string }>(
+      `/sessions/${key}/checkpoint`,
+      { label },
+    ),
   checkpoints: (key: string) =>
-    get<{
-      checkpoints: { commit_sha: string; label: string; created_at: number }[];
-    }>(`/sessions/${key}/checkpoints`),
-  rollback: (key: string, commit: string) =>
-    post<{ rolled_back_to: string }>(`/sessions/${key}/rollback`, { commit }),
+    get<{ checkpoints: CheckpointRecord[] }>(`/sessions/${key}/checkpoints`),
   spotlight: (key: string) =>
     post<{ synced_files: string[] }>(`/sessions/${key}/spotlight`),
   compare: (req: {
@@ -80,6 +79,23 @@ interface RawEvent {
   session_id?: string;
   uvs_session_id?: string;
   tool_name?: string;
+}
+
+export interface CheckpointRecord {
+  id: string;
+  label: string;
+  summary: string;
+  created_at: number;
+  record: {
+    intention?: string;
+    prompts: string[];
+    files: { path: string; edits: number }[];
+    tools: { tool: string; count: number }[];
+    event_count: number;
+    git?: boolean;
+    repo?: string;
+    branch?: string;
+  };
 }
 
 export type { RawEvent };

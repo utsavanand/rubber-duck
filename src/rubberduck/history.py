@@ -57,11 +57,13 @@ CREATE TABLE IF NOT EXISTS metrics (
     PRIMARY KEY (session_key, kind)
 );
 CREATE TABLE IF NOT EXISTS checkpoints (
+    id          TEXT PRIMARY KEY,
     session_key TEXT NOT NULL,
-    commit_sha  TEXT NOT NULL,
     label       TEXT NOT NULL,
-    created_at  INTEGER NOT NULL,
-    PRIMARY KEY (session_key, commit_sha)
+    summary     TEXT NOT NULL DEFAULT '',
+    record_json TEXT NOT NULL DEFAULT '{}',
+    markdown_path TEXT,
+    created_at  INTEGER NOT NULL
 );
 """
 
@@ -115,13 +117,23 @@ class HistoryStore:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        """Add any columns missing from an older sessions table."""
+        """Add any columns missing from an older sessions table; rebuild the
+        checkpoints table if it predates the 'session record' shape."""
         existing = {
             row["name"] for row in self._conn.execute("PRAGMA table_info(sessions)").fetchall()
         }
         for column, sql_type in _SESSIONS_COLUMNS.items():
             if column not in existing:
                 self._conn.execute(f"ALTER TABLE sessions ADD COLUMN {column} {sql_type}")
+
+        cp_cols = {
+            row["name"] for row in self._conn.execute("PRAGMA table_info(checkpoints)").fetchall()
+        }
+        # Old checkpoints stored a git-stash sha; the new record table is keyed by
+        # `id`. The old rows were disposable rollback points, so drop and recreate.
+        if cp_cols and "record_json" not in cp_cols:
+            self._conn.execute("DROP TABLE checkpoints")
+            self._conn.executescript(_SCHEMA)
 
     def record(self, event: Event) -> None:
         """Persist an event and fold it into its session row. Called for every
@@ -169,21 +181,56 @@ class HistoryStore:
         ).fetchone()
         return str(row["sid"]) if row and row["sid"] else None
 
-    def add_checkpoint(self, key: str, commit: str, label: str, created_at: int) -> None:
+    def add_checkpoint(
+        self,
+        *,
+        checkpoint_id: str,
+        session_key: str,
+        label: str,
+        summary: str,
+        record: dict[str, Any],
+        markdown_path: str | None,
+        created_at: int,
+    ) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO checkpoints (session_key, commit_sha, label, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (key, commit, label, created_at),
+            "INSERT INTO checkpoints "
+            "(id, session_key, label, summary, record_json, markdown_path, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                checkpoint_id,
+                session_key,
+                label,
+                summary,
+                json.dumps(record),
+                markdown_path,
+                created_at,
+            ),
         )
         self._conn.commit()
 
     def checkpoints(self, key: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
-            "SELECT commit_sha, label, created_at FROM checkpoints "
-            "WHERE session_key = ? ORDER BY created_at DESC",
+            "SELECT id, label, summary, record_json, markdown_path, created_at "
+            "FROM checkpoints WHERE session_key = ? ORDER BY created_at DESC",
             (key,),
         ).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["record"] = json.loads(d.pop("record_json"))
+            out.append(d)
+        return out
+
+    def events_for(self, key: str, limit: int = 200) -> list[dict[str, Any]]:
+        """The most recent events for a session, oldest-first, for building a
+        checkpoint record."""
+        rows = self._conn.execute(
+            "SELECT payload_json FROM events WHERE session_key = ? ORDER BY ts DESC LIMIT ?",
+            (key, limit),
+        ).fetchall()
+        events = [json.loads(r["payload_json"]) for r in rows]
+        events.reverse()
+        return events
 
     def set_intention(self, key: str, intention: str) -> None:
         self._conn.execute(

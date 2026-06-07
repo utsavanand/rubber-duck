@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, RawEvent } from "./api";
+import { api, CheckpointRecord, RawEvent } from "./api";
 import { LiveOutput } from "./LiveOutput";
 import { SessionView } from "./types";
-import { Button, useToast } from "./ui";
+import { useToast } from "./ui";
 
 type Tab = "timeline" | "output" | "diff" | "checkpoints";
-
-interface Checkpoint {
-  commit_sha: string;
-  label: string;
-  created_at: number;
-}
 
 export function SessionDetail({
   session,
@@ -22,7 +16,7 @@ export function SessionDetail({
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("timeline");
   const [events, setEvents] = useState<RawEvent[]>([]);
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
+  const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [diff, setDiff] = useState<string>("");
 
   const loadCheckpoints = useCallback(() => {
@@ -49,10 +43,11 @@ export function SessionDetail({
     }
   }, [tab, session.key]);
 
-  async function rollback(commit: string) {
+  async function captureCheckpoint() {
     try {
-      await api.rollback(session.key, commit);
-      toast(`Rolled back to ${commit.slice(0, 8)}`);
+      await api.checkpoint(session.key, "manual");
+      toast("Checkpoint recorded");
+      loadCheckpoints();
     } catch (e) {
       toast((e as Error).message, "err");
     }
@@ -153,7 +148,10 @@ export function SessionDetail({
         {tab === "output" && <LiveOutput sessionKey={session.key} />}
         {tab === "diff" && <DiffView diff={diff} />}
         {tab === "checkpoints" && (
-          <Checkpoints checkpoints={checkpoints} onRollback={rollback} />
+          <Checkpoints
+            checkpoints={checkpoints}
+            onCapture={captureCheckpoint}
+          />
         )}
       </div>
     </div>
@@ -224,40 +222,101 @@ function DiffView({ diff }: { diff: string }) {
 
 function Checkpoints({
   checkpoints,
-  onRollback,
+  onCapture,
 }: {
-  checkpoints: Checkpoint[];
-  onRollback: (commit: string) => void;
+  checkpoints: CheckpointRecord[];
+  onCapture: () => void;
 }) {
-  if (checkpoints.length === 0) return <Empty text="No checkpoints yet." />;
   return (
     <div>
-      {checkpoints.map((c) => (
-        <div
-          key={c.commit_sha}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "8px 0",
-            borderBottom: "1px solid #f3f4f6",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 14 }}>{c.label}</div>
-            <code style={{ fontSize: 11, color: "#9ca3af" }}>
-              {c.commit_sha.slice(0, 10)}
-            </code>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onRollback(c.commit_sha)}
-          >
-            Roll back
-          </Button>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <span style={{ fontSize: 13, color: "#565869" }}>
+          A record of what was done — prompts, files, tools, git state.
+        </span>
+        <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onCapture}>
+          Capture now
+        </button>
+      </div>
+      {checkpoints.length === 0 ? (
+        <Empty text="No checkpoints recorded yet." />
+      ) : (
+        checkpoints.map((c) => <CheckpointCard key={c.id} c={c} />)
+      )}
+    </div>
+  );
+}
+
+function CheckpointCard({ c }: { c: CheckpointRecord }) {
+  const [open, setOpen] = useState(false);
+  const r = c.record;
+  return (
+    <div style={{ borderBottom: "1px solid #f0f0f2", padding: "12px 0" }}>
+      <div style={{ cursor: "pointer" }} onClick={() => setOpen((v) => !v)}>
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <strong style={{ fontSize: 13 }}>{c.label}</strong>
+          <span style={{ fontSize: 12, color: "#9ca3af" }}>
+            {new Date(c.created_at).toLocaleString()}
+          </span>
         </div>
-      ))}
+        <div style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>
+          {c.summary}
+        </div>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10, fontSize: 12.5, color: "#565869" }}>
+          {r.git && (
+            <div style={{ marginBottom: 8 }}>
+              <strong>Git:</strong> {r.repo} · {r.branch}
+            </div>
+          )}
+          {r.prompts.length > 0 && (
+            <Section title="Prompts">
+              {r.prompts.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </Section>
+          )}
+          {r.files.length > 0 && (
+            <Section title="Files changed">
+              {r.files.map((f, i) => (
+                <li key={i}>
+                  {f.path} ({f.edits}×)
+                </li>
+              ))}
+            </Section>
+          )}
+          {r.tools.length > 0 && (
+            <Section title="Tools">
+              {r.tools.map((t, i) => (
+                <li key={i}>
+                  {t.count}× {t.tool}
+                </li>
+              ))}
+            </Section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>{title}</div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>{children}</ul>
     </div>
   );
 }

@@ -75,7 +75,15 @@ function SessionCard({
         {session.metrics?.test ? ` · ${session.metrics.test} tests` : ""}
       </div>
       {session.intention && <div className="intent">{session.intention}</div>}
-      {session.branch && <div className="sub mono">⎇ {session.branch}</div>}
+      <div className="sub mono">
+        {session.branch ? (
+          <>
+            {session.repoName ?? "repo"} · {session.branch}
+          </>
+        ) : (
+          (session.cwd ?? "—")
+        )}
+      </div>
 
       <div className="rd-actions">
         <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onOpen}>
