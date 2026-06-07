@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--prompt", default="")
 
     sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
+    sub.add_parser("dashboard", help="build (if needed) and open the dashboard in a browser")
 
     inst = sub.add_parser(
         "install-hooks", help="wire Claude Code so its sessions stream into Rubberduck"
@@ -117,6 +118,33 @@ def _uninstall_hooks(global_scope: bool) -> int:
     return 0
 
 
+def _dashboard() -> int:
+    import subprocess
+    import webbrowser
+
+    from rubberduck.server import dashboard_dir
+
+    if dashboard_dir() is None:
+        web = Path(__file__).resolve().parents[2] / "web"
+        if not web.exists():
+            print("dashboard source (web/) not found", file=sys.stderr)
+            return 1
+        print("building the dashboard (web/)…", file=sys.stderr)
+        build = subprocess.run(["npm", "run", "build"], cwd=web)
+        if build.returncode != 0:
+            print("dashboard build failed", file=sys.stderr)
+            return 1
+    url = _server_url()
+    try:
+        urllib.request.urlopen(f"{url}/", timeout=2)
+    except OSError:
+        print(f"server not reachable at {url} — start it with `rubberduck serve`", file=sys.stderr)
+        return 1
+    print(f"opening {url}")
+    webbrowser.open(url)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
@@ -129,6 +157,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
     if args.command == "snapshot":
         return _snapshot()
+    if args.command == "dashboard":
+        return _dashboard()
     if args.command == "install-hooks":
         return _install_hooks(args.global_scope)
     if args.command == "uninstall-hooks":

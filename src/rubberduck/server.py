@@ -136,14 +136,33 @@ class Server:
                 await self._get_snapshot(writer, path[len("/snapshots/") :])
             elif method == "GET" and path == "/stream":
                 await self._stream(reader, writer)
-            elif method == "GET" and path == "/":
-                await _write_response(writer, 200, "ok", extra_headers={SELF_PROBE_HEADER: "1"})
+            elif method == "GET" and (path == "/" or path.startswith("/assets/")):
+                await self._dashboard(writer, path)
             else:
                 await _write_response(writer, 404, "not found")
         except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
             pass
         finally:
             writer.close()
+
+    async def _dashboard(self, writer: asyncio.StreamWriter, path: str) -> None:
+        """Serve the built React dashboard so there's one URL. The self-probe
+        header rides on every response. Falls back to a hint if not built."""
+        dist = dashboard_dir()
+        if dist is None:
+            await _write_response(
+                writer,
+                200,
+                "Rubberduck server is running. Build the dashboard "
+                "(cd web && npm run build) to serve the UI here.",
+                extra_headers={SELF_PROBE_HEADER: "1"},
+            )
+            return
+        rel = "index.html" if path == "/" else path.lstrip("/")
+        target = (dist / rel).resolve()
+        if not str(target).startswith(str(dist.resolve())) or not target.is_file():
+            target = dist / "index.html"  # SPA fallback
+        await _write_file(writer, target)
 
     async def _ingest(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         try:
@@ -533,6 +552,38 @@ async def _write_json(writer: asyncio.StreamWriter, status: int, payload: Any) -
         f"HTTP/1.1 {status} {_REASON.get(status, 'OK')}\r\n"
         f"Content-Length: {len(body)}\r\n"
         "Content-Type: application/json\r\n"
+        "Connection: close\r\n\r\n"
+    )
+    writer.write(head.encode() + body)
+    await writer.drain()
+
+
+_CONTENT_TYPES = {
+    ".html": "text/html",
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".svg": "image/svg+xml",
+    ".json": "application/json",
+    ".ico": "image/x-icon",
+}
+
+
+def dashboard_dir() -> Path | None:
+    """Locate the built dashboard (web/dist), or None if it hasn't been built.
+    Resolved relative to the repo so `rubberduck serve` from a dev checkout
+    serves it; an installed package would ship its own copy."""
+    candidate = Path(__file__).resolve().parents[2] / "web" / "dist"
+    return candidate if (candidate / "index.html").is_file() else None
+
+
+async def _write_file(writer: asyncio.StreamWriter, path: Path) -> None:
+    body = path.read_bytes()
+    ctype = _CONTENT_TYPES.get(path.suffix, "application/octet-stream")
+    head = (
+        f"HTTP/1.1 200 OK\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        f"Content-Type: {ctype}\r\n"
+        f"{SELF_PROBE_HEADER}: 1\r\n"
         "Connection: close\r\n\r\n"
     )
     writer.write(head.encode() + body)
