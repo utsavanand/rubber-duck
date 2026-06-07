@@ -695,14 +695,20 @@ class Server:
             return
         label = json.loads(body or b"{}").get("label", "checkpoint")
         cwd = Path(str(row.get("worktree_path") or row.get("cwd") or "."))
+        # Summarize the delta since the most recent checkpoint (0 if first).
+        prior = self.history.checkpoints(session_key)
+        since_ms = int(prior[0]["created_at"]) if prior else 0
         cp = await asyncio.to_thread(
             build_checkpoint,
             session_key=session_key,
             label=label,
             cwd=cwd,
-            events=self.history.events_for(session_key),
+            # The whole session, not just the last 200 events — a checkpoint is
+            # a complete record and must capture every prompt.
+            events=self.history.events_for(session_key, limit=100_000),
             intention=str(row.get("intention") or ""),
             now_ms=int(time.time() * 1000),
+            since_ms=since_ms,
         )
         self.history.add_checkpoint(
             checkpoint_id=cp.id,

@@ -97,3 +97,35 @@ def test_checkpoint_writes_markdown(tmp_path: Path) -> None:
     assert "add a login form" in md
     assert "login.tsx" in md
     assert (tmp_path / ".rubberduck" / "checkpoints" / "s1" / "latest.md").is_file()
+
+
+def test_checkpoint_captures_all_prompts_untruncated(tmp_path: Path) -> None:
+    long_prompt = "x" * 500  # would have been truncated to 240 before
+    evs = [{"event_type": "UserPromptSubmit", "prompt": long_prompt, "_ts": i} for i in range(20)]
+    cp = build_checkpoint(
+        session_key="s", label="cp", cwd=tmp_path, events=evs, intention="", now_ms=1000
+    )
+    # All 20 prompts kept (not capped at 12), full length (not cut to 240).
+    assert len(cp.record["prompts"]) == 20
+    assert cp.record["prompts"][0] == long_prompt
+
+
+def test_checkpoint_delta_since_last_checkpoint(tmp_path: Path) -> None:
+    evs = [
+        {"event_type": "UserPromptSubmit", "prompt": "first", "_ts": 100},
+        {"event_type": "UserPromptSubmit", "prompt": "second", "_ts": 300},
+    ]
+    cp = build_checkpoint(
+        session_key="s",
+        label="cp2",
+        cwd=tmp_path,
+        events=evs,
+        intention="",
+        now_ms=400,
+        since_ms=200,  # the previous checkpoint was at ts=200
+    )
+    # Full record still has both prompts...
+    assert cp.record["prompts"] == ["first", "second"]
+    # ...but the delta only has the one after ts=200.
+    assert cp.record["new_since_last"]["prompts"] == ["second"]
+    assert cp.record["new_since_last"]["event_count"] == 1

@@ -7,8 +7,8 @@ import {
 } from "./types";
 
 // After a Stop, a session keeps reading "busy" for this long before settling to
-// idle — so a session in rapid back-and-forth doesn't strobe each turn.
-export const IDLE_SETTLE_MS = 10_000;
+// idle — so a session in active back-and-forth doesn't read idle between turns.
+export const IDLE_SETTLE_MS = 5 * 60_000;
 
 function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
   if (e.lifecycle === "terminated" || e.event_type === "SessionEnd")

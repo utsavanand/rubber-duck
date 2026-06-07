@@ -47,7 +47,7 @@ def _extract(events: list[Event]) -> dict[str, Any]:
         if etype == "UserPromptSubmit":
             text = str(e.get("prompt") or e.get("tool_input", {}).get("prompt") or "").strip()
             if text:
-                prompts.append(text[:240])
+                prompts.append(text)
         if etype in ("PreToolUse", "PostToolUse"):
             tool = e.get("tool_name")
             if tool:
@@ -56,7 +56,8 @@ def _extract(events: list[Event]) -> dict[str, Any]:
             if path:
                 files[str(path)] += 1
     return {
-        "prompts": prompts[-12:],
+        # Every human prompt, in order, untruncated — the checkpoint is a record.
+        "prompts": prompts,
         "files": [{"path": p, "edits": n} for p, n in files.most_common()],
         "tools": [{"tool": t, "count": n} for t, n in tools.most_common()],
         "event_count": len(events),
@@ -88,11 +89,29 @@ def build_checkpoint(
     events: list[Event],
     intention: str,
     now_ms: int,
+    since_ms: int = 0,
 ) -> Checkpoint:
+    """Capture a checkpoint over `events`. If `since_ms` is set (the previous
+    checkpoint's time), the record also breaks out the work done *since then* so
+    the summary describes the delta, not the whole session again."""
     activity = _extract(events)
     git = _git_state(cwd)
-    record = {"intention": intention, **activity, **git, "created_at": now_ms}
-    summary = _summarize(intention, activity, git)
+    new_events = [e for e in events if int(e.get("_ts", 0)) > since_ms] if since_ms else events
+    new_activity = _extract(new_events) if since_ms else activity
+    record = {
+        "intention": intention,
+        **activity,
+        **git,
+        "created_at": now_ms,
+        "since_ms": since_ms,
+        "new_since_last": {
+            "prompts": new_activity["prompts"],
+            "files": new_activity["files"],
+            "tools": new_activity["tools"],
+            "event_count": new_activity["event_count"],
+        },
+    }
+    summary = _summarize(intention, new_activity if since_ms else activity, git)
     markdown = _write_markdown(cwd, session_key, label, record, summary, now_ms)
     return Checkpoint(
         id=uuid.uuid4().hex,
@@ -140,6 +159,19 @@ def _write_markdown(
     def bullets(items: list[str]) -> list[str]:
         return items if items else ["(none)"]
 
+    delta = record.get("new_since_last") or {}
+    since_lines: list[str] = []
+    if record.get("since_ms"):
+        since_lines = [
+            "## Since the last checkpoint",
+            f"{delta.get('event_count', 0)} events, "
+            f"{len(delta.get('files', []))} files changed.",
+            "",
+            "### New prompts",
+            *bullets([f"- {p}" for p in delta.get("prompts", [])]),
+            "",
+        ]
+
     lines = [
         f"# Checkpoint: {label}",
         "",
@@ -148,7 +180,8 @@ def _write_markdown(
         "## Intent",
         record.get("intention") or "(none recorded)",
         "",
-        "## Prompts",
+        *since_lines,
+        "## All prompts this session",
         *bullets([f"- {p}" for p in record["prompts"]]),
         "",
         "## Files changed",
