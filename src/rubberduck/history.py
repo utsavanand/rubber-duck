@@ -69,6 +69,10 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     markdown_path TEXT,
     created_at  INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tombstones (
+    session_key TEXT PRIMARY KEY,
+    deleted_at  INTEGER NOT NULL
+);
 """
 
 
@@ -149,23 +153,40 @@ class HistoryStore:
     def record(self, event: Event) -> None:
         """Persist an event and fold it into its session row. Called for every
         published event (the EventBus sink)."""
+        key = session_key_of(event)
+        # A deleted session whose terminal is still alive keeps firing events.
+        # Don't let those resurrect the row. SessionEnd lifts the tombstone — the
+        # terminal is gone, so a future session reusing the key starts clean.
+        if key is not None and self._is_tombstoned(key):
+            if event.get("event_type") == "SessionEnd":
+                self._lift_tombstone(key)
+            return
         self._conn.execute(
             "INSERT OR IGNORE INTO events (id, session_key, event_type, ts, payload_json) "
             "VALUES (?, ?, ?, ?, json(?))",
             (
                 event["_id"],
-                session_key_of(event),
+                key,
                 event.get("event_type"),
                 event["_ts"],
                 json.dumps(event),
             ),
         )
-        key = session_key_of(event)
         if key is not None:
             self._upsert_session(key, event)
             kind = classify(event)
             if kind is not None:
                 self._bump_metric(key, kind)
+        self._conn.commit()
+
+    def _is_tombstoned(self, key: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM tombstones WHERE session_key = ?", (key,)
+        ).fetchone()
+        return row is not None
+
+    def _lift_tombstone(self, key: str) -> None:
+        self._conn.execute("DELETE FROM tombstones WHERE session_key = ?", (key,))
         self._conn.commit()
 
     def _bump_metric(self, key: str, kind: str) -> None:
@@ -415,13 +436,18 @@ class HistoryStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def delete_session(self, key: str) -> bool:
+    def delete_session(self, key: str, *, now: int = 0) -> bool:
         """Remove a session and everything attached to it (events, metrics,
-        checkpoints). Returns whether a row was removed."""
+        checkpoints). Tombstones the key so a still-running terminal's events
+        can't resurrect the row. Returns whether a row was removed."""
         cur = self._conn.execute("DELETE FROM sessions WHERE session_key = ?", (key,))
         self._conn.execute("DELETE FROM events WHERE session_key = ?", (key,))
         self._conn.execute("DELETE FROM metrics WHERE session_key = ?", (key,))
         self._conn.execute("DELETE FROM checkpoints WHERE session_key = ?", (key,))
+        self._conn.execute(
+            "INSERT OR REPLACE INTO tombstones (session_key, deleted_at) VALUES (?, ?)",
+            (key, now),
+        )
         self._conn.commit()
         return cur.rowcount > 0
 

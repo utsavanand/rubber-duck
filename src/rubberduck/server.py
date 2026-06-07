@@ -576,7 +576,7 @@ class Server:
         if row is not None and row.get("heartbeat"):
             close_terminal(session_key)
         self._remove_worktree(row)
-        deleted = self.history.delete_session(session_key)
+        deleted = self.history.delete_session(session_key, now=int(time.time() * 1000))
         self.approvals.drop_session(session_key)
         status = 200 if deleted else 404
         await _write_json(writer, status, {"deleted": deleted, "session_key": session_key})
