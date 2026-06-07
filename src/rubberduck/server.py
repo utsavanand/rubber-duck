@@ -20,6 +20,7 @@ from rubberduck.eventbus import Event, EventBus
 from rubberduck.history import HistoryStore
 from rubberduck.orchestrator import Orchestrator
 from rubberduck.runtimes.generic import GenericRuntime
+from rubberduck.worktrees import GitError
 
 SELF_PROBE_HEADER = "X-Rubberduck"
 KEEPALIVE_SECONDS = 15
@@ -87,15 +88,24 @@ class Server:
             return
         command = req.get("command")
         cwd = req.get("cwd")
-        if not command or not cwd:
-            await _write_json(writer, 400, {"error": "command and cwd are required"})
+        repo_path = req.get("repo_path")
+        if not command or (not cwd and not repo_path):
+            await _write_json(
+                writer, 400, {"error": "command and one of cwd/repo_path are required"}
+            )
             return
-        key = await self.orchestrator.launch(
-            runtime=GenericRuntime(command),
-            cwd=cwd,
-            session_key=req.get("session_key"),
-            prompt=req.get("prompt", ""),
-        )
+        try:
+            key = await self.orchestrator.launch(
+                runtime=GenericRuntime(command),
+                cwd=cwd,
+                repo_path=repo_path,
+                branch=req.get("branch"),
+                session_key=req.get("session_key"),
+                prompt=req.get("prompt", ""),
+            )
+        except (GitError, ValueError) as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
         await _write_json(writer, 200, {"session_key": key})
 
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:

@@ -2,8 +2,10 @@
 test writes to the developer's real ~/.rubberduck/."""
 
 import os
+import subprocess
 import tempfile
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -20,3 +22,21 @@ def _isolated_home() -> Iterator[None]:
                 os.environ.pop("RUBBERDUCK_HOME", None)
             else:
                 os.environ["RUBBERDUCK_HOME"] = prev
+
+
+@pytest.fixture
+def git_repo(tmp_path: Path) -> Path:
+    """A real git repo with one commit, for worktree tests."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "test@rubberduck.local")
+    git("config", "user.name", "Rubberduck Test")
+    (repo / "README.md").write_text("base\n")
+    git("add", "README.md")
+    git("commit", "-q", "-m", "initial")
+    return repo

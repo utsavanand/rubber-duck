@@ -20,6 +20,7 @@ from typing import Protocol
 
 from rubberduck.eventbus import EventBus
 from rubberduck.runtimes.base import SessionState
+from rubberduck.worktrees import WorktreeManager
 
 # State -> the event_type whose derive_state yields that state. One vocabulary.
 _STATE_EVENT = {
@@ -46,12 +47,14 @@ class SessionSupervisor:
         session_key: str,
         cwd: str,
         initial_prompt: str = "",
+        extra: dict[str, object] | None = None,
     ) -> None:
         self.bus = bus
         self.runtime = runtime
         self.session_key = session_key
         self.cwd = cwd
         self.initial_prompt = initial_prompt
+        self._extra = extra or {}
         self._proc: asyncio.subprocess.Process | None = None
         self._state: SessionState = "busy"
         self._task: asyncio.Task[None] | None = None
@@ -64,6 +67,7 @@ class SessionSupervisor:
                 "source_app": os.path.basename(self.cwd) or self.session_key,
                 "cwd": self.cwd,
                 "runtime": self.runtime.name,
+                **self._extra,
                 **fields,
             }
         )
@@ -122,16 +126,47 @@ class SessionSupervisor:
 
 
 class Orchestrator:
-    def __init__(self, bus: EventBus) -> None:
+    def __init__(self, bus: EventBus, worktrees: WorktreeManager | None = None) -> None:
         self.bus = bus
+        self.worktrees = worktrees if worktrees is not None else WorktreeManager()
         self._supervisors: dict[str, SessionSupervisor] = {}
 
     async def launch(
-        self, *, runtime: StateRuntime, cwd: str, session_key: str | None = None, prompt: str = ""
+        self,
+        *,
+        runtime: StateRuntime,
+        cwd: str | None = None,
+        session_key: str | None = None,
+        prompt: str = "",
+        repo_path: str | None = None,
+        branch: str | None = None,
     ) -> str:
+        """Launch a supervised agent. If repo_path is given, the agent runs in a
+        fresh git worktree on `branch` (default: a branch named for the session);
+        otherwise it runs in `cwd`."""
         key = session_key or uuid.uuid4().hex
+        extra: dict[str, object] = {}
+        run_cwd = cwd
+
+        if repo_path is not None:
+            wt_branch = branch or f"rubberduck/{key[:8]}"
+            worktree = self.worktrees.add(Path(repo_path), wt_branch)
+            run_cwd = str(worktree.path)
+            extra = {
+                "repo_path": str(worktree.repo_path),
+                "worktree_path": str(worktree.path),
+                "branch": worktree.branch,
+            }
+        if run_cwd is None:
+            raise ValueError("launch requires either cwd or repo_path")
+
         supervisor = SessionSupervisor(
-            bus=self.bus, runtime=runtime, session_key=key, cwd=cwd, initial_prompt=prompt
+            bus=self.bus,
+            runtime=runtime,
+            session_key=key,
+            cwd=run_cwd,
+            initial_prompt=prompt,
+            extra=extra,
         )
         self._supervisors[key] = supervisor
         await supervisor.start()

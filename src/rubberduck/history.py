@@ -116,12 +116,17 @@ class HistoryStore:
         if row is None:
             self._conn.execute(
                 "INSERT INTO sessions "
-                "(session_key, runtime, state, source_app, cwd, last_event_type, last_tool, "
+                "(session_key, runtime, repo_path, worktree_path, branch, "
+                " parent_session_key, state, source_app, cwd, last_event_type, last_tool, "
                 " event_count, started_at, updated_at, ended_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
+                    event.get("repo_path"),
+                    event.get("worktree_path"),
+                    event.get("branch"),
+                    event.get("parent_session_key"),
                     state,
                     event.get("source_app"),
                     event.get("cwd"),
@@ -136,6 +141,10 @@ class HistoryStore:
             self._conn.execute(
                 "UPDATE sessions SET "
                 "runtime = COALESCE(?, runtime), "
+                "repo_path = COALESCE(?, repo_path), "
+                "worktree_path = COALESCE(?, worktree_path), "
+                "branch = COALESCE(?, branch), "
+                "parent_session_key = COALESCE(?, parent_session_key), "
                 "state = ?, "
                 "source_app = COALESCE(?, source_app), "
                 "cwd = COALESCE(?, cwd), "
@@ -147,6 +156,10 @@ class HistoryStore:
                 "WHERE session_key = ?",
                 (
                     event.get("runtime"),
+                    event.get("repo_path"),
+                    event.get("worktree_path"),
+                    event.get("branch"),
+                    event.get("parent_session_key"),
                     state,
                     event.get("source_app"),
                     event.get("cwd"),
