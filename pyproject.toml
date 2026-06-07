@@ -1,9 +1,27 @@
 [project]
-name = "rubberduck"
-version = "0.0.0"
-description = "Local-first orchestrator for AI coding agents"
+name = "rubberduckhq"
+version = "0.1.0"
+description = "Local-first orchestrator for AI coding agents — one window over your fleet"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Utsav Anand" }]
+keywords = ["ai", "agents", "claude", "codex", "orchestrator", "developer-tools", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://rubberduckhq.com"
+Repository = "https://github.com/utsavanand/rubber-duck"
 
 [project.scripts]
 rubberduck = "rubberduck.cli:main"
@@ -24,7 +42,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-rubberduck = ["hooks/*.sh"]
+rubberduck = ["hooks/*.sh", "dashboard/index.html", "dashboard/assets/*"]
 
 [tool.ruff]
 line-length = 100

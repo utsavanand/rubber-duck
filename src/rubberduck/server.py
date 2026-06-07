@@ -719,11 +719,14 @@ _CONTENT_TYPES = {
 
 
 def dashboard_dir() -> Path | None:
-    """Locate the built dashboard (web/dist), or None if it hasn't been built.
-    Resolved relative to the repo so `rubberduck serve` from a dev checkout
-    serves it; an installed package would ship its own copy."""
-    candidate = Path(__file__).resolve().parents[2] / "web" / "dist"
-    return candidate if (candidate / "index.html").is_file() else None
+    """Locate the built dashboard. Prefer the copy bundled in the installed
+    package (src/rubberduck/dashboard); fall back to the dev build at web/dist
+    so a repo checkout serves the freshly-built UI."""
+    packaged = Path(__file__).resolve().parent / "dashboard"
+    if (packaged / "index.html").is_file():
+        return packaged
+    dev = Path(__file__).resolve().parents[2] / "web" / "dist"
+    return dev if (dev / "index.html").is_file() else None
 
 
 async def _write_file(writer: asyncio.StreamWriter, path: Path) -> None:
