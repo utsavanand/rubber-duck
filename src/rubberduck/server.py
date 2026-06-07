@@ -3,7 +3,9 @@
     POST /events              ingest one JSON event; returns the stamped event
     GET  /events              last 100 events as JSON (polling fallback)
     GET  /sessions            persisted session rows, incl. terminated (SQLite)
+    GET  /tree                fork lineage: nodes with parent_session_key
     POST /sessions/launch     spawn a supervised agent {command, cwd, ...}
+    POST /sessions/:key/fork  fork a session: child worktree off parent's branch
     POST /sessions/:key/stop  terminate a supervised agent
     GET  /stream              SSE: {type:"init", events:[...]} then per-event frames
     GET  /                    liveness; carries the X-Rubberduck self-probe header
@@ -47,8 +49,12 @@ class Server:
                 await self._recent(writer)
             elif method == "GET" and path == "/sessions":
                 await self._sessions(writer)
+            elif method == "GET" and path == "/tree":
+                await self._tree(writer)
             elif method == "POST" and path == "/sessions/launch":
                 await self._launch(writer, body)
+            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/fork"):
+                await self._fork(writer, path[len("/sessions/") : -len("/fork")], body)
             elif method == "POST" and path.startswith("/sessions/") and path.endswith("/stop"):
                 await self._stop(writer, path[len("/sessions/") : -len("/stop")])
             elif method == "GET" and path == "/stream":
@@ -108,10 +114,45 @@ class Server:
             return
         await _write_json(writer, 200, {"session_key": key})
 
+    async def _fork(self, writer: asyncio.StreamWriter, parent_key: str, body: bytes) -> None:
+        parent = self.history.session(parent_key)
+        if parent is None:
+            await _write_json(writer, 404, {"error": f"no session {parent_key}"})
+            return
+        if not parent.get("repo_path") or not parent.get("branch"):
+            await _write_json(writer, 400, {"error": "parent has no worktree to fork from"})
+            return
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        # Default the child's command to whatever the parent ran (its runtime is
+        # generic for now); callers may override.
+        command = req.get("command", "true")
+        child_key = req.get("session_key")
+        try:
+            key = await self.orchestrator.launch(
+                runtime=GenericRuntime(command),
+                repo_path=str(parent["repo_path"]),
+                branch=req.get("branch"),
+                base=str(parent["branch"]),
+                parent_session_key=parent_key,
+                session_key=child_key,
+                prompt=req.get("prompt", ""),
+            )
+        except (GitError, ValueError) as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        await _write_json(writer, 200, {"session_key": key, "parent_session_key": parent_key})
+
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         stopped = await self.orchestrator.stop(session_key)
         status = 200 if stopped else 404
         await _write_json(writer, status, {"stopped": stopped, "session_key": session_key})
+
+    async def _tree(self, writer: asyncio.StreamWriter) -> None:
+        await _write_json(writer, 200, {"nodes": self.history.fork_tree()})
 
     async def _stream(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         writer.write(

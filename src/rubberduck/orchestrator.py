@@ -140,19 +140,24 @@ class Orchestrator:
         prompt: str = "",
         repo_path: str | None = None,
         branch: str | None = None,
+        base: str | None = None,
+        parent_session_key: str | None = None,
     ) -> str:
         """Launch a supervised agent. If repo_path is given, the agent runs in a
-        fresh git worktree on `branch` (default: a branch named for the session);
-        otherwise it runs in `cwd`."""
+        fresh git worktree on `branch` (default: a branch named for the session),
+        forked from `base` (default: repo HEAD); otherwise it runs in `cwd`.
+        `parent_session_key` records fork lineage."""
         key = session_key or uuid.uuid4().hex
         extra: dict[str, object] = {}
+        if parent_session_key is not None:
+            extra["parent_session_key"] = parent_session_key
         run_cwd = cwd
 
         if repo_path is not None:
             wt_branch = branch or f"rubberduck/{key[:8]}"
-            worktree = self.worktrees.add(Path(repo_path), wt_branch)
+            worktree = self.worktrees.add(Path(repo_path), wt_branch, base=base)
             run_cwd = str(worktree.path)
-            extra = {
+            extra |= {
                 "repo_path": str(worktree.repo_path),
                 "worktree_path": str(worktree.path),
                 "branch": worktree.branch,

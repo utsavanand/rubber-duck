@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ForkTree } from "./ForkTree";
 import { SessionView } from "./types";
 import { useEventStream } from "./useEventStream";
 
@@ -96,6 +97,7 @@ export function App() {
           ))}
         </div>
       )}
+      <ForkTree refreshKey={sessions.length} />
     </div>
   );
 }
