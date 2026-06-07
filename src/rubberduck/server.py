@@ -64,6 +64,102 @@ def _build_runtime(name: str, command: str) -> StateRuntime:
     return GenericRuntime(command)
 
 
+class Route:
+    """One routing rule: match a (method, path) and invoke a handler. A path
+    matches exactly, or by prefix+suffix for routes with a :segment in the
+    middle (e.g. POST /sessions/:key/fork). `call` adapts to each handler's
+    arguments so the handlers themselves stay simple."""
+
+    def __init__(
+        self,
+        method: str,
+        matcher: str,
+        call: "RouteCall",
+        *,
+        prefix: str | None = None,
+        suffix: str | None = None,
+    ) -> None:
+        self.method = method
+        self.matcher = matcher  # exact path, or "" when prefix/suffix used
+        self.prefix = prefix
+        self.suffix = suffix
+        self.call = call
+
+    def matches(self, method: str, path: str) -> bool:
+        if method != self.method:
+            return False
+        if self.prefix is not None and self.suffix is not None:
+            return path.startswith(self.prefix) and path.endswith(self.suffix)
+        if self.prefix is not None:
+            return path.startswith(self.prefix)
+        return path == self.matcher
+
+    def segment(self, path: str) -> str:
+        """The :segment captured between prefix and suffix (or '' / the prefix
+        remainder for prefix-only routes)."""
+        if self.prefix is None:
+            return ""
+        end = -len(self.suffix) if self.suffix else len(path)
+        return path[len(self.prefix) : end]
+
+
+# Each handler receives (server, reader, writer, headers, body, segment) and
+# uses only what it needs. Grouped by concern.
+RouteCall = Any  # an async callable; kept loose to allow per-route adapters
+
+
+def _mid(prefix: str, suffix: str) -> dict[str, str]:
+    return {"prefix": prefix, "suffix": suffix}
+
+
+# fmt: off
+_ROUTES: list[Route] = [
+    # ── ingest ──
+    Route("POST", "/events", lambda s, r, w, h, b, seg: s._ingest(w, b)),
+    # ── query ──
+    Route("GET", "/events", lambda s, r, w, h, b, seg: s._recent(w)),
+    Route("GET", "/sessions", lambda s, r, w, h, b, seg: s._sessions(w)),
+    Route("GET", "/tree", lambda s, r, w, h, b, seg: s._tree(w)),
+    Route("GET", "/approvals", lambda s, r, w, h, b, seg: s._list_approvals(w)),
+    Route("GET", "/snapshots", lambda s, r, w, h, b, seg: s._list_snapshots(w)),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._diff(w, seg), **_mid("/sessions/", "/diff")),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._list_checkpoints(w, seg),
+          **_mid("/sessions/", "/checkpoints")),
+    # ── control ──
+    Route("POST", "/sessions/launch", lambda s, r, w, h, b, seg: s._launch(w, b)),
+    Route("POST", "/sessions/compare", lambda s, r, w, h, b, seg: s._compare(w, b)),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._fork(w, seg, b),
+          **_mid("/sessions/", "/fork")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._stop(w, seg),
+          **_mid("/sessions/", "/stop")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._checkpoint(w, seg, b),
+          **_mid("/sessions/", "/checkpoint")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._rollback(w, seg, b),
+          **_mid("/sessions/", "/rollback")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._spotlight(w, seg),
+          **_mid("/sessions/", "/spotlight")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._input(w, seg, b),
+          **_mid("/sessions/", "/input")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._decide_approval(w, seg, b),
+          **_mid("/approvals/", "/decide")),
+    Route("POST", "/snapshots", lambda s, r, w, h, b, seg: s._create_snapshot(w)),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._restore(w, seg),
+          **_mid("/snapshots/", "/restore")),
+    # ── streams ──
+    Route("GET", "", lambda s, r, w, h, b, seg: s._output(r, w, seg),
+          **_mid("/sessions/", "/output")),
+    Route("GET", "/stream", lambda s, r, w, h, b, seg: s._stream(r, w)),
+    Route("GET", "/ws", lambda s, r, w, h, b, seg: s._websocket(r, w, h)),
+    # ── snapshot fetch (prefix-only; keep AFTER /snapshots/:id/restore) ──
+    Route("GET", "", lambda s, r, w, h, b, seg: s._get_snapshot(w, seg), prefix="/snapshots/"),
+    # ── dashboard (prefix-only catch for / and /assets/*) ──
+    Route("GET", "/", lambda s, r, w, h, b, seg: s._dashboard(w, "/")),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._dashboard(w, "/assets/" + seg),
+          prefix="/assets/"),
+]
+# fmt: on
+
+
 SELF_PROBE_HEADER = "X-Rubberduck"
 KEEPALIVE_SECONDS = 15
 
@@ -93,67 +189,31 @@ class Server:
             method, path = _parse_request_line(request_line)
             headers = await _read_headers(reader)
             body = await _read_body(reader, headers)
-
-            if method == "POST" and path == "/events":
-                await self._ingest(writer, body)
-            elif method == "GET" and path == "/events":
-                await self._recent(writer)
-            elif method == "GET" and path == "/sessions":
-                await self._sessions(writer)
-            elif method == "GET" and path == "/tree":
-                await self._tree(writer)
-            elif method == "GET" and path == "/approvals":
-                await self._list_approvals(writer)
-            elif method == "POST" and path.startswith("/approvals/") and path.endswith("/decide"):
-                await self._decide_approval(
-                    writer, path[len("/approvals/") : -len("/decide")], body
-                )
-            elif method == "POST" and path == "/sessions/launch":
-                await self._launch(writer, body)
-            elif method == "POST" and path == "/sessions/compare":
-                await self._compare(writer, body)
-            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/fork"):
-                await self._fork(writer, path[len("/sessions/") : -len("/fork")], body)
-            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/stop"):
-                await self._stop(writer, path[len("/sessions/") : -len("/stop")])
-            elif (
-                method == "POST" and path.startswith("/sessions/") and path.endswith("/checkpoint")
-            ):
-                await self._checkpoint(writer, path[len("/sessions/") : -len("/checkpoint")], body)
-            elif (
-                method == "GET" and path.startswith("/sessions/") and path.endswith("/checkpoints")
-            ):
-                await self._list_checkpoints(writer, path[len("/sessions/") : -len("/checkpoints")])
-            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/rollback"):
-                await self._rollback(writer, path[len("/sessions/") : -len("/rollback")], body)
-            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/spotlight"):
-                await self._spotlight(writer, path[len("/sessions/") : -len("/spotlight")])
-            elif method == "GET" and path.startswith("/sessions/") and path.endswith("/diff"):
-                await self._diff(writer, path[len("/sessions/") : -len("/diff")])
-            elif method == "GET" and path.startswith("/sessions/") and path.endswith("/output"):
-                await self._output(reader, writer, path[len("/sessions/") : -len("/output")])
-            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/input"):
-                await self._input(writer, path[len("/sessions/") : -len("/input")], body)
-            elif method == "POST" and path == "/snapshots":
-                await self._create_snapshot(writer)
-            elif method == "GET" and path == "/snapshots":
-                await self._list_snapshots(writer)
-            elif method == "POST" and path.startswith("/snapshots/") and path.endswith("/restore"):
-                await self._restore(writer, path[len("/snapshots/") : -len("/restore")])
-            elif method == "GET" and path.startswith("/snapshots/"):
-                await self._get_snapshot(writer, path[len("/snapshots/") :])
-            elif method == "GET" and path == "/stream":
-                await self._stream(reader, writer)
-            elif method == "GET" and path == "/ws":
-                await self._websocket(reader, writer, headers)
-            elif method == "GET" and (path == "/" or path.startswith("/assets/")):
-                await self._dashboard(writer, path)
-            else:
-                await _write_response(writer, 404, "not found")
+            await self._dispatch(method, path, reader, writer, headers, body)
         except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
             pass
         finally:
             writer.close()
+
+    async def _dispatch(
+        self,
+        method: str,
+        path: str,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        headers: dict[str, str],
+        body: bytes,
+    ) -> None:
+        for route in self._routes():
+            if route.matches(method, path):
+                await route.call(self, reader, writer, headers, body, route.segment(path))
+                return
+        await _write_response(writer, 404, "not found")
+
+    def _routes(self) -> list["Route"]:
+        # Grouped by concern. Each Route binds a (method, matcher) to a handler
+        # and declares which args it wants — keeps dispatch declarative.
+        return _ROUTES
 
     async def _dashboard(self, writer: asyncio.StreamWriter, path: str) -> None:
         """Serve the built React dashboard so there's one URL. The self-probe
