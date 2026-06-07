@@ -1,0 +1,75 @@
+"""The live event tier: a bounded ring of recent events plus async fan-out to
+SSE subscribers. Every event gets an _id and _ts on publish.
+
+This is the in-memory tier only. Act 2 adds a durable SQLite mirror by passing a
+sink to publish(); until then events live only for the process lifetime.
+"""
+
+import asyncio
+import time
+import uuid
+from collections import deque
+from collections.abc import Callable
+from types import TracebackType
+from typing import Any
+
+Event = dict[str, Any]
+Sink = Callable[[Event], None]
+
+
+class Subscription:
+    """A live feed of events published after it was opened. The queue registers
+    eagerly at construction, so no event is lost between subscribe() and the
+    first read. Use as an async context manager to guarantee deregistration."""
+
+    def __init__(self, bus: "EventBus") -> None:
+        self._bus = bus
+        self._queue: asyncio.Queue[Event] = asyncio.Queue()
+        bus._subscribers.add(self._queue)
+
+    async def next(self) -> Event:
+        return await self._queue.get()
+
+    def close(self) -> None:
+        self._bus._subscribers.discard(self._queue)
+
+    def __enter__(self) -> "Subscription":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+
+class EventBus:
+    def __init__(self, capacity: int = 500, sink: Sink | None = None) -> None:
+        self._ring: deque[Event] = deque(maxlen=capacity)
+        self._subscribers: set[asyncio.Queue[Event]] = set()
+        self._sink = sink
+
+    def publish(self, raw: Event) -> Event:
+        event = dict(raw)
+        event["_id"] = uuid.uuid4().hex
+        event["_ts"] = int(time.time() * 1000)
+        self._ring.append(event)
+        if self._sink is not None:
+            self._sink(event)
+        for queue in self._subscribers:
+            queue.put_nowait(event)
+        return event
+
+    def recent(self, limit: int = 100) -> list[Event]:
+        if limit >= len(self._ring):
+            return list(self._ring)
+        return list(self._ring)[-limit:]
+
+    def subscribe(self) -> Subscription:
+        return Subscription(self)
+
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._subscribers)

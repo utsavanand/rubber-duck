@@ -1,0 +1,97 @@
+from pathlib import Path
+
+from rubberduck.eventbus import EventBus
+from rubberduck.history import HistoryStore, derive_state, session_key_of
+
+
+def make_bus(store: HistoryStore) -> EventBus:
+    return EventBus(sink=store.record)
+
+
+def test_session_key_falls_back_through_aliases() -> None:
+    assert session_key_of({"session_key": "a", "session_id": "b"}) == "a"
+    assert session_key_of({"uvs_session_id": "u", "session_id": "b"}) == "u"
+    assert session_key_of({"session_id": "b"}) == "b"
+    assert session_key_of({}) is None
+
+
+def test_derive_state_transitions() -> None:
+    assert derive_state({"event_type": "SessionStart"}, None) == "busy"
+    assert derive_state({"event_type": "PreToolUse"}, "idle") == "busy"
+    assert derive_state({"event_type": "PostToolUse"}, "busy") == "idle"
+    assert derive_state({"event_type": "PermissionRequest"}, "busy") == "waiting"
+    assert derive_state({"event_type": "SessionEnd"}, "busy") == "terminated"
+    assert derive_state({"lifecycle": "terminated"}, "busy") == "terminated"
+    # Unknown event keeps the previous state.
+    assert derive_state({"event_type": "Mystery"}, "waiting") == "waiting"
+
+
+def test_session_row_accumulates_across_events(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "cwd": "/repo"})
+    bus.publish({"event_type": "PreToolUse", "session_key": "s1", "tool_name": "Edit"})
+    bus.publish({"event_type": "PostToolUse", "session_key": "s1", "tool_name": "Edit"})
+
+    row = store.session("s1")
+    assert row is not None
+    assert row["event_count"] == 3
+    assert row["state"] == "idle"
+    assert row["last_tool"] == "Edit"
+    assert row["cwd"] == "/repo"
+    assert row["ended_at"] is None
+
+
+def test_runtime_is_persisted_from_event(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "runtime": "generic"})
+    row = store.session("s1")
+    assert row is not None
+    assert row["runtime"] == "generic"
+
+
+def test_terminated_session_records_ended_at(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1"})
+    bus.publish({"event_type": "SessionEnd", "session_key": "s1"})
+
+    row = store.session("s1")
+    assert row is not None
+    assert row["state"] == "terminated"
+    assert row["ended_at"] is not None
+    assert row["ended_at"] >= row["started_at"]
+
+
+def test_history_survives_reopen(tmp_path: Path) -> None:
+    db = tmp_path / "db.sqlite"
+    bus = make_bus(HistoryStore(db))
+    bus.publish({"event_type": "SessionStart", "session_key": "persisted"})
+
+    reopened = HistoryStore(db)
+    keys = [s["session_key"] for s in reopened.sessions()]
+    assert keys == ["persisted"]
+
+
+def test_events_without_session_key_are_stored_but_make_no_session(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "Notification"})  # no session key
+    assert store.sessions() == []
+
+
+def test_fork_tree_returns_parent_links(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "root"})
+    # Lineage is written by Act 5; here we set it directly to prove the query.
+    store._conn.execute(
+        "INSERT INTO sessions "
+        "(session_key, parent_session_key, started_at, updated_at) "
+        "VALUES ('child', 'root', 1, 1)"
+    )
+    store._conn.commit()
+
+    tree = {row["session_key"]: row["parent_session_key"] for row in store.fork_tree()}
+    assert tree == {"root": None, "child": "root"}
