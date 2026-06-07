@@ -20,9 +20,20 @@ from typing import Any
 
 from rubberduck.eventbus import Event, EventBus
 from rubberduck.history import HistoryStore
-from rubberduck.orchestrator import Orchestrator
+from rubberduck.orchestrator import Orchestrator, StateRuntime
+from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
+from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
 from rubberduck.worktrees import GitError
+
+
+def _build_runtime(name: str, command: str) -> StateRuntime:
+    if name == "claude-code":
+        return ClaudeCodeRuntime(command)
+    if name == "codex":
+        return CodexRuntime(command)
+    return GenericRuntime(command)
+
 
 SELF_PROBE_HEADER = "X-Rubberduck"
 KEEPALIVE_SECONDS = 15
@@ -102,7 +113,7 @@ class Server:
             return
         try:
             key = await self.orchestrator.launch(
-                runtime=GenericRuntime(command),
+                runtime=_build_runtime(req.get("runtime", "generic"), command),
                 cwd=cwd,
                 repo_path=repo_path,
                 branch=req.get("branch"),
@@ -127,13 +138,13 @@ class Server:
         except json.JSONDecodeError:
             await _write_json(writer, 400, {"error": "invalid JSON"})
             return
-        # Default the child's command to whatever the parent ran (its runtime is
-        # generic for now); callers may override.
+        # The child inherits the parent's runtime unless overridden.
         command = req.get("command", "true")
+        runtime_name = req.get("runtime", parent.get("runtime") or "generic")
         child_key = req.get("session_key")
         try:
             key = await self.orchestrator.launch(
-                runtime=GenericRuntime(command),
+                runtime=_build_runtime(runtime_name, command),
                 repo_path=str(parent["repo_path"]),
                 branch=req.get("branch"),
                 base=str(parent["branch"]),
