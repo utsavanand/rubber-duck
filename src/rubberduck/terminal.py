@@ -61,17 +61,37 @@ def _iterm_installed() -> bool:
 
 
 def _open_terminal(command: str) -> bool:
-    script = f'tell app "Terminal" to do script "{_esc(command)}"'
+    # Open as a new TAB in the front Terminal window if one exists (Cmd-T then
+    # run); otherwise `do script` makes a fresh window. Activate to bring forward.
+    esc = _esc(command)
+    script = (
+        'tell application "Terminal"\n'
+        "  activate\n"
+        "  if (count of windows) > 0 then\n"
+        '    tell application "System Events" to keystroke "t" using command down\n'
+        "    delay 0.2\n"
+        f'    do script "{esc}" in front window\n'
+        "  else\n"
+        f'    do script "{esc}"\n'
+        "  end if\n"
+        "end tell"
+    )
     return _spawn(["osascript", "-e", script])
 
 
 def _open_iterm(command: str) -> bool:
-    # Create a new window and run the command in its session.
+    # New TAB in the current iTerm window if one is open, else a new window.
+    esc = _esc(command)
     script = (
         'tell application "iTerm"\n'
-        "  create window with default profile\n"
+        "  activate\n"
+        "  if (count of windows) = 0 then\n"
+        "    create window with default profile\n"
+        "  else\n"
+        "    tell current window to create tab with default profile\n"
+        "  end if\n"
         "  tell current session of current window\n"
-        f'    write text "{_esc(command)}"\n'
+        f'    write text "{esc}"\n'
         "  end tell\n"
         "end tell"
     )

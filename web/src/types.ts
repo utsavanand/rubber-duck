@@ -9,6 +9,7 @@ export interface RubberduckEvent {
   cwd?: string;
   tool_name?: string;
   session_name?: string;
+  name?: string;
   lifecycle?: string;
   branch?: string;
   parent_session_key?: string;

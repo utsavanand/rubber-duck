@@ -280,6 +280,7 @@ class Orchestrator:
         base: str | None = None,
         parent_session_key: str | None = None,
         compare_group: str | None = None,
+        name: str | None = None,
     ) -> str:
         """Launch a supervised agent. If repo_path is given, the agent runs in a
         fresh git worktree on `branch` (default: a branch named for the session),
@@ -291,6 +292,8 @@ class Orchestrator:
             extra["parent_session_key"] = parent_session_key
         if compare_group is not None:
             extra["compare_group"] = compare_group
+        if name:
+            extra["name"] = name
         run_cwd = cwd
 
         if repo_path is not None:
@@ -301,6 +304,8 @@ class Orchestrator:
                 "repo_path": str(worktree.repo_path),
                 "worktree_path": str(worktree.path),
                 "branch": worktree.branch,
+                # Label by the repo, not the worktree dir (which is the branch key).
+                "source_app": worktree.repo_path.name,
             }
         if run_cwd is None:
             raise ValueError("launch requires either cwd or repo_path")

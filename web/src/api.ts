@@ -32,6 +32,8 @@ export interface LaunchRequest {
   session_key?: string;
   name?: string;
   notes?: string;
+  terminal?: string;
+  in_terminal?: boolean;
 }
 
 export interface BrowseEntry {
@@ -53,7 +55,10 @@ export interface CompareVariant {
 
 export const api = {
   launch: (req: LaunchRequest) =>
-    post<{ session_key: string }>("/sessions/launch", req),
+    post<{ session_key: string; opened_in_terminal?: boolean }>(
+      "/sessions/launch",
+      req,
+    ),
   browse: (path?: string) =>
     get<BrowseResult>(
       `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`,

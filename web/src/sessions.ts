@@ -39,9 +39,13 @@ export function applyEvent(
     // only overwrite what this event actually carries.
     ...prev,
     key,
-    // Keep the seeded label (which honors a user-set name) once it exists; only
-    // derive one for a brand-new session we haven't seen from /sessions yet.
-    label: prev?.label || e.session_name || e.source_app || key.slice(0, 8),
+    // A user-set name always wins; otherwise keep the seeded label, else derive.
+    label:
+      e.name ||
+      prev?.label ||
+      e.session_name ||
+      e.source_app ||
+      key.slice(0, 8),
     state: deriveState(e, prev?.state),
     lastEventType: e.event_type ?? prev?.lastEventType ?? "",
     lastTool: e.tool_name ?? prev?.lastTool,

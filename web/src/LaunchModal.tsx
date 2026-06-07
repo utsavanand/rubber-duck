@@ -11,7 +11,19 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
   const [prompt, setPrompt] = useState("");
   const [picked, setPicked] = useState<BrowseResult | null>(null);
   const [browsing, setBrowsing] = useState(false);
+  const [terminals, setTerminals] = useState<string[]>([]);
+  const [terminal, setTerminal] = useState<string>("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .terminals()
+      .then((d) => {
+        setTerminals(d.terminals);
+        setTerminal(d.terminals[0] ?? "");
+      })
+      .catch(() => undefined);
+  }, []);
 
   const path = picked?.path;
   const isGit = picked?.is_git ?? false;
@@ -24,14 +36,19 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       // A git folder gets an isolated worktree (repo_path); a plain folder runs
-      // in place (cwd).
-      const { session_key } = await api.launch({
+      // in place (cwd). Opens in the chosen terminal as a new tab.
+      const r = await api.launch({
         command,
         name: name || undefined,
         prompt: prompt || undefined,
+        terminal: terminal || undefined,
         ...(isGit ? { repo_path: path } : { cwd: path }),
       });
-      toast(`Launched ${name || session_key.slice(0, 8)}`);
+      if (r.opened_in_terminal === false) {
+        toast(`Couldn't open a terminal — run it yourself: ${command}`, "err");
+      } else {
+        toast(`Opened ${name || "session"} in ${terminal || "a terminal"}`);
+      }
       onClose();
     } catch (e) {
       toast(`Launch failed: ${(e as Error).message}`, "err");
@@ -113,6 +130,22 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
           placeholder="add a healthcheck endpoint"
         />
       </Field>
+
+      {terminals.length > 0 && (
+        <Field label="Open in (a new tab in this terminal)">
+          <select
+            style={inputStyle}
+            value={terminal}
+            onChange={(e) => setTerminal(e.target.value)}
+          >
+            {terminals.map((t) => (
+              <option key={t} value={t}>
+                {t === "iterm" ? "iTerm" : t === "terminal" ? "Terminal" : t}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
 
       <div
         style={{

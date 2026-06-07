@@ -309,21 +309,72 @@ class Server:
                 writer, 400, {"error": "command and one of cwd/repo_path are required"}
             )
             return
-        try:
-            key = await self.orchestrator.launch(
-                runtime=_build_runtime(req.get("runtime"), command),
-                cwd=cwd,
-                repo_path=repo_path,
-                branch=req.get("branch"),
-                session_key=req.get("session_key"),
-                prompt=req.get("prompt", ""),
-            )
-        except (GitError, ValueError) as e:
-            await _write_json(writer, 400, {"error": str(e)})
+        name = req.get("name")
+
+        # Headless: Rubberduck supervises the agent invisibly (automation / CI).
+        if not req.get("in_terminal", True):
+            try:
+                key = await self.orchestrator.launch(
+                    runtime=_build_runtime(req.get("runtime"), command),
+                    cwd=cwd,
+                    repo_path=repo_path,
+                    branch=req.get("branch"),
+                    session_key=req.get("session_key"),
+                    prompt=req.get("prompt", ""),
+                    name=name,
+                )
+            except (GitError, ValueError) as e:
+                await _write_json(writer, 400, {"error": str(e)})
+                return
+            if req.get("notes"):
+                self.history.set_meta(key, notes=req.get("notes"))
+            await _write_json(writer, 200, {"session_key": key, "opened_in_terminal": False})
             return
-        if req.get("name") or req.get("notes"):
-            self.history.set_meta(key, name=req.get("name"), notes=req.get("notes"))
-        await _write_json(writer, 200, {"session_key": key})
+
+        # Default: open the agent in a terminal tab you can see and drive.
+        run_cwd = cwd
+        repo_name = None
+        branch = None
+        worktree_path = None
+        if repo_path:
+            try:
+                wt = self.orchestrator.worktrees.add(
+                    Path(repo_path), req.get("branch") or f"rubberduck/{int(time.time())}"
+                )
+            except (GitError, ValueError) as e:
+                await _write_json(writer, 400, {"error": str(e)})
+                return
+            run_cwd = str(wt.path)
+            repo_name = wt.repo_path.name
+            branch = wt.branch
+            worktree_path = str(wt.path)
+
+        opened = open_in_terminal(str(run_cwd), shlex.split(command), app=req.get("terminal"))
+        # Record a tracked row so the session shows up with its name/repo/branch
+        # even though it runs in an external terminal under its own id.
+        key = req.get("session_key") or f"new-{int(time.time())}"
+        self.bus.publish(
+            {
+                "event_type": "SessionStart",
+                "session_key": key,
+                "name": name,
+                "source_app": repo_name
+                or (run_cwd.rstrip("/").rsplit("/", 1)[-1] if run_cwd else key),
+                "runtime": _build_runtime(req.get("runtime"), command).name,
+                "cwd": str(run_cwd),
+                "repo_path": repo_path,
+                "worktree_path": worktree_path,
+                "branch": branch,
+                "intention": req.get("prompt", ""),
+            }
+        )
+        if name or req.get("notes"):
+            self.history.set_meta(key, name=name, notes=req.get("notes"))
+        await _write_json(
+            writer,
+            200,
+            {"session_key": key, "opened_in_terminal": opened, "command": command},
+        )
 
     async def _fork(self, writer: asyncio.StreamWriter, parent_key: str, body: bytes) -> None:
         parent = self.history.session(parent_key)
