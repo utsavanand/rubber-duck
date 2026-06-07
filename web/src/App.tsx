@@ -396,7 +396,9 @@ function Dashboard() {
         </>
       )}
 
-      {tab === "tree" && <ForkTree refreshKey={sessions.length} />}
+      {tab === "tree" && (
+        <ForkTree refreshKey={sessions.length} labels={labels} />
+      )}
 
       {modal === "launch" && <LaunchModal onClose={() => setModal(null)} />}
       {modal === "compare" && <CompareModal onClose={() => setModal(null)} />}
