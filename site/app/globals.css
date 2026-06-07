@@ -9,6 +9,20 @@
   --muted: #8e8ea0;
   --accent: #0d0d0d;
   --link: #1a1a1a;
+  --orange: #f5821f;
+}
+
+/* inline code inside prose (FAQ, worktree explainer) */
+.section-sub code,
+.note code,
+p code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--text);
 }
 
 * {
@@ -249,7 +263,7 @@ section {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--orange);
   margin-bottom: 14px;
 }
 .section-title {
