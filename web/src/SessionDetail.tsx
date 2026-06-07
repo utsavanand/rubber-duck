@@ -144,7 +144,14 @@ export function SessionDetail({
           }}
         >
           {(
-            ["timeline", "output", "diff", "checkpoints", "notes"] as Tab[]
+            [
+              "timeline",
+              // Output (live PTY) and diff only exist for Rubberduck-launched
+              // worktree sessions; watched sessions run in your own terminal.
+              ...(session.worktreePath ? (["output", "diff"] as Tab[]) : []),
+              "checkpoints",
+              "notes",
+            ] as Tab[]
           ).map((t) => (
             <button
               key={t}
@@ -175,9 +182,7 @@ export function SessionDetail({
               onCapture={captureCheckpoint}
             />
           )}
-          {tab === "notes" && (
-            <Notes sessionKey={session.key} initial={session.notes ?? ""} />
-          )}
+          {tab === "notes" && <Notes sessionKey={session.key} />}
         </div>
       </div>
     </div>
@@ -347,62 +352,155 @@ function Section({
   );
 }
 
-function Notes({
-  sessionKey,
-  initial,
-}: {
-  sessionKey: string;
-  initial: string;
-}) {
-  const toast = useToast();
-  const [text, setText] = useState(initial);
-  const [saving, setSaving] = useState(false);
+// Notes are a list of entries, stored newline-separated in the session's
+// `notes` column. Each non-empty line is one note.
+function parseNotes(raw: string | null | undefined): string[] {
+  return (raw ?? "").split("\n").filter((l) => l.trim() !== "");
+}
 
-  async function save() {
-    setSaving(true);
+function Notes({ sessionKey }: { sessionKey: string }) {
+  const toast = useToast();
+  const [notes, setNotes] = useState<string[]>([]);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  // Fetch the saved notes fresh when this tab opens — don't trust the cached
+  // session view, which live events can strip.
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    api
+      .getSession(sessionKey)
+      .then((s) => {
+        if (live) setNotes(parseNotes(s.notes));
+      })
+      .catch((e) => {
+        if (live) toast(`Couldn't load notes: ${(e as Error).message}`, "err");
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [sessionKey, toast]);
+
+  async function persist(nextNotes: string[]): Promise<boolean> {
+    setBusy(true);
     try {
-      await api.updateSession(sessionKey, { notes: text });
-      toast("Notes saved");
+      await api.updateSession(sessionKey, { notes: nextNotes.join("\n") });
+      setNotes(nextNotes);
+      return true;
     } catch {
-      toast("Couldn't save notes", "err");
+      toast("Couldn't save note", "err");
+      return false;
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
+  async function addNote() {
+    const entry = draft.trim();
+    if (!entry) return;
+    if (await persist([...notes, entry])) {
+      setDraft("");
+      toast("Note added");
+    }
+  }
+
+  async function removeNote(index: number) {
+    await persist(notes.filter((_, i) => i !== index));
+  }
+
+  if (loading)
+    return (
+      <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading notes…</p>
+    );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={{ margin: 0, fontSize: 13, color: "var(--text-soft)" }}>
         Your private notes for this session — things to do, reminders, context.
         Local only, never sent anywhere.
       </p>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={
-          "- ask it to add tests\n- check the auth flow\n- TODO: rename the module"
-        }
-        style={{
-          width: "100%",
-          minHeight: 220,
-          padding: "10px 12px",
-          border: "1px solid var(--border-strong)",
-          borderRadius: 8,
-          fontSize: 13,
-          fontFamily: "inherit",
-          background: "var(--bg)",
-          color: "var(--text)",
-          resize: "vertical",
-          boxSizing: "border-box",
-        }}
-      />
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+
+      {notes.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+          No notes yet. Add one below.
+        </p>
+      ) : (
+        <ul
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            margin: 0,
+            padding: 0,
+            listStyle: "none",
+          }}
+        >
+          {notes.map((note, i) => (
+            <li
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                padding: "8px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "var(--bg-soft)",
+                fontSize: 13,
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {note}
+              </span>
+              <button
+                className="rd-btn rd-btn-sm rd-btn-ghost"
+                onClick={() => removeNote(i)}
+                disabled={busy}
+                title="Delete this note"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addNote();
+          }}
+          placeholder="Add a note and press Enter…"
+          style={{
+            flex: 1,
+            padding: "8px 10px",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 8,
+            fontSize: 13,
+            fontFamily: "inherit",
+            background: "var(--bg)",
+            color: "var(--text)",
+          }}
+        />
         <button
           className="rd-btn rd-btn-sm rd-btn-primary"
-          onClick={save}
-          disabled={saving}
+          onClick={addNote}
+          disabled={busy || draft.trim() === ""}
         >
-          {saving ? "Saving…" : "Save notes"}
+          Add note
         </button>
       </div>
     </div>

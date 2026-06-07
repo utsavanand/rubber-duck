@@ -12,6 +12,8 @@ export interface RubberduckEvent {
   name?: string;
   lifecycle?: string;
   branch?: string;
+  repo_path?: string;
+  worktree_path?: string;
   parent_session_key?: string;
 }
 
@@ -64,6 +66,19 @@ export interface PersistedSession {
   notes?: string | null;
 }
 
+// The repo label for a card. repo_path's basename is the repo name for a plain
+// checkout, but for a Rubberduck worktree it's the branch key (…/worktrees/
+// <repo>/<branch>) — there, the server's source_app holds the real repo name.
+export function repoNameFrom(
+  repoPath?: string | null,
+  sourceApp?: string | null,
+): string | undefined {
+  if (repoPath && repoPath.includes("/.rubberduck/worktrees/"))
+    return sourceApp ?? undefined;
+  if (repoPath) return repoPath.split("/").filter(Boolean).pop();
+  return sourceApp ?? undefined;
+}
+
 export function viewFromPersisted(s: PersistedSession): SessionView {
   return {
     key: s.session_key,
@@ -81,9 +96,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     compareGroup: s.compare_group ?? undefined,
     runtime: s.runtime ?? undefined,
     branch: s.branch ?? undefined,
-    repoName: s.repo_path
-      ? s.repo_path.split("/").filter(Boolean).pop()
-      : undefined,
+    repoName: repoNameFrom(s.repo_path, s.source_app),
     worktreePath: s.worktree_path ?? undefined,
     parentKey: s.parent_session_key ?? undefined,
     notes: s.notes ?? undefined,

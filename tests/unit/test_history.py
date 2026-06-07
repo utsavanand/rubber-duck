@@ -18,7 +18,9 @@ def test_session_key_falls_back_through_aliases() -> None:
 def test_derive_state_transitions() -> None:
     assert derive_state({"event_type": "SessionStart"}, None) == "busy"
     assert derive_state({"event_type": "PreToolUse"}, "idle") == "busy"
-    assert derive_state({"event_type": "PostToolUse"}, "busy") == "idle"
+    # A tool finishing keeps the agent busy (mid-turn); only Stop is idle.
+    assert derive_state({"event_type": "PostToolUse"}, "busy") == "busy"
+    assert derive_state({"event_type": "Stop"}, "busy") == "idle"
     assert derive_state({"event_type": "PermissionRequest"}, "busy") == "waiting"
     assert derive_state({"event_type": "SessionEnd"}, "busy") == "terminated"
     assert derive_state({"lifecycle": "terminated"}, "busy") == "terminated"
@@ -32,10 +34,11 @@ def test_session_row_accumulates_across_events(tmp_path: Path) -> None:
     bus.publish({"event_type": "SessionStart", "session_key": "s1", "cwd": "/repo"})
     bus.publish({"event_type": "PreToolUse", "session_key": "s1", "tool_name": "Edit"})
     bus.publish({"event_type": "PostToolUse", "session_key": "s1", "tool_name": "Edit"})
+    bus.publish({"event_type": "Stop", "session_key": "s1"})
 
     row = store.session("s1")
     assert row is not None
-    assert row["event_count"] == 3
+    assert row["event_count"] == 4
     assert row["state"] == "idle"
     assert row["last_tool"] == "Edit"
     assert row["cwd"] == "/repo"
@@ -118,3 +121,30 @@ def test_fork_tree_returns_parent_links(tmp_path: Path) -> None:
 
     tree = {row["session_key"]: row["parent_session_key"] for row in store.fork_tree()}
     assert tree == {"root": None, "child": "root"}
+
+
+def test_sweep_dead_terminates_only_stale_heartbeat_sessions(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    now = 1_000_000
+
+    # A heartbeat-tracked tab that last pinged 90s ago — killed, should be swept.
+    bus.publish({"event_type": "SessionStart", "session_key": "killed", "_ts": now - 200_000})
+    store.mark_heartbeat("killed")
+    store.touch("killed", now - 90_000)
+
+    # A heartbeat-tracked tab pinging 5s ago — alive, must survive.
+    bus.publish({"event_type": "SessionStart", "session_key": "alive", "_ts": now - 200_000})
+    store.mark_heartbeat("alive")
+    store.touch("alive", now - 5_000)
+
+    # A watched (hook-only) session, quiet for 10 minutes — NOT heartbeat-tracked,
+    # must never be swept (that was the original idle-kill mistake).
+    bus.publish({"event_type": "SessionStart", "session_key": "watched", "_ts": now - 600_000})
+
+    swept = store.sweep_dead(now, stale_after_ms=60_000)
+
+    assert swept == ["killed"]
+    assert store.session("killed")["state"] == "terminated"
+    assert store.session("alive")["state"] != "terminated"
+    assert store.session("watched")["state"] != "terminated"

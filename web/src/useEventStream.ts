@@ -22,6 +22,14 @@ function isInit(data: unknown): data is InitFrame {
   );
 }
 
+function mergeDefined(base: SessionView, over: SessionView): SessionView {
+  const out = { ...base };
+  for (const [k, v] of Object.entries(over)) {
+    if (v !== undefined) (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
+}
+
 function reduce(
   state: Map<string, SessionView>,
   action: Action,
@@ -29,9 +37,13 @@ function reduce(
   if (action.kind === "seed") {
     const next = new Map(state);
     for (const s of action.sessions) {
-      // Persisted history is the baseline; live events already applied win.
-      if (!next.has(s.session_key))
-        next.set(s.session_key, viewFromPersisted(s));
+      const persisted = viewFromPersisted(s);
+      const live = next.get(s.session_key);
+      // Persisted is the base (it carries identity/metadata a live event can't:
+      // repoName, worktreePath, notes, intention). Then layer the live view's
+      // DEFINED fields on top so dynamic state (state, eventCount, name) wins
+      // without undefined live fields clobbering persisted ones.
+      next.set(s.session_key, live ? mergeDefined(persisted, live) : persisted);
     }
     return next;
   }

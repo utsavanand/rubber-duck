@@ -72,9 +72,16 @@ def test_fork_conversation_opens_terminal_with_resume_command(
     # Don't actually spawn a terminal: capture the argv instead.
     opened: dict = {}
 
-    def fake_open(cwd: str, argv: list[str], *, app: str | None = None) -> bool:
+    def fake_open(
+        cwd: str,
+        argv: list[str],
+        *,
+        app: str | None = None,
+        env: dict | None = None,
+    ) -> bool:
         opened["cwd"] = cwd
         opened["argv"] = argv
+        opened["env"] = env
         return True
 
     monkeypatch.setattr("rubberduck.server.open_in_terminal", fake_open)
@@ -104,3 +111,6 @@ def test_fork_conversation_opens_terminal_with_resume_command(
     assert body["opened_in_terminal"] is True
     assert opened["argv"] == ["claude", "--resume", "claude-xyz", "--fork-session"]
     assert opened["cwd"] == "/work/repo"
+    # The fork's terminal carries Rubberduck's key so the agent's hooks report
+    # under the same session and don't spawn a duplicate row.
+    assert opened["env"] == {"RUBBERDUCK_SESSION_KEY": body["session_key"]}

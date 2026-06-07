@@ -44,6 +44,45 @@ session into a tree of parallel attempts, answer permission requests, and read
 per-session checkpoints (prompts, files, tools, outcome). Runtimes: `generic`
 (any CLI), `claude-code` (richest — hook events + JSONL transcript), `codex`.
 
+## Two kinds of session
+
+- **Watched** — you start `claude` in your own terminal; the hooks report each
+  event to Rubberduck. Rubberduck observes but doesn't own the process. These
+  run on whatever branch you already have checked out.
+- **Launched** — you click **New session** in the dashboard. Rubberduck opens a
+  new tab in your terminal (iTerm or Terminal), runs the agent there, and — for
+  a git repo — creates an isolated worktree first. It detects a killed tab via a
+  20s heartbeat and marks the session terminated after 60s of silence.
+
+## How worktrees work
+
+A launched session on a git repo gets its own **git worktree** — a second
+working directory that shares your repo's `.git` object store. Picking the repo
+`~/code/myapp` creates:
+
+```
+~/.rubberduck/worktrees/myapp/rubberduck/<branch>/   # the worktree (a checkout)
+```
+
+on a new branch `rubberduck/<session-name>` (slug of the name you gave it, or a
+timestamp). That branch lives **in your repo** — `git branch` in `~/code/myapp`
+lists it. The agent works in the worktree without touching your main checkout.
+
+To fold a session's work back in, from your repo:
+
+```sh
+git merge rubberduck/<branch>     # or rebase, or open a PR from that branch
+```
+
+Deleting a session from the dashboard removes its worktree and branch. If the
+branch has commits not yet in `main`, delete asks before discarding them.
+
+## Notes
+
+Each session has a **Notes** tab — a private, local-only list of reminders or
+TODOs for that session. Notes never leave your machine and are never sent to any
+agent or service.
+
 ## Develop
 
 ```sh

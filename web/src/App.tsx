@@ -192,7 +192,17 @@ function Dashboard() {
 
   async function deleteSession(key: string) {
     try {
-      await api.remove(key);
+      let res = await api.remove(key);
+      // 409: the worktree branch has commits not in main — deleting drops that
+      // agent work. Confirm before forcing.
+      if (res.status === 409 && res.unmerged_commits) {
+        const ok = window.confirm(
+          `Branch ${res.branch} has ${res.unmerged_commits} commit(s) not merged into main. ` +
+            `Delete anyway and discard that work?`,
+        );
+        if (!ok) return;
+        res = await api.remove(key, true);
+      }
       removeSessions([key]); // drop it from the grid immediately
       toast("Deleted");
     } catch (e) {

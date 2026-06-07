@@ -104,7 +104,7 @@ export default function Home() {
             <Feature
               tag="Isolation"
               title="One repo, many features"
-              body="Each session runs in its own git worktree. Several agents work the same repository in parallel without conflicts."
+              body="Each session runs in its own git worktree on a fresh branch in your repo. Agents work in parallel without conflicts — merge any branch back with a normal git merge."
             />
             <Feature
               tag="Lineage"
@@ -186,7 +186,7 @@ export default function Home() {
             <div>
               <pre>
                 {`# install the orchestrator
-pip install rubberduck
+pip install rubberduckhq
 
 # connect it to Claude Code, then run it
 rubberduck install-hooks --global

@@ -65,6 +65,22 @@ class WorktreeManager:
         if delete_branch and branch is not None:
             _git(repo, "branch", "-D", branch)
 
+    def remove_by_worktree(self, worktree_path: Path, *, delete_branch: bool = True) -> None:
+        """Remove a worktree given only its path — resolves the main repo from
+        the worktree's shared git dir, so the caller needn't track repo_path."""
+        repo = _main_repo_of(worktree_path)
+        self.remove(repo, worktree_path, delete_branch=delete_branch)
+
+    def unmerged_commits(self, worktree_path: Path) -> int:
+        """How many commits the worktree's branch has that aren't reachable from
+        the main repo's HEAD. >0 means deleting it would discard agent work."""
+        repo = _main_repo_of(worktree_path)
+        branch = _branch_at(repo, worktree_path)
+        if branch is None:
+            return 0
+        out = _git(repo, "rev-list", "--count", f"HEAD..{branch}").strip()
+        return int(out) if out.isdigit() else 0
+
 
 def _parse_worktree_list(porcelain: str, repo: Path) -> list[Worktree]:
     """Parse `git worktree list --porcelain`. Skips the main worktree (the repo
@@ -90,3 +106,13 @@ def _branch_at(repo: Path, worktree_path: Path) -> str | None:
         if wt.path == worktree_path.resolve():
             return wt.branch
     return None
+
+
+def _main_repo_of(worktree_path: Path) -> Path:
+    """The main repo a worktree belongs to. --git-common-dir points at the shared
+    <repo>/.git; its parent is the repo working tree."""
+    common = _git(worktree_path, "rev-parse", "--git-common-dir").strip()
+    git_dir = Path(common)
+    if not git_dir.is_absolute():
+        git_dir = (worktree_path / git_dir).resolve()
+    return git_dir.parent

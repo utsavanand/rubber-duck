@@ -2,6 +2,7 @@ import {
   RubberduckEvent,
   SessionState,
   SessionView,
+  repoNameFrom,
   sessionKeyOf,
 } from "./types";
 
@@ -13,11 +14,14 @@ function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
     case "Notification":
       return "waiting";
     case "PreToolUse":
+    case "PostToolUse":
     case "UserPromptSubmit":
     case "SessionStart":
+      // PostToolUse means a tool just finished — the agent is still mid-turn and
+      // about to do more. Only `Stop` (turn ended) drops it to idle. Treating
+      // PostToolUse as idle made sessions flap busy↔idle on every tool call.
       return "busy";
     case "Stop":
-    case "PostToolUse":
       return "idle";
     default:
       return prev ?? "busy";
@@ -52,6 +56,8 @@ export function applyEvent(
     // Don't let a live event without these fields overwrite the seeded values.
     cwd: prev?.cwd ?? e.cwd,
     branch: prev?.branch ?? e.branch,
+    repoName: prev?.repoName ?? repoNameFrom(e.repo_path, e.source_app),
+    worktreePath: prev?.worktreePath ?? e.worktree_path,
     parentKey: prev?.parentKey ?? e.parent_session_key,
     startedAt: prev?.startedAt ?? e._ts,
     updatedAt: e._ts,

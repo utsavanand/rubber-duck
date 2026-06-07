@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     event_count         INTEGER NOT NULL DEFAULT 0,
     started_at          INTEGER NOT NULL,
     updated_at          INTEGER NOT NULL,
-    ended_at            INTEGER
+    ended_at            INTEGER,
+    heartbeat           INTEGER NOT NULL DEFAULT 0,
+    last_seen           INTEGER
 );
 CREATE TABLE IF NOT EXISTS events (
     id           TEXT PRIMARY KEY,
@@ -81,9 +83,12 @@ def derive_state(event: Event, prev: SessionState | None) -> SessionState:
     match event.get("event_type"):
         case "PermissionRequest" | "Notification":
             return "waiting"
-        case "PreToolUse" | "UserPromptSubmit" | "SessionStart":
+        case "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "SessionStart":
+            # PostToolUse means a tool just finished — the agent is still mid-turn.
+            # Only `Stop` (turn ended) is idle. Treating PostToolUse as idle made
+            # sessions flap busy<->idle on every tool call.
             return "busy"
-        case "Stop" | "PostToolUse":
+        case "Stop":
             return "idle"
         case _:
             return prev or "busy"
@@ -107,6 +112,8 @@ _SESSIONS_COLUMNS = {
     "last_event_type": "TEXT",
     "last_tool": "TEXT",
     "ended_at": "INTEGER",
+    "heartbeat": "INTEGER NOT NULL DEFAULT 0",
+    "last_seen": "INTEGER",
 }
 
 
@@ -252,6 +259,39 @@ class HistoryStore:
         self._conn.commit()
         return self.session(key) is not None
 
+    def mark_heartbeat(self, key: str) -> None:
+        """Flag a session as heartbeat-tracked (Rubberduck launched it in a tab
+        that pings us). Only these are eligible for the killed-tab sweep."""
+        self._conn.execute("UPDATE sessions SET heartbeat = 1 WHERE session_key = ?", (key,))
+        self._conn.commit()
+
+    def touch(self, key: str, ts: int) -> bool:
+        """Record a liveness ping. Returns whether the session exists."""
+        cur = self._conn.execute(
+            "UPDATE sessions SET last_seen = ? WHERE session_key = ?", (ts, key)
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def sweep_dead(self, now: int, *, stale_after_ms: int) -> list[str]:
+        """Terminate heartbeat-tracked sessions that stopped pinging (killed tab).
+        Returns the keys swept. Never touches hook-only/watched sessions, which
+        have no heartbeat and may be legitimately quiet for a long time."""
+        cutoff = now - stale_after_ms
+        rows = self._conn.execute(
+            "SELECT session_key FROM sessions WHERE heartbeat = 1 AND state != 'terminated' "
+            "AND COALESCE(last_seen, started_at) < ?",
+            (cutoff,),
+        ).fetchall()
+        keys = [r["session_key"] for r in rows]
+        for key in keys:
+            self._conn.execute(
+                "UPDATE sessions SET state = 'terminated', ended_at = ? WHERE session_key = ?",
+                (now, key),
+            )
+        self._conn.commit()
+        return keys
+
     def set_outcome(self, key: str, outcome: str) -> None:
         self._conn.execute(
             "UPDATE sessions SET outcome_summary = ? WHERE session_key = ?", (outcome, key)
@@ -293,8 +333,9 @@ class HistoryStore:
                 "INSERT INTO sessions "
                 "(session_key, runtime, repo_path, worktree_path, branch, "
                 " parent_session_key, compare_group, state, source_app, cwd, "
-                " last_event_type, last_tool, event_count, started_at, updated_at, ended_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
+                " last_event_type, last_tool, event_count, started_at, updated_at, ended_at, "
+                " last_seen) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
@@ -311,6 +352,7 @@ class HistoryStore:
                     ts,
                     ts,
                     ended_at,
+                    ts,
                 ),
             )
         else:
@@ -323,13 +365,15 @@ class HistoryStore:
                 "parent_session_key = COALESCE(?, parent_session_key), "
                 "compare_group = COALESCE(?, compare_group), "
                 "state = ?, "
-                "source_app = COALESCE(?, source_app), "
+                # source_app is identity: set once on the first event, never
+                # overwritten — later events (hooks) only carry a cwd-basename guess.
                 "cwd = COALESCE(?, cwd), "
                 "last_event_type = ?, "
                 "last_tool = COALESCE(?, last_tool), "
                 "event_count = event_count + 1, "
                 "updated_at = ?, "
-                "ended_at = ? "
+                "ended_at = ?, "
+                "last_seen = ? "
                 "WHERE session_key = ?",
                 (
                     event.get("runtime"),
@@ -339,12 +383,12 @@ class HistoryStore:
                     event.get("parent_session_key"),
                     event.get("compare_group"),
                     state,
-                    event.get("source_app"),
                     event.get("cwd"),
                     event.get("event_type"),
                     event.get("tool_name"),
                     ts,
                     ended_at,
+                    ts,
                     key,
                 ),
             )

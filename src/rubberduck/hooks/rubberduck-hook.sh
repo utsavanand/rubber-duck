@@ -13,11 +13,16 @@
 EVENT_TYPE="${1:-Unknown}"
 INPUT=$(cat)
 URL="${RUBBERDUCK_URL:-http://127.0.0.1:4200}"
+# Set by Rubberduck when it launches the agent in a terminal, so the agent's
+# hook events attach to the row Rubberduck already created instead of spawning
+# a duplicate session under Claude's own id. Empty for self-started sessions.
+SESSION_KEY="${RUBBERDUCK_SESSION_KEY:-}"
 
 if command -v jq >/dev/null 2>&1; then
-  PAYLOAD=$(printf '%s' "$INPUT" | jq -c --arg etype "$EVENT_TYPE" '
+  PAYLOAD=$(printf '%s' "$INPUT" | jq -c --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" '
     {
       event_type: $etype,
+      session_key: (if $skey == "" then null else $skey end),
       session_id: .session_id,
       cwd: .cwd,
       source_app: (.cwd // "" | split("/") | last),
@@ -33,8 +38,10 @@ if [ -z "$PAYLOAD" ] || [ "$PAYLOAD" = "null" ]; then
   CWD=$(printf '%s' "$INPUT" | grep -o '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   TOOL=$(printf '%s' "$INPUT" | grep -o '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   APP=$(basename "$CWD" 2>/dev/null)
-  PAYLOAD=$(printf '{"event_type":"%s","session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"claude-code"}' \
-    "$EVENT_TYPE" "$SID" "$CWD" "$APP" "$TOOL")
+  SKEY_FIELD=""
+  [ -n "$SESSION_KEY" ] && SKEY_FIELD=$(printf '"session_key":"%s",' "$SESSION_KEY")
+  PAYLOAD=$(printf '{"event_type":"%s",%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"claude-code"}' \
+    "$EVENT_TYPE" "$SKEY_FIELD" "$SID" "$CWD" "$APP" "$TOOL")
 fi
 
 curl -s -X POST "$URL/events" \

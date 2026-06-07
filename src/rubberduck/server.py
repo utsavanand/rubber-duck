@@ -34,6 +34,8 @@ wants direct control of the response stream. Zero runtime dependencies.
 import asyncio
 import contextlib
 import json
+import os
+import re
 import shlex
 import subprocess
 import time
@@ -135,6 +137,7 @@ def _mid(prefix: str, suffix: str) -> dict[str, str]:
 _ROUTES: list[Route] = [
     # ── ingest ──
     Route("POST", "/events", lambda s, r, w, h, b, seg: s._ingest(w, b)),
+    Route("POST", "/heartbeat", lambda s, r, w, h, b, seg: s._heartbeat(w, b)),
     # ── query ──
     Route("GET", "/events", lambda s, r, w, h, b, seg: s._recent(w)),
     Route("GET", "/sessions", lambda s, r, w, h, b, seg: s._sessions(w)),
@@ -153,7 +156,7 @@ _ROUTES: list[Route] = [
           lambda s, r, w, h, b, seg: s._clear_terminated(w)),
     Route("PATCH", "", lambda s, r, w, h, b, seg: s._update_session(w, seg, b),
           prefix="/sessions/"),
-    Route("DELETE", "", lambda s, r, w, h, b, seg: s._delete_session(w, seg),
+    Route("DELETE", "", lambda s, r, w, h, b, seg: s._delete_session(w, seg, b),
           prefix="/sessions/"),
     Route("POST", "", lambda s, r, w, h, b, seg: s._fork_conversation(w, seg, b),
           **_mid("/sessions/", "/fork-conversation")),
@@ -177,6 +180,8 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/output")),
     Route("GET", "/stream", lambda s, r, w, h, b, seg: s._stream(r, w)),
     Route("GET", "/ws", lambda s, r, w, h, b, seg: s._websocket(r, w, h)),
+    # ── single session (prefix-only; AFTER /sessions/:key/* sub-routes) ──
+    Route("GET", "", lambda s, r, w, h, b, seg: s._get_session(w, seg), prefix="/sessions/"),
     # ── snapshot fetch (prefix-only; keep AFTER /snapshots/:id/restore) ──
     Route("GET", "", lambda s, r, w, h, b, seg: s._get_snapshot(w, seg), prefix="/snapshots/"),
     # ── dashboard (prefix-only catch for / and /assets/*) ──
@@ -292,6 +297,21 @@ class Server:
     async def _recent(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"events": self.bus.recent()})
 
+    async def _heartbeat(self, writer: asyncio.StreamWriter, body: bytes) -> None:
+        """A launched tab pings here while alive. Records last_seen so the sweep
+        can tell a killed tab from a quiet one."""
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        key = req.get("session_key")
+        if not key:
+            await _write_json(writer, 400, {"error": "session_key required"})
+            return
+        ok = self.history.touch(str(key), int(time.time() * 1000))
+        await _write_json(writer, 200, {"ok": ok})
+
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"sessions": self.history.sessions()})
 
@@ -339,7 +359,7 @@ class Server:
         if repo_path:
             try:
                 wt = self.orchestrator.worktrees.add(
-                    Path(repo_path), req.get("branch") or f"rubberduck/{int(time.time())}"
+                    Path(repo_path), req.get("branch") or _branch_name(name)
                 )
             except (GitError, ValueError) as e:
                 await _write_json(writer, 400, {"error": str(e)})
@@ -349,10 +369,17 @@ class Server:
             branch = wt.branch
             worktree_path = str(wt.path)
 
-        opened = open_in_terminal(str(run_cwd), shlex.split(command), app=req.get("terminal"))
-        # Record a tracked row so the session shows up with its name/repo/branch
-        # even though it runs in an external terminal under its own id.
         key = req.get("session_key") or f"new-{int(time.time())}"
+        opened = open_in_terminal(
+            str(run_cwd),
+            shlex.split(command),
+            app=req.get("terminal"),
+            env={"RUBBERDUCK_SESSION_KEY": key},
+            heartbeat=(_heartbeat_url(), key),
+        )
+        # Record a tracked row so the session shows up with its name/repo/branch.
+        # The agent's hooks report under the same key (via RUBBERDUCK_SESSION_KEY)
+        # so they update this row instead of creating a duplicate.
         self.bus.publish(
             {
                 "event_type": "SessionStart",
@@ -370,6 +397,8 @@ class Server:
         )
         if name or req.get("notes"):
             self.history.set_meta(key, name=name, notes=req.get("notes"))
+        if opened:
+            self.history.mark_heartbeat(key)
         await _write_json(
             writer,
             200,
@@ -421,10 +450,16 @@ class Server:
         except (GitError, ValueError) as e:
             await _write_json(writer, 400, {"error": str(e)})
             return
-        opened = open_in_terminal(str(worktree.path), shlex.split(command), app=req.get("terminal"))
-        # Record a tracked row so the fork shows its lineage even though the
-        # terminal session reports under its own (unpredictable) session id.
         child_key = req.get("session_key") or f"fork-{branch}"
+        opened = open_in_terminal(
+            str(worktree.path),
+            shlex.split(command),
+            app=req.get("terminal"),
+            env={"RUBBERDUCK_SESSION_KEY": child_key},
+            heartbeat=(_heartbeat_url(), child_key),
+        )
+        # Record a tracked row so the fork shows its lineage. The agent's hooks
+        # report under child_key (via RUBBERDUCK_SESSION_KEY), updating this row.
         self.bus.publish(
             {
                 "event_type": "SessionStart",
@@ -438,6 +473,8 @@ class Server:
                 "intention": f"fork of {parent.get('source_app') or parent_key} ({base})",
             }
         )
+        if opened:
+            self.history.mark_heartbeat(child_key)
         await _write_json(
             writer,
             200,
@@ -477,9 +514,11 @@ class Server:
         req = json.loads(body or b"{}")
         cwd = str(parent.get("cwd") or ".")
         argv = ["claude", "--resume", session_id, "--fork-session"]
-        opened = open_in_terminal(cwd, argv, app=req.get("terminal"))
-        # Record a row so the conversation fork shows its lineage.
         child_key = f"convfork-{session_id[:8]}"
+        opened = open_in_terminal(
+            cwd, argv, app=req.get("terminal"), env={"RUBBERDUCK_SESSION_KEY": child_key}
+        )
+        # Record a row so the conversation fork shows its lineage.
         self.bus.publish(
             {
                 "event_type": "SessionStart",
@@ -508,13 +547,65 @@ class Server:
         status = 200 if stopped else 404
         await _write_json(writer, status, {"stopped": stopped, "session_key": session_key})
 
-    async def _delete_session(self, writer: asyncio.StreamWriter, session_key: str) -> None:
-        # Stop it first if it's live (best-effort), then drop it from the DB.
+    async def _delete_session(
+        self, writer: asyncio.StreamWriter, session_key: str, body: bytes
+    ) -> None:
+        # Stop it first if it's live (best-effort), remove its worktree (if any),
+        # then drop it from the DB. If the worktree has unmerged commits and the
+        # caller didn't pass force, refuse so agent work isn't silently lost.
+        force = False
+        with contextlib.suppress(json.JSONDecodeError):
+            force = bool(json.loads(body or b"{}").get("force"))
+        row = self.history.session(session_key)
+        unmerged = self._worktree_unmerged(row)
+        if unmerged > 0 and not force:
+            await _write_json(
+                writer,
+                409,
+                {
+                    "deleted": False,
+                    "session_key": session_key,
+                    "unmerged_commits": unmerged,
+                    "branch": row.get("branch") if row else None,
+                },
+            )
+            return
         await self.orchestrator.stop(session_key)
+        self._remove_worktree(row)
         deleted = self.history.delete_session(session_key)
         self.approvals.drop_session(session_key)
         status = 200 if deleted else 404
         await _write_json(writer, status, {"deleted": deleted, "session_key": session_key})
+
+    def _worktree_path_of(self, row: dict[str, Any] | None) -> Path | None:
+        """The Rubberduck-managed worktree for a session, or None. Guards that we
+        only ever act on worktrees under our own dir, never the user's repo."""
+        if row is None:
+            return None
+        wt = row.get("worktree_path")
+        if not wt or "/.rubberduck/worktrees/" not in str(wt):
+            return None
+        return Path(str(wt))
+
+    def _worktree_unmerged(self, row: dict[str, Any] | None) -> int:
+        wt = self._worktree_path_of(row)
+        if wt is None or not wt.exists():
+            return 0
+        try:
+            return self.orchestrator.worktrees.unmerged_commits(wt)
+        except GitError:
+            return 0
+
+    def _remove_worktree(self, row: dict[str, Any] | None) -> None:
+        """Remove the git worktree + branch for a Rubberduck-created session.
+        Only touches worktrees under our worktrees dir; never the user's repo."""
+        wt = self._worktree_path_of(row)
+        if wt is None:
+            return
+        # The worktree itself knows its main repo (shared object store), so this
+        # works whether or not the row recorded the original repo_path.
+        with contextlib.suppress(GitError):
+            self.orchestrator.worktrees.remove_by_worktree(wt)
 
     async def _update_session(
         self, writer: asyncio.StreamWriter, session_key: str, body: bytes
@@ -537,6 +628,17 @@ class Server:
 
     async def _terminals(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"terminals": available_terminals()})
+
+    async def _get_session(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        # Only a bare key — sub-paths like /diff, /output are their own routes.
+        if "/" in session_key:
+            await _write_response(writer, 404, "not found")
+            return
+        row = self.history.session(session_key)
+        if row is None:
+            await _write_json(writer, 404, {"error": "no such session"})
+            return
+        await _write_json(writer, 200, row)
 
     async def _browse(self, writer: asyncio.StreamWriter, seg: str) -> None:
         # seg is the part of the path after "/browse", e.g. "?path=/Users/x".
@@ -837,8 +939,35 @@ class Server:
         if adopted:
             print(f"re-adopted {len(adopted)} tmux session(s): {', '.join(adopted)}")
         server = await asyncio.start_server(self.handle, host, port)
+        sweeper = asyncio.create_task(self._sweep_dead_loop())
         async with server:
-            await server.serve_forever()
+            try:
+                await server.serve_forever()
+            finally:
+                sweeper.cancel()
+
+    async def _sweep_dead_loop(self) -> None:
+        """Mark heartbeat-tracked sessions dead when their tab stops pinging.
+        A tab pings every 20s; we declare it dead after 60s of silence."""
+        while True:
+            await asyncio.sleep(20)
+            dead = self.history.sweep_dead(int(time.time() * 1000), stale_after_ms=60_000)
+            for key in dead:
+                self.bus.publish(
+                    {"event_type": "SessionEnd", "session_key": key, "lifecycle": "terminated"}
+                )
+
+
+def _heartbeat_url() -> str:
+    base = os.environ.get("RUBBERDUCK_URL", "http://127.0.0.1:4200").rstrip("/")
+    return f"{base}/heartbeat"
+
+
+def _branch_name(name: str | None) -> str:
+    """Auto-branch for a new session: a slug of the session name, namespaced
+    under rubberduck/. Falls back to a timestamp when there's no name."""
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return f"rubberduck/{slug}" if slug else f"rubberduck/{int(time.time())}"
 
 
 def _parse_request_line(line: bytes) -> tuple[str, str]:

@@ -17,7 +17,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+  const res = await fetch(path, { cache: "no-store" });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
@@ -69,6 +69,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(meta),
     }).then((r) => r.json()),
+  getSession: (key: string) =>
+    get<{ notes?: string | null; name?: string | null }>(`/sessions/${key}`),
   fork: (
     key: string,
     opts: {
@@ -91,8 +93,19 @@ export const api = {
     ),
   terminals: () => get<{ terminals: string[] }>("/terminals"),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
-  remove: (key: string) =>
-    fetch(`/sessions/${key}`, { method: "DELETE" }).then((r) => r.json()),
+  remove: (key: string, force = false) =>
+    fetch(`/sessions/${key}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force }),
+    }).then(async (r) => ({
+      status: r.status,
+      ...((await r.json()) as {
+        deleted?: boolean;
+        unmerged_commits?: number;
+        branch?: string | null;
+      }),
+    })),
   clearTerminated: () =>
     post<{ cleared: number }>("/sessions/clear-terminated"),
   checkpoint: (key: string, label: string) =>

@@ -31,10 +31,25 @@ def available_terminals() -> list[str]:
     return []
 
 
-def open_in_terminal(cwd: str, argv: list[str], *, app: str | None = None) -> bool:
+def open_in_terminal(
+    cwd: str,
+    argv: list[str],
+    *,
+    app: str | None = None,
+    env: dict[str, str] | None = None,
+    heartbeat: tuple[str, str] | None = None,
+) -> bool:
     """Open a new terminal in `cwd` running `argv`. Returns True if a terminal
-    was spawned, False if we could only fall back to printing the command."""
-    command = f"cd {_q(cwd)} && {' '.join(_q(a) for a in argv)}"
+    was spawned, False if we could only fall back to printing the command.
+    `env` is exported before the command (used to pass RUBBERDUCK_SESSION_KEY so
+    the agent's hooks report under Rubberduck's session key). `heartbeat` is
+    (url, session_key): the tab pings `url` every 20s while alive so Rubberduck
+    can tell a killed tab from a quiet one."""
+    exports = "".join(f"export {k}={_q(v)}; " for k, v in (env or {}).items())
+    agent = " ".join(_q(a) for a in argv)
+    if heartbeat is not None:
+        agent = _with_heartbeat(agent, *heartbeat)
+    command = f"cd {_q(cwd)} && {exports}{agent}"
     system = platform.system()
 
     if system == "Darwin":
@@ -50,6 +65,20 @@ def open_in_terminal(cwd: str, argv: list[str], *, app: str | None = None) -> bo
 
     print(f"[rubberduck] open a terminal and run:\n  {command}")
     return False
+
+
+def _with_heartbeat(agent: str, url: str, session_key: str) -> str:
+    """Wrap the agent command so the tab pings `url` every 20s while alive and
+    stops when the agent exits or the tab is killed. The trap kills the loop on
+    EXIT; killing the tab takes the whole shell (loop included) down with it."""
+    ping = (
+        f"curl -s -X POST {_q(url)} -H 'Content-Type: application/json' "
+        f'-d \'{{"session_key":"{session_key}"}}\' >/dev/null 2>&1'
+    )
+    return (
+        f"( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "
+        f'trap "kill $__rd_hb 2>/dev/null" EXIT; {agent}'
+    )
 
 
 def _default_mac() -> str:
