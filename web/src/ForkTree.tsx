@@ -84,14 +84,10 @@ export function ForkTree({ refreshKey }: { refreshKey: number }) {
   if (forest.length === 0) return null;
 
   const hasForks = forest.some((r) => r.children.length > 0);
+  if (!hasForks) return null;
   return (
-    <section style={{ marginTop: 32 }}>
-      <h2 style={{ fontSize: 16 }}>Fork tree</h2>
-      {!hasForks && (
-        <p style={{ color: "#9ca3af", fontSize: 13 }}>
-          No forks yet — fork a session to branch it.
-        </p>
-      )}
+    <section className="rd-tree">
+      <div className="rd-section-title">Fork tree</div>
       {forest
         .sort((a, b) => a.started_at - b.started_at)
         .map((root) => (

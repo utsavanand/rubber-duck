@@ -1,20 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { Approvals } from "./Approvals";
 import { CompareModal } from "./CompareModal";
 import { ForkTree } from "./ForkTree";
 import { LaunchModal } from "./LaunchModal";
 import { SessionDetail } from "./SessionDetail";
 import { SnapshotsModal } from "./SnapshotsModal";
 import { SessionView } from "./types";
-import { Button, ToastProvider, useToast } from "./ui";
+import { ToastProvider, useToast } from "./ui";
 import { useEventStream } from "./useEventStream";
-
-const STATE_COLOR: Record<string, string> = {
-  busy: "#2563eb",
-  idle: "#16a34a",
-  waiting: "#d97706",
-  terminated: "#6b7280",
-};
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(Date.now());
@@ -42,129 +36,83 @@ function SessionCard({
   onOpen: () => void;
 }) {
   const toast = useToast();
-  const color = STATE_COLOR[session.state] ?? "#6b7280";
   const live = session.state !== "terminated";
 
   async function act(label: string, fn: () => Promise<unknown>) {
     try {
       await fn();
-      toast(`${label} ✓`);
+      toast(`${label}`);
     } catch (e) {
-      toast(`${label}: ${(e as Error).message}`, "err");
+      toast(`${label} failed: ${(e as Error).message}`, "err");
     }
   }
 
+  const stateLabel =
+    session.state === "waiting" ? "waiting on you" : session.state;
+
   return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderLeft: `4px solid ${color}`,
-        borderRadius: 8,
-        padding: "12px 16px",
-        width: 300,
-      }}
-    >
-      <div
-        onClick={onOpen}
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          cursor: "pointer",
-        }}
-      >
-        <strong>{session.label}</strong>
-        <span style={{ color, fontSize: 13, textTransform: "uppercase" }}>
-          {session.state === "waiting" ? "waiting on you" : session.state}
+    <div className="rd-card">
+      <div className="head" onClick={onOpen}>
+        <span className="name">{session.label}</span>
+        <span className={`rd-state st-${session.state}`}>
+          <span className="dot" />
+          {stateLabel}
         </span>
       </div>
       {session.compareGroup && (
-        <div
-          style={{
-            display: "inline-block",
-            marginTop: 6,
-            padding: "1px 6px",
-            fontSize: 11,
-            borderRadius: 4,
-            background: "#ede9fe",
-            color: "#6d28d9",
-          }}
-        >
-          compare: {session.compareGroup}
-        </div>
+        <span className="rd-chip">compare · {session.compareGroup}</span>
       )}
-      <div style={{ fontSize: 13, color: "#374151", marginTop: 6 }}>
+      <div className="line">
         {session.lastEventType}
         {session.lastTool ? ` · ${session.lastTool}` : ""}
       </div>
-      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
+      <div className="sub">
         up {uptime(session.startedAt, now)} · {session.eventCount} events
         {session.metrics?.build ? ` · ${session.metrics.build} builds` : ""}
         {session.metrics?.test ? ` · ${session.metrics.test} tests` : ""}
       </div>
-      {session.intention && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#374151",
-            marginTop: 6,
-            fontStyle: "italic",
-          }}
-        >
-          intent: {session.intention}
-        </div>
-      )}
-      {session.branch && (
-        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-          ⎇ {session.branch}
-        </div>
-      )}
+      {session.intention && <div className="intent">{session.intention}</div>}
+      {session.branch && <div className="sub mono">⎇ {session.branch}</div>}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-        <Button size="sm" variant="ghost" onClick={onOpen}>
+      <div className="rd-actions">
+        <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onOpen}>
           Open
-        </Button>
+        </button>
         {session.branch && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              act("Forked", () => api.fork(session.key, { command: "true" }))
-            }
-          >
-            Fork
-          </Button>
-        )}
-        {session.branch && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              act("Checkpointed", () => api.checkpoint(session.key, "manual"))
-            }
-          >
-            Checkpoint
-          </Button>
-        )}
-        {session.branch && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              act("Spotlighted to main", () => api.spotlight(session.key))
-            }
-          >
-            Spotlight
-          </Button>
+          <>
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              onClick={() =>
+                act("Forked", () => api.fork(session.key, { command: "true" }))
+              }
+            >
+              Fork
+            </button>
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              onClick={() =>
+                act("Checkpointed", () => api.checkpoint(session.key, "manual"))
+              }
+            >
+              Checkpoint
+            </button>
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              onClick={() =>
+                act("Spotlighted to main", () => api.spotlight(session.key))
+              }
+            >
+              Spotlight
+            </button>
+          </>
         )}
         {live && (
-          <Button
-            size="sm"
-            variant="danger"
+          <button
+            className="rd-btn rd-btn-sm rd-btn-danger"
             onClick={() => act("Stopped", () => api.stop(session.key))}
           >
             Stop
-          </Button>
+          </button>
         )}
       </div>
     </div>
@@ -181,51 +129,64 @@ function Dashboard() {
   const openSession = sessions.find((s) => s.key === openKey) ?? null;
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: 24 }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 20,
-          flexWrap: "wrap",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Rubberduck</h1>
-        <span
-          style={{ color: connected ? "#16a34a" : "#dc2626", fontSize: 13 }}
-        >
-          {connected ? "● live" : "○ disconnected"}
+    <div className="rd-app">
+      <header className="rd-topbar">
+        <span className="rd-brand">
+          <span>🦆</span> Rubberduck
         </span>
-        <div style={{ flex: 1 }} />
-        <Button onClick={() => setModal("launch")}>+ New session</Button>
-        <Button variant="ghost" onClick={() => setModal("compare")}>
-          Compare
-        </Button>
-        <Button variant="ghost" onClick={() => setModal("snapshots")}>
+        <span className="rd-live">
+          <span className={`dot ${connected ? "on" : "off"}`} />
+          {connected ? "Live" : "Disconnected"}
+        </span>
+        <span className="rd-spacer" />
+        <button
+          className="rd-btn rd-btn-primary"
+          onClick={() => setModal("launch")}
+        >
+          New session
+        </button>
+        <button
+          className="rd-btn rd-btn-ghost"
+          onClick={() => setModal("snapshots")}
+        >
           Snapshots
-        </Button>
+        </button>
       </header>
 
+      <Approvals pollKey={sessions.length} />
+
       {sessions.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>
-          No sessions yet. Click <strong>+ New session</strong> to launch an
+        <p className="rd-empty">
+          No sessions yet. Click <strong>New session</strong> to launch an
           agent, or run Claude Code in a hooked repo.
         </p>
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-          {sessions.map((s) => (
-            <SessionCard
-              key={s.key}
-              session={s}
-              now={now}
-              onOpen={() => setOpenKey(s.key)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="rd-section-title">Sessions</div>
+          <div className="rd-grid">
+            {sessions.map((s) => (
+              <SessionCard
+                key={s.key}
+                session={s}
+                now={now}
+                onOpen={() => setOpenKey(s.key)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       <ForkTree refreshKey={sessions.length} />
+
+      <div style={{ marginTop: 32 }}>
+        <button
+          className="rd-btn rd-btn-sm rd-btn-ghost"
+          onClick={() => setModal("compare")}
+          title="Run one prompt across multiple agents"
+        >
+          Compare models
+        </button>
+      </div>
 
       {modal === "launch" && <LaunchModal onClose={() => setModal(null)} />}
       {modal === "compare" && <CompareModal onClose={() => setModal(null)} />}
