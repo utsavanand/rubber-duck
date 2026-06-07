@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rubberduck — Internal Design Tracker</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --border: #262b38;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --accent: #f5c518;
+        --green: #16a34a;
+        --blue: #3b82f6;
+        --amber: #d97706;
+        --gray: #6b7280;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 15px/1.6 system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap { max-width: 920px; margin: 0 auto; padding: 40px 24px 80px; }
+      header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 32px; }
+      h1 { margin: 0 0 4px; font-size: 28px; }
+      h1 .duck { color: var(--accent); }
+      .tagline { color: var(--muted); margin: 0; }
+      .meta { color: var(--gray); font-size: 13px; margin-top: 8px; }
+      h2 { font-size: 18px; margin: 40px 0 12px; border-left: 3px solid var(--accent); padding-left: 10px; }
+      h3 { font-size: 15px; margin: 20px 0 6px; color: var(--text); }
+      p { color: var(--text); }
+      .muted { color: var(--muted); }
+      code { background: #20242f; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+      pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; font-size: 13px; }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin: 14px 0; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; }
+      .badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 99px; font-weight: 600; }
+      .done { background: rgba(22,163,74,.15); color: #4ade80; }
+      .todo { background: rgba(217,119,6,.15); color: #fbbf24; }
+      .pill { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 6px; background: #20242f; color: var(--muted); margin: 2px 4px 2px 0; }
+      ul { margin: 6px 0; padding-left: 22px; }
+      li { margin: 3px 0; }
+      .decision { border-left: 3px solid var(--blue); padding-left: 14px; margin: 18px 0; }
+      .decision .why { color: var(--muted); font-size: 14px; }
+      a { color: var(--accent); }
+      .stat { font-size: 26px; font-weight: 700; }
+      .statlabel { color: var(--muted); font-size: 12px; }
+      .statrow { display: flex; gap: 32px; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>🦆 <span class="duck">Rubberduck</span> — Internal Design Tracker</h1>
+        <p class="tagline">A local-first orchestrator for AI coding agents. One window over a fleet of agents.</p>
+        <p class="meta">Private notes for me. Codename <code>rubber-duck</code>; public name TBD (rubberduckhq.com reserved). Not for customers.</p>
+      </header>
+
+      <section>
+        <div class="statrow panel">
+          <div><div class="stat">12</div><div class="statlabel">Acts shipped (0–11)</div></div>
+          <div><div class="stat">87</div><div class="statlabel">tests passing</div></div>
+          <div><div class="stat">8</div><div class="statlabel">build/runtime gates green</div></div>
+          <div><div class="stat">3</div><div class="statlabel">agent runtimes (generic, claude-code, codex)</div></div>
+          <div><div class="stat">0</div><div class="statlabel">runtime deps (server is stdlib Python)</div></div>
+        </div>
+      </section>
+
+      <h2>The idea</h2>
+      <p>
+        You run five coding agents in five terminals. Rubberduck is the one window that tells you what
+        they're all doing — which is busy, which is idle, <strong>which one needs you right now</strong> —
+        launches them into isolated git worktrees, lets you fork any session into a tree of parallel
+        attempts, and keeps a durable history with an <em>intention → outcome</em> summary per session.
+      </p>
+      <p class="muted">
+        It started as an extraction of uv-suite's "Watchtower" (a passive observer) and grew into an
+        active orchestrator. The observer is now a subset of the operator.
+      </p>
+
+      <h2>The wedge (why this isn't just another worktree launcher)</h2>
+      <div class="panel">
+        Conductor, Superset, ccmanager, Claude Squad, crystal, emdash — they all show you <em>live</em>
+        parallel agents well. Almost none keep <strong>durable session history with intention→outcome
+        summaries</strong>, and none treat the <strong>fork tree</strong> (which session descended from
+        which) as a first-class artifact. That history + lineage layer is the differentiator.
+        <div class="muted" style="margin-top:8px">Note: <code>superset.sh</code> (~9.2k★, PH #1 Feb 2026) is the closest commercial analog.</div>
+      </div>
+
+      <h2>Architecture</h2>
+      <pre>
+React dashboard (web/) ──SSE──▶ asyncio HTTP server (src/rubberduck/)
+                                  ├─ EventBus: in-mem ring (live) ─▶ SSE
+                                  │                              └─▶ HistoryStore (SQLite, durable)
+                                  ├─ Orchestrator ─▶ SessionSupervisor (one PTY per agent)
+                                  ├─ WorktreeManager (git worktree per session)
+                                  ├─ Summarizer (CLI / HTTP / none)
+                                  └─ AgentRuntime adapter: generic | claude-code | codex
+
+ingest: Claude Code hooks ──▶ rubberduck-hook.sh ──POST /events──▶ server
+storage: ~/.rubberduck/{db.sqlite, worktrees/, snapshots/}</pre>
+
+      <h2>Key decisions (and why)</h2>
+
+      <div class="decision">
+        <strong>Python, not Node (the original brief's stack)</strong>
+        <div class="why">Gained PTY/subprocess control, stdlib SQLite, the language to win in. Lost the
+        "zero-dep" + "single-file dashboard" badges — kept the spirit (thin deps, server is stdlib-only).</div>
+      </div>
+
+      <div class="decision">
+        <strong>One state machine, not two</strong>
+        <div class="why">The supervisor maps detected PTY state onto the <em>existing</em> event vocabulary
+        (busy→PreToolUse, idle→Stop, waiting→Notification). So <code>derive_state</code>, the dashboard, and
+        SQLite all just work for both spawned and externally-reported agents. No parallel code path.</div>
+      </div>
+
+      <div class="decision">
+        <strong>Agnostic by default, Claude-specific only where it earns it</strong>
+        <div class="why">Generic + codex paths stay runtime-neutral. Only the claude-code adapter special-cases
+        Claude (hook events + JSONL transcript for richer state/summaries) — documented as a conscious choice.</div>
+      </div>
+
+      <div class="decision">
+        <strong>SQLite, but no message queue / microservices / plugin registry / auth</strong>
+        <div class="why">The orchestration complexity (PTYs, worktrees, durable history) is <em>earned</em>.
+        Distributed-systems machinery is not. One process + SQLite, single dev, localhost — until a concrete
+        trigger says otherwise.</div>
+      </div>
+
+      <div class="decision">
+        <strong>Hooks over terminal-attach (for "watch what I run")</strong>
+        <div class="why"><code>rubberduck install-hooks --global</code> wires Claude Code so every session
+        auto-streams in — no curl, no per-repo setup. This was the missing "ignition": the engine existed,
+        this is what makes it usable.</div>
+      </div>
+
+      <div class="decision">
+        <strong>Slop guardrails enforced in CI</strong>
+        <div class="why">A grep+AST <code>slop_check.py</code> fails the build on vague-adjective docs and
+        existence-only tests. It got <em>smarter</em> mid-build (AST-aware) rather than being silenced when it
+        flagged legitimate type-narrowing guards.</div>
+      </div>
+
+      <h2>The 12 acts</h2>
+      <table>
+        <tr><th>Act</th><th>What</th><th>Status</th></tr>
+        <tr><td>0</td><td>Scaffold + 8 gates + CI + fake-agent test harness</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>1</td><td>Event core: HTTP, SSE stream, React live grid</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>2</td><td>SQLite history — survives restart</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>3</td><td>PTY-spawned, server-owned agents</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>4</td><td>git worktree per session</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>5</td><td>Fork into a lineage tree</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>6</td><td>Per-session build/test metrics</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>7</td><td>Intention → outcome summaries (CLI/HTTP/none)</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>8</td><td>claude-code adapter (hooks + JSONL transcript)</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>9</td><td>codex adapter (2nd runtime, zero core change)</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>10</td><td>Snapshots + restore</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>11</td><td>Checkpoints/rollback, spotlight, multi-model compare</td><td><span class="badge done">done</span></td></tr>
+        <tr><td>+</td><td>install-hooks + schema migration (the ignition)</td><td><span class="badge done">done</span></td></tr>
+      </table>
+
+      <h2>What's done vs. what's left</h2>
+      <div class="grid">
+        <div class="panel">
+          <h3 style="margin-top:0">✅ Working</h3>
+          <ul>
+            <li>Auto-track real Claude sessions (hooks, no curl)</li>
+            <li>Launch agents into isolated worktrees</li>
+            <li>Fork sessions + fork-tree view</li>
+            <li>Live state incl. waiting-on-you</li>
+            <li>Durable history + summaries</li>
+            <li>Metrics, snapshots/restore, checkpoints, spotlight, compare</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">🔜 Open follow-ups</h3>
+          <ul>
+            <li><strong>Terminal-attach</strong> — type into a PTY'd interactive agent from the dashboard (biggest gap)</li>
+            <li>Dashboard action buttons (fork/stop/checkpoint as clicks; UI is read-only)</li>
+            <li>Publish to PyPI (<code>pip install rubberduck</code>)</li>
+            <li>Robust <code>waiting</code> detection for generic/codex (precise only for claude via hooks)</li>
+            <li>Act 6 (later): a 2nd-runtime transcript adapter when a real user needs it</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Naming notes</h2>
+      <div class="panel">
+        "Rubber duck" is heavily contested in AI dev tooling — GitHub Copilot shipped a "Rubber Duck" feature
+        (Apr 2026), plus rubberduck.com, the VS Code extension, Rubber Ducky Labs (YC). Every short
+        <code>rubberduck.*</code> domain is taken. Decision: <strong>keep the name, took rubberduckhq.com</strong>.
+        Alternatives explored if it ever needs a pivot: DuckFleet, DuckTower, Covey, DuckRaft
+        (a "raft" is the real collective noun for ducks on water = a fleet).
+        <div class="muted" style="margin-top:8px">Open risk accepted: SEO collision + potential trademark friction with Microsoft.</div>
+      </div>
+
+      <h2>How I run it</h2>
+      <pre>rubberduck install-hooks --global   # wire Claude Code once
+rubberduck serve                    # start the server
+# then just use Claude normally — sessions appear in the dashboard
+cd web && npm run dev               # dashboard at localhost:5173</pre>
+
+      <p class="meta" style="margin-top:40px">
+        Repo: <code>github.com/utsavanand/rubber-duck</code> · Design doc: <code>rubberduck-design.md</code> ·
+        Last updated by hand — bump when acts land.
+      </p>
+    </div>
+  </body>
+</html>
