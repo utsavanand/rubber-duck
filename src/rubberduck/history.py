@@ -377,5 +377,25 @@ class HistoryStore:
             self.delete_session(key)
         return keys
 
+    def expire_stale(self, *, now_ms: int, idle_ms: int) -> list[str]:
+        """Mark sessions terminated if they haven't emitted an event in `idle_ms`.
+        Claude doesn't reliably fire SessionEnd when a terminal closes, so live
+        sessions would otherwise linger as busy/waiting forever. Returns the keys
+        that were expired."""
+        cutoff = now_ms - idle_ms
+        rows = self._conn.execute(
+            "SELECT session_key FROM sessions WHERE state != 'terminated' AND updated_at < ?",
+            (cutoff,),
+        ).fetchall()
+        keys = [r["session_key"] for r in rows]
+        if keys:
+            self._conn.execute(
+                "UPDATE sessions SET state = 'terminated', ended_at = updated_at "
+                "WHERE state != 'terminated' AND updated_at < ?",
+                (cutoff,),
+            )
+            self._conn.commit()
+        return keys
+
     def close(self) -> None:
         self._conn.close()

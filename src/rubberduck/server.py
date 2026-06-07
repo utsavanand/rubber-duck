@@ -34,6 +34,7 @@ wants direct control of the response stream. Zero runtime dependencies.
 import asyncio
 import contextlib
 import json
+import os
 import shlex
 import subprocess
 import time
@@ -352,10 +353,28 @@ class Server:
             await _write_json(writer, 400, {"error": str(e)})
             return
         opened = open_in_terminal(str(worktree.path), shlex.split(command), app=req.get("terminal"))
+        # Record a tracked row so the fork shows its lineage even though the
+        # terminal session reports under its own (unpredictable) session id.
+        child_key = req.get("session_key") or f"fork-{branch}"
+        self.bus.publish(
+            {
+                "event_type": "SessionStart",
+                "session_key": child_key,
+                "source_app": repo.name,
+                "runtime": parent.get("runtime") or "claude-code",
+                "repo_path": str(repo),
+                "worktree_path": str(worktree.path),
+                "branch": worktree.branch,
+                "parent_session_key": parent_key,
+                "intention": f"fork of {parent.get('source_app') or parent_key} ({base})",
+            }
+        )
         await _write_json(
             writer,
             200,
             {
+                "session_key": child_key,
+                "parent_session_key": parent_key,
                 "opened_in_terminal": opened,
                 "worktree": str(worktree.path),
                 "branch": worktree.branch,
@@ -390,10 +409,29 @@ class Server:
         cwd = str(parent.get("cwd") or ".")
         argv = ["claude", "--resume", session_id, "--fork-session"]
         opened = open_in_terminal(cwd, argv, app=req.get("terminal"))
+        # Record a row so the conversation fork shows its lineage.
+        child_key = f"convfork-{session_id[:8]}"
+        self.bus.publish(
+            {
+                "event_type": "SessionStart",
+                "session_key": child_key,
+                "source_app": parent.get("source_app") or "fork",
+                "runtime": "claude-code",
+                "cwd": cwd,
+                "parent_session_key": parent_key,
+                "intention": f"conversation fork of {parent.get('source_app') or parent_key}",
+            }
+        )
         await _write_json(
             writer,
             200,
-            {"opened_in_terminal": opened, "command": " ".join(argv), "cwd": cwd},
+            {
+                "session_key": child_key,
+                "parent_session_key": parent_key,
+                "opened_in_terminal": opened,
+                "command": " ".join(argv),
+                "cwd": cwd,
+            },
         )
 
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
@@ -707,9 +745,29 @@ class Server:
         adopted = await self.orchestrator.reconcile()
         if adopted:
             print(f"re-adopted {len(adopted)} tmux session(s): {', '.join(adopted)}")
+        sweep = asyncio.create_task(self._stale_sweep())
         server = await asyncio.start_server(self.handle, host, port)
-        async with server:
-            await server.serve_forever()
+        try:
+            async with server:
+                await server.serve_forever()
+        finally:
+            sweep.cancel()
+
+    async def _stale_sweep(self) -> None:
+        """Periodically terminate sessions idle past the timeout. Claude doesn't
+        reliably send SessionEnd when a terminal closes, so without this, watched
+        sessions linger as busy/waiting forever."""
+        idle_ms = int(os.environ.get("RUBBERDUCK_IDLE_MINUTES", "20")) * 60_000
+        if idle_ms <= 0:
+            return
+        while True:
+            await asyncio.sleep(60)
+            # Don't expire sessions Rubberduck launched and is still supervising.
+            live = {k for k, s in self.orchestrator._supervisors.items() if s.running}
+            now = int(time.time() * 1000)
+            for key in self.history.expire_stale(now_ms=now, idle_ms=idle_ms):
+                if key not in live:
+                    self.bus.publish({"event_type": "SessionEnd", "session_key": key})
 
 
 def _parse_request_line(line: bytes) -> tuple[str, str]:

@@ -16,6 +16,10 @@
   --danger: #d92d20;
   --danger-soft: #fef3f2;
   --card: #ffffff;
+  --amber-bg: #fffaf0;
+  --amber-border: #f0d9a8;
+  --amber-text: #92660a;
+  --amber-chip: #fff4dd;
 }
 
 :root[data-theme="dark"] {
@@ -36,6 +40,10 @@
   --danger: #f87171;
   --danger-soft: #2a1416;
   --card: #15181f;
+  --amber-bg: #2a2010;
+  --amber-border: #4a3a18;
+  --amber-text: #fbbf24;
+  --amber-chip: #3a2c14;
 }
 
 * {
@@ -154,8 +162,8 @@ code,
 
 /* ── approvals banner ── */
 .rd-approvals {
-  border: 1px solid #f0d9a8;
-  background: #fffaf0;
+  border: 1px solid var(--amber-border);
+  background: var(--amber-bg);
   border-radius: 12px;
   padding: 16px 18px;
   margin-bottom: 24px;
@@ -164,7 +172,7 @@ code,
   font-size: 14px;
   font-weight: 600;
   margin: 0 0 12px;
-  color: #92660a;
+  color: var(--amber-text);
   letter-spacing: 0.01em;
 }
 .rd-approval {
@@ -172,7 +180,7 @@ code,
   align-items: center;
   gap: 14px;
   padding: 10px 0;
-  border-top: 1px solid #f0e3c4;
+  border-top: 1px solid var(--amber-border);
 }
 .rd-approval:first-of-type {
   border-top: none;
@@ -180,13 +188,14 @@ code,
 .rd-approval .who {
   font-weight: 600;
   font-size: 13.5px;
+  color: var(--text);
 }
 .rd-approval .what {
   color: var(--text-soft);
   font-size: 13px;
 }
 .rd-approval .what code {
-  background: #fff4dd;
+  background: var(--amber-chip);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -228,8 +237,8 @@ code,
   padding: 1px 7px;
 }
 .rd-tab .count.alert {
-  background: #fff0d6;
-  color: #92660a;
+  background: var(--amber-chip);
+  color: var(--amber-text);
 }
 
 /* ── filter bar ── */
