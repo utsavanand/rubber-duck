@@ -34,6 +34,7 @@ wants direct control of the response stream. Zero runtime dependencies.
 import asyncio
 import contextlib
 import json
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -48,8 +49,9 @@ from rubberduck.orchestrator import Orchestrator, StateRuntime
 from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
 from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
-from rubberduck.snapshots import SnapshotManager, open_in_terminal, restore_command_for
+from rubberduck.snapshots import SnapshotManager, restore_command_for
 from rubberduck.spotlight import spotlight_to_main
+from rubberduck.terminal import available_terminals, open_in_terminal
 from rubberduck.websocket import (
     close_frame,
     encode_text_frame,
@@ -124,6 +126,7 @@ _ROUTES: list[Route] = [
     Route("GET", "/sessions", lambda s, r, w, h, b, seg: s._sessions(w)),
     Route("GET", "/tree", lambda s, r, w, h, b, seg: s._tree(w)),
     Route("GET", "/approvals", lambda s, r, w, h, b, seg: s._list_approvals(w)),
+    Route("GET", "/terminals", lambda s, r, w, h, b, seg: s._terminals(w)),
     Route("GET", "/snapshots", lambda s, r, w, h, b, seg: s._list_snapshots(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._diff(w, seg), **_mid("/sessions/", "/diff")),
     Route("GET", "", lambda s, r, w, h, b, seg: s._list_checkpoints(w, seg),
@@ -316,24 +319,49 @@ class Server:
         except json.JSONDecodeError:
             await _write_json(writer, 400, {"error": "invalid JSON"})
             return
-        # The child inherits the parent's runtime unless overridden.
-        command = req.get("command", "true")
-        runtime_name = req.get("runtime", parent.get("runtime") or "generic")
-        child_key = req.get("session_key")
+        command = req.get("command") or "claude"
+        repo = Path(str(parent["repo_path"]))
+        branch = req.get("branch") or f"fork/{parent_key[:8]}"
+        base = str(parent["branch"])
+
+        # Headless: let the orchestrator create the worktree and supervise the
+        # agent (used by tests / non-interactive forks).
+        if not req.get("in_terminal", True):
+            runtime_name = req.get("runtime", parent.get("runtime") or "generic")
+            try:
+                key = await self.orchestrator.launch(
+                    runtime=_build_runtime(runtime_name, command),
+                    repo_path=str(repo),
+                    branch=branch,
+                    base=base,
+                    parent_session_key=parent_key,
+                    session_key=req.get("session_key"),
+                    prompt=req.get("prompt", ""),
+                )
+            except (GitError, ValueError) as e:
+                await _write_json(writer, 400, {"error": str(e)})
+                return
+            await _write_json(writer, 200, {"session_key": key, "parent_session_key": parent_key})
+            return
+
+        # Default: create the worktree and open the agent in a terminal you can
+        # drive (an interactive agent like claude needs a real terminal).
         try:
-            key = await self.orchestrator.launch(
-                runtime=_build_runtime(runtime_name, command),
-                repo_path=str(parent["repo_path"]),
-                branch=req.get("branch"),
-                base=str(parent["branch"]),
-                parent_session_key=parent_key,
-                session_key=child_key,
-                prompt=req.get("prompt", ""),
-            )
+            worktree = self.orchestrator.worktrees.add(repo, branch, base=base)
         except (GitError, ValueError) as e:
             await _write_json(writer, 400, {"error": str(e)})
             return
-        await _write_json(writer, 200, {"session_key": key, "parent_session_key": parent_key})
+        opened = open_in_terminal(str(worktree.path), shlex.split(command), app=req.get("terminal"))
+        await _write_json(
+            writer,
+            200,
+            {
+                "opened_in_terminal": opened,
+                "worktree": str(worktree.path),
+                "branch": worktree.branch,
+                "command": command,
+            },
+        )
 
     async def _fork_conversation(
         self, writer: asyncio.StreamWriter, parent_key: str, body: bytes
@@ -358,9 +386,10 @@ class Server:
                 writer, 400, {"error": "no Claude session_id recorded for this session yet"}
             )
             return
+        req = json.loads(body or b"{}")
         cwd = str(parent.get("cwd") or ".")
         argv = ["claude", "--resume", session_id, "--fork-session"]
-        opened = open_in_terminal(cwd, argv)
+        opened = open_in_terminal(cwd, argv, app=req.get("terminal"))
         await _write_json(
             writer,
             200,
@@ -386,6 +415,9 @@ class Server:
 
     async def _tree(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"nodes": self.history.fork_tree()})
+
+    async def _terminals(self, writer: asyncio.StreamWriter) -> None:
+        await _write_json(writer, 200, {"terminals": available_terminals()})
 
     async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
         pending = [

@@ -28,7 +28,7 @@ def _get(port: int, path: str) -> dict[str, object]:
 
 def test_snapshot_list_and_restore(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # Don't actually spawn a terminal in CI: force the print fallback.
-    monkeypatch.setattr("rubberduck.snapshots.platform.system", lambda: "Unknown")
+    monkeypatch.setattr("rubberduck.terminal.platform.system", lambda: "Unknown")
 
     async def scenario() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
         store = HistoryStore(tmp_path / "db.sqlite")

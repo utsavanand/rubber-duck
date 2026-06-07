@@ -8,8 +8,6 @@ machinery is generic; only the command string is runtime-specific.
 """
 
 import json
-import platform
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -69,27 +67,3 @@ def restore_command_for(session: dict[str, Any]) -> list[str]:
     if runtime_name == "codex":
         return CodexRuntime().restore_command(cwd=cwd, session_key=key)
     return GenericRuntime("true").restore_command(cwd=cwd, session_key=key)
-
-
-def open_in_terminal(cwd: str, argv: list[str]) -> bool:
-    """Open a new terminal in `cwd` running `argv`. Returns True if a terminal
-    was spawned, False if we could only fall back to printing the command."""
-    command = f"cd {cwd} && {' '.join(argv)}"
-    system = platform.system()
-    if system == "Darwin":
-        script = f'tell app "Terminal" to do script "{command}"'
-        return _spawn(["osascript", "-e", script])
-    if system == "Linux":
-        for term in ("gnome-terminal", "x-terminal-emulator", "xterm"):
-            if _spawn([term, "-e", command]):
-                return True
-    print(f"[rubberduck] to restore, run:\n  {command}")
-    return False
-
-
-def _spawn(argv: list[str]) -> bool:
-    try:
-        subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except (OSError, FileNotFoundError):
-        return False

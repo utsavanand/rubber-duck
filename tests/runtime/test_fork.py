@@ -52,13 +52,18 @@ def test_fork_chain_builds_lineage(git_repo: Path, tmp_path: Path) -> None:
                 _post,
                 port,
                 f"/sessions/{root['session_key']}/fork",
-                {"command": agent, "branch": "child", "session_key": "B"},
+                {"command": agent, "branch": "child", "session_key": "B", "in_terminal": False},
             )
             await asyncio.to_thread(
                 _post,
                 port,
                 "/sessions/B/fork",
-                {"command": agent, "branch": "grandchild", "session_key": "C"},
+                {
+                    "command": agent,
+                    "branch": "grandchild",
+                    "session_key": "C",
+                    "in_terminal": False,
+                },
             )
             await asyncio.sleep(0.3)
             return await asyncio.to_thread(_get, port, "/tree")
@@ -92,7 +97,12 @@ def test_fork_child_branches_off_parent(git_repo: Path, tmp_path: Path) -> None:
                 _post,
                 port,
                 "/sessions/P/fork",
-                {"command": agent, "branch": "kid", "session_key": "K"},
+                {
+                    "command": agent,
+                    "branch": "kid",
+                    "session_key": "K",
+                    "in_terminal": False,  # headless launch (no terminal in tests)
+                },
             )
             await asyncio.sleep(0.3)
             sessions = await asyncio.to_thread(_get, port, "/sessions")

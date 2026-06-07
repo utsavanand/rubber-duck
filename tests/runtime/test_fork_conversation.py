@@ -72,7 +72,7 @@ def test_fork_conversation_opens_terminal_with_resume_command(
     # Don't actually spawn a terminal: capture the argv instead.
     opened: dict = {}
 
-    def fake_open(cwd: str, argv: list[str]) -> bool:
+    def fake_open(cwd: str, argv: list[str], *, app: str | None = None) -> bool:
         opened["cwd"] = cwd
         opened["argv"] = argv
         return True

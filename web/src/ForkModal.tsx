@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
 import { SessionView } from "./types";
 import { Button, Field, inputStyle, Modal, useToast } from "./ui";
 
 // Forking a session creates a NEW git worktree on a NEW branch, taken off the
-// parent session's branch. This modal makes that explicit (the old inline Fork
-// button silently branched with a generated name, which was confusing).
+// parent's branch, and opens the forked agent in a terminal you can drive.
 export function ForkModal({
   session,
   onClose,
@@ -18,19 +17,36 @@ export function ForkModal({
     session.branch ? `${session.branch}-fork` : "",
   );
   const [command, setCommand] = useState("claude");
-  const [prompt, setPrompt] = useState("");
+  const [terminals, setTerminals] = useState<string[]>([]);
+  const [terminal, setTerminal] = useState<string>("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .terminals()
+      .then((d) => {
+        setTerminals(d.terminals);
+        setTerminal(d.terminals[0] ?? "");
+      })
+      .catch(() => undefined);
+  }, []);
 
   async function submit() {
     setBusy(true);
     try {
-      const { session_key } = await api.fork(session.key, {
+      const r = await api.fork(session.key, {
         command,
         branch: branch || undefined,
+        terminal: terminal || undefined,
       });
-      toast(
-        `Forked into ${session_key.slice(0, 8)}${branch ? ` on ${branch}` : ""}`,
-      );
+      if (r.opened_in_terminal) {
+        toast(`Opened fork on ${r.branch} in ${terminal || "a terminal"}`);
+      } else {
+        toast(
+          `Worktree created; run in a terminal: cd ${r.worktree} && ${r.command}`,
+          "err",
+        );
+      }
       onClose();
     } catch (e) {
       toast(`Fork failed: ${(e as Error).message}`, "err");
@@ -41,14 +57,18 @@ export function ForkModal({
 
   return (
     <Modal title={`Fork ${session.label}`} onClose={onClose}>
-      <p style={{ marginTop: 0, fontSize: 13, color: "#565869" }}>
-        Creates a new git worktree on a new branch, taken off{" "}
+      <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-soft)" }}>
+        Creates a new git worktree on a new branch off{" "}
         <code
-          style={{ background: "#f3f3f5", padding: "1px 5px", borderRadius: 4 }}
+          style={{
+            background: "var(--bg-soft)",
+            padding: "1px 5px",
+            borderRadius: 4,
+          }}
         >
           {session.branch ?? "the session"}
-        </code>
-        . The two work independently.
+        </code>{" "}
+        and opens the agent in a terminal you can drive.
       </p>
       <Field label="New branch">
         <input
@@ -58,21 +78,28 @@ export function ForkModal({
           placeholder="feature/login-v2"
         />
       </Field>
-      <Field label="Agent command for the fork">
+      <Field label="Agent command">
         <input
           style={inputStyle}
           value={command}
           onChange={(e) => setCommand(e.target.value)}
         />
       </Field>
-      <Field label="Prompt (optional)">
-        <input
-          style={inputStyle}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="try a different approach"
-        />
-      </Field>
+      {terminals.length > 0 && (
+        <Field label="Open in">
+          <select
+            style={inputStyle}
+            value={terminal}
+            onChange={(e) => setTerminal(e.target.value)}
+          >
+            {terminals.map((t) => (
+              <option key={t} value={t}>
+                {t === "iterm" ? "iTerm" : t === "terminal" ? "Terminal" : t}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <div
         style={{
           display: "flex",

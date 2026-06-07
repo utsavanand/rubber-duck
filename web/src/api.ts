@@ -40,12 +40,27 @@ export interface CompareVariant {
 export const api = {
   launch: (req: LaunchRequest) =>
     post<{ session_key: string }>("/sessions/launch", req),
-  fork: (key: string, opts: { command?: string; branch?: string }) =>
-    post<{ session_key: string }>(`/sessions/${key}/fork`, opts),
-  forkConversation: (key: string) =>
+  fork: (
+    key: string,
+    opts: {
+      command?: string;
+      branch?: string;
+      terminal?: string;
+      in_terminal?: boolean;
+    },
+  ) =>
+    post<{
+      opened_in_terminal?: boolean;
+      worktree?: string;
+      branch?: string;
+      command?: string;
+    }>(`/sessions/${key}/fork`, opts),
+  forkConversation: (key: string, terminal?: string) =>
     post<{ opened_in_terminal: boolean; command: string; cwd: string }>(
       `/sessions/${key}/fork-conversation`,
+      { terminal },
     ),
+  terminals: () => get<{ terminals: string[] }>("/terminals"),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
   remove: (key: string) =>
     fetch(`/sessions/${key}`, { method: "DELETE" }).then((r) => r.json()),
