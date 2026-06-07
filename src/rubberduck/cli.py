@@ -41,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--cwd", default=os.getcwd())
     launch.add_argument("--session-key", default=None)
     launch.add_argument("--prompt", default="")
+
+    sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
     return parser
 
 
@@ -72,6 +74,17 @@ def _launch(command: str, cwd: str, session_key: str | None, prompt: str) -> int
     return 0
 
 
+def _snapshot() -> int:
+    req = urllib.request.Request(f"{_server_url()}/snapshots", data=b"", method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=10)
+    except OSError as e:
+        print(f"could not reach server at {_server_url()}: {e}", file=sys.stderr)
+        return 1
+    print(json.load(resp)["id"])
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
@@ -82,6 +95,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _serve(args.host, args.port)
     if args.command == "launch":
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
+    if args.command == "snapshot":
+        return _snapshot()
     print(f"command '{args.command}' is not implemented yet", file=sys.stderr)
     return 1
 

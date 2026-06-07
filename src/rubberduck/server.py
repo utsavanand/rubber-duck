@@ -7,6 +7,10 @@
     POST /sessions/launch     spawn a supervised agent {command, cwd, ...}
     POST /sessions/:key/fork  fork a session: child worktree off parent's branch
     POST /sessions/:key/stop  terminate a supervised agent
+    POST /snapshots           bundle recently-active sessions to disk
+    GET  /snapshots           list snapshots
+    GET  /snapshots/:id       fetch a snapshot manifest
+    POST /snapshots/:id/sessions/:key/restore  relaunch a session in a terminal
     GET  /stream              SSE: {type:"init", events:[...]} then per-event frames
     GET  /                    liveness; carries the X-Rubberduck self-probe header
 
@@ -16,6 +20,7 @@ wants direct control of the response stream. Zero runtime dependencies.
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from rubberduck.eventbus import Event, EventBus
@@ -24,6 +29,7 @@ from rubberduck.orchestrator import Orchestrator, StateRuntime
 from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
 from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
+from rubberduck.snapshots import SnapshotManager, open_in_terminal, restore_command_for
 from rubberduck.worktrees import GitError
 
 
@@ -44,6 +50,7 @@ class Server:
         self.history = history if history is not None else HistoryStore()
         self.bus = bus if bus is not None else EventBus(sink=self.history.record)
         self.orchestrator = Orchestrator(self.bus, history=self.history)
+        self.snapshots = SnapshotManager(self.history)
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
@@ -68,6 +75,14 @@ class Server:
                 await self._fork(writer, path[len("/sessions/") : -len("/fork")], body)
             elif method == "POST" and path.startswith("/sessions/") and path.endswith("/stop"):
                 await self._stop(writer, path[len("/sessions/") : -len("/stop")])
+            elif method == "POST" and path == "/snapshots":
+                await self._create_snapshot(writer)
+            elif method == "GET" and path == "/snapshots":
+                await self._list_snapshots(writer)
+            elif method == "POST" and path.startswith("/snapshots/") and path.endswith("/restore"):
+                await self._restore(writer, path[len("/snapshots/") : -len("/restore")])
+            elif method == "GET" and path.startswith("/snapshots/"):
+                await self._get_snapshot(writer, path[len("/snapshots/") :])
             elif method == "GET" and path == "/stream":
                 await self._stream(reader, writer)
             elif method == "GET" and path == "/":
@@ -164,6 +179,40 @@ class Server:
 
     async def _tree(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"nodes": self.history.fork_tree()})
+
+    async def _create_snapshot(self, writer: asyncio.StreamWriter) -> None:
+        snapshot_id = self.snapshots.create(now_ms=int(time.time() * 1000))
+        await _write_json(writer, 200, {"id": snapshot_id})
+
+    async def _list_snapshots(self, writer: asyncio.StreamWriter) -> None:
+        await _write_json(writer, 200, {"snapshots": self.snapshots.list()})
+
+    async def _get_snapshot(self, writer: asyncio.StreamWriter, snapshot_id: str) -> None:
+        manifest = self.snapshots.get(snapshot_id)
+        if manifest is None:
+            await _write_json(writer, 404, {"error": f"no snapshot {snapshot_id}"})
+            return
+        await _write_json(writer, 200, manifest)
+
+    async def _restore(self, writer: asyncio.StreamWriter, route: str) -> None:
+        # route is "<snapshot_id>/sessions/<session_key>"
+        parts = route.split("/sessions/")
+        if len(parts) != 2:
+            await _write_json(writer, 400, {"error": "bad restore path"})
+            return
+        snapshot_id, session_key = parts
+        manifest = self.snapshots.get(snapshot_id)
+        if manifest is None:
+            await _write_json(writer, 404, {"error": f"no snapshot {snapshot_id}"})
+            return
+        session = next((s for s in manifest["sessions"] if s["session_key"] == session_key), None)
+        if session is None:
+            await _write_json(writer, 404, {"error": f"no session {session_key} in snapshot"})
+            return
+        argv = restore_command_for(session)
+        cwd = str(session.get("worktree_path") or session.get("cwd") or ".")
+        spawned = open_in_terminal(cwd, argv)
+        await _write_json(writer, 200, {"restored": spawned, "command": " ".join(argv)})
 
     async def _stream(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         writer.write(
