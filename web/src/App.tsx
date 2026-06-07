@@ -89,21 +89,31 @@ function SessionCard({
         <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onOpen}>
           Open
         </button>
+        {/* Checkpoint records what was done — works for any session. */}
+        <button
+          className="rd-btn rd-btn-sm rd-btn-ghost"
+          title="Record what was done so far (prompts, files, tools, git)"
+          onClick={() =>
+            act("Checkpoint recorded", () =>
+              api.checkpoint(session.key, "manual"),
+            )
+          }
+        >
+          Checkpoint
+        </button>
+        {/* Worktree actions need a git branch. */}
         {session.branch && live && (
           <>
-            <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onFork}>
-              Fork
-            </button>
             <button
               className="rd-btn rd-btn-sm rd-btn-ghost"
-              onClick={() =>
-                act("Checkpointed", () => api.checkpoint(session.key, "manual"))
-              }
+              title="Branch the code: new worktree + branch off this one"
+              onClick={onFork}
             >
-              Checkpoint
+              Fork worktree
             </button>
             <button
               className="rd-btn rd-btn-sm rd-btn-ghost"
+              title="Copy this session's changes onto your main checkout to test there"
               onClick={() =>
                 act("Spotlighted to main", () => api.spotlight(session.key))
               }
@@ -111,6 +121,20 @@ function SessionCard({
               Spotlight
             </button>
           </>
+        )}
+        {/* Conversation fork only makes sense for a claude-code session. */}
+        {session.runtime === "claude-code" && live && (
+          <button
+            className="rd-btn rd-btn-sm rd-btn-ghost"
+            title="Branch the conversation: claude --resume … --fork-session"
+            onClick={() =>
+              act("Conversation forked", () =>
+                api.forkConversation(session.key),
+              )
+            }
+          >
+            Fork conversation
+          </button>
         )}
         {live && (
           <button

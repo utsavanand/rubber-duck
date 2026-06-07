@@ -9,6 +9,7 @@
     POST /sessions/launch     spawn a supervised agent {command, cwd, ...}
     POST /sessions/compare    launch one prompt as N variants side by side
     POST /sessions/:key/fork  fork a session: child worktree off parent's branch
+    POST /sessions/:key/fork-conversation  branch the Claude conversation (--fork-session)
     POST /sessions/:key/stop  terminate a supervised agent
     POST /sessions/:key/checkpoint   record what was done (prompts/files/tools/git + summary)
     GET  /sessions/:key/checkpoints   list checkpoint records
@@ -127,6 +128,8 @@ _ROUTES: list[Route] = [
     # ── control ──
     Route("POST", "/sessions/launch", lambda s, r, w, h, b, seg: s._launch(w, b)),
     Route("POST", "/sessions/compare", lambda s, r, w, h, b, seg: s._compare(w, b)),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._fork_conversation(w, seg, b),
+          **_mid("/sessions/", "/fork-conversation")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._fork(w, seg, b),
           **_mid("/sessions/", "/fork")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._stop(w, seg),
@@ -308,6 +311,42 @@ class Server:
             await _write_json(writer, 400, {"error": str(e)})
             return
         await _write_json(writer, 200, {"session_key": key, "parent_session_key": parent_key})
+
+    async def _fork_conversation(
+        self, writer: asyncio.StreamWriter, parent_key: str, body: bytes
+    ) -> None:
+        """Branch the *conversation* (not the code): spawn `claude --resume <id>
+        --fork-session`, which continues the parent's context as a new session.
+        Only works for a claude-code session whose Claude session_id is known."""
+        parent = self.history.session(parent_key)
+        if parent is None:
+            await _write_json(writer, 404, {"error": f"no session {parent_key}"})
+            return
+        if (parent.get("runtime") or "") != "claude-code":
+            await _write_json(
+                writer, 400, {"error": "conversation fork is only for claude-code sessions"}
+            )
+            return
+        session_id = self.history.session_id_for(parent_key)
+        if not session_id:
+            await _write_json(
+                writer, 400, {"error": "no Claude session_id recorded for this session yet"}
+            )
+            return
+        command = f"claude --resume {session_id} --fork-session"
+        cwd = parent.get("worktree_path") or parent.get("cwd")
+        try:
+            key = await self.orchestrator.launch(
+                runtime=_build_runtime("claude-code", command),
+                cwd=str(cwd) if cwd else None,
+                parent_session_key=parent_key,
+            )
+        except (GitError, ValueError) as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        await _write_json(
+            writer, 200, {"session_key": key, "parent_session_key": parent_key, "command": command}
+        )
 
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         stopped = await self.orchestrator.stop(session_key)

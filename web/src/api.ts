@@ -42,6 +42,10 @@ export const api = {
     post<{ session_key: string }>("/sessions/launch", req),
   fork: (key: string, opts: { command?: string; branch?: string }) =>
     post<{ session_key: string }>(`/sessions/${key}/fork`, opts),
+  forkConversation: (key: string) =>
+    post<{ session_key: string; command: string }>(
+      `/sessions/${key}/fork-conversation`,
+    ),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
   checkpoint: (key: string, label: string) =>
     post<{ id: string; label: string; summary: string }>(
