@@ -128,12 +128,22 @@ function SessionCard({
         {session.runtime === "claude-code" && live && (
           <button
             className="rd-btn rd-btn-sm rd-btn-ghost"
-            title="Branch the conversation: claude --resume … --fork-session"
-            onClick={() =>
-              act("Conversation forked", () =>
-                api.forkConversation(session.key),
-              )
-            }
+            title="Open the forked conversation in a new terminal: claude --resume … --fork-session"
+            onClick={async () => {
+              try {
+                const r = await api.forkConversation(session.key);
+                if (r.opened_in_terminal) {
+                  toast("Opened forked conversation in a new terminal");
+                } else {
+                  toast(`Run this yourself: ${r.command}`, "err");
+                }
+              } catch (e) {
+                toast(
+                  `Fork conversation failed: ${(e as Error).message}`,
+                  "err",
+                );
+              }
+            }}
           >
             Fork conversation
           </button>

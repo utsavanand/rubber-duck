@@ -43,7 +43,7 @@ export const api = {
   fork: (key: string, opts: { command?: string; branch?: string }) =>
     post<{ session_key: string }>(`/sessions/${key}/fork`, opts),
   forkConversation: (key: string) =>
-    post<{ session_key: string; command: string }>(
+    post<{ opened_in_terminal: boolean; command: string; cwd: string }>(
       `/sessions/${key}/fork-conversation`,
     ),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),

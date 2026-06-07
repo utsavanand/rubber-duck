@@ -321,9 +321,11 @@ class Server:
     async def _fork_conversation(
         self, writer: asyncio.StreamWriter, parent_key: str, body: bytes
     ) -> None:
-        """Branch the *conversation* (not the code): spawn `claude --resume <id>
-        --fork-session`, which continues the parent's context as a new session.
-        Only works for a claude-code session whose Claude session_id is known."""
+        """Branch the *conversation* (not the code): open `claude --resume <id>
+        --fork-session` in a NEW terminal window so you can interact with the
+        forked conversation. Claude is interactive, so it belongs in a real
+        terminal, not a headless PTY. Only for a claude-code session whose
+        Claude session_id is known."""
         parent = self.history.session(parent_key)
         if parent is None:
             await _write_json(writer, 404, {"error": f"no session {parent_key}"})
@@ -339,19 +341,13 @@ class Server:
                 writer, 400, {"error": "no Claude session_id recorded for this session yet"}
             )
             return
-        command = f"claude --resume {session_id} --fork-session"
-        cwd = parent.get("worktree_path") or parent.get("cwd")
-        try:
-            key = await self.orchestrator.launch(
-                runtime=_build_runtime("claude-code", command),
-                cwd=str(cwd) if cwd else None,
-                parent_session_key=parent_key,
-            )
-        except (GitError, ValueError) as e:
-            await _write_json(writer, 400, {"error": str(e)})
-            return
+        cwd = str(parent.get("cwd") or ".")
+        argv = ["claude", "--resume", session_id, "--fork-session"]
+        opened = open_in_terminal(cwd, argv)
         await _write_json(
-            writer, 200, {"session_key": key, "parent_session_key": parent_key, "command": command}
+            writer,
+            200,
+            {"opened_in_terminal": opened, "command": " ".join(argv), "cwd": cwd},
         )
 
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
