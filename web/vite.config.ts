@@ -8,6 +8,7 @@ export default defineConfig({
       "/events": "http://localhost:4200",
       "/stream": "http://localhost:4200",
       "/sessions": "http://localhost:4200",
+      "/snapshots": "http://localhost:4200",
       "/tree": "http://localhost:4200",
     },
   },

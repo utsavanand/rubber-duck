@@ -28,6 +28,8 @@ export interface SessionView {
   intention?: string;
   outcome?: string;
   compareGroup?: string;
+  runtime?: string;
+  branch?: string;
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -46,6 +48,8 @@ export interface PersistedSession {
   intention?: string | null;
   outcome_summary?: string | null;
   compare_group?: string | null;
+  runtime?: string | null;
+  branch?: string | null;
 }
 
 export function viewFromPersisted(s: PersistedSession): SessionView {
@@ -63,6 +67,8 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     intention: s.intention ?? undefined,
     outcome: s.outcome_summary ?? undefined,
     compareGroup: s.compare_group ?? undefined,
+    runtime: s.runtime ?? undefined,
+    branch: s.branch ?? undefined,
   };
 }
 

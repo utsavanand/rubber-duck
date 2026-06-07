@@ -12,6 +12,9 @@
     GET  /sessions/:key/checkpoints   list checkpoints
     POST /sessions/:key/rollback      restore worktree to a checkpoint {commit}
     POST /sessions/:key/spotlight     apply worktree changes onto the main checkout
+    GET  /sessions/:key/diff          git diff of the session's worktree
+    GET  /sessions/:key/output        SSE: live agent output (PTY) lines
+    POST /sessions/:key/input         write to the agent's stdin (terminal-attach)
     POST /snapshots           bundle recently-active sessions to disk
     GET  /snapshots           list snapshots
     GET  /snapshots/:id       fetch a snapshot manifest
@@ -25,6 +28,7 @@ wants direct control of the response stream. Zero runtime dependencies.
 
 import asyncio
 import json
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -97,6 +101,12 @@ class Server:
                 await self._rollback(writer, path[len("/sessions/") : -len("/rollback")], body)
             elif method == "POST" and path.startswith("/sessions/") and path.endswith("/spotlight"):
                 await self._spotlight(writer, path[len("/sessions/") : -len("/spotlight")])
+            elif method == "GET" and path.startswith("/sessions/") and path.endswith("/diff"):
+                await self._diff(writer, path[len("/sessions/") : -len("/diff")])
+            elif method == "GET" and path.startswith("/sessions/") and path.endswith("/output"):
+                await self._output(reader, writer, path[len("/sessions/") : -len("/output")])
+            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/input"):
+                await self._input(writer, path[len("/sessions/") : -len("/input")], body)
             elif method == "POST" and path == "/snapshots":
                 await self._create_snapshot(writer)
             elif method == "GET" and path == "/snapshots":
@@ -257,6 +267,67 @@ class Server:
             await _write_json(writer, 400, {"error": str(e)})
             return
         await _write_json(writer, 200, {"synced_files": files})
+
+    async def _diff(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        worktree = self._worktree_of(session_key)
+        if not worktree:
+            await _write_json(writer, 200, {"diff": ""})
+            return
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["git", "-C", worktree, "diff", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        await _write_json(writer, 200, {"diff": result.stdout})
+
+    async def _input(self, writer: asyncio.StreamWriter, session_key: str, body: bytes) -> None:
+        supervisor = self.orchestrator.get(session_key)
+        if supervisor is None:
+            await _write_json(
+                writer, 404, {"error": "no live session (not launched by Rubberduck)"}
+            )
+            return
+        text = json.loads(body or b"{}").get("text", "")
+        wrote = supervisor.write_input(text)
+        await _write_json(writer, 200 if wrote else 409, {"written": wrote})
+
+    async def _output(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, session_key: str
+    ) -> None:
+        supervisor = self.orchestrator.get(session_key)
+        if supervisor is None:
+            await _write_json(writer, 404, {"error": "no live session to stream"})
+            return
+        writer.write(
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/event-stream\r\n"
+            b"Cache-Control: no-cache\r\n\r\n"
+        )
+        await writer.drain()
+        feed = supervisor.subscribe_output()
+        disconnect = asyncio.ensure_future(reader.read())
+        try:
+            while True:
+                nxt = asyncio.ensure_future(feed.__anext__())
+                done, _ = await asyncio.wait(
+                    {nxt, disconnect},
+                    timeout=KEEPALIVE_SECONDS,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if disconnect in done:
+                    nxt.cancel()
+                    break
+                if nxt not in done:
+                    nxt.cancel()
+                    writer.write(b": keepalive\r\n\r\n")
+                    await writer.drain()
+                    continue
+                writer.write(f"data: {json.dumps({'line': nxt.result()})}\n\n".encode())
+                await writer.drain()
+        finally:
+            disconnect.cancel()
+            await feed.aclose()
 
     async def _compare(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         try:

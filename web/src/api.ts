@@ -1,0 +1,89 @@
+// Thin wrapper over the Rubberduck server. Every POST action the backend
+// exposes lives here so components never hand-roll fetches.
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      (data as { error?: string }).error ?? `${res.status} ${res.statusText}`,
+    );
+  }
+  return data as T;
+}
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return (await res.json()) as T;
+}
+
+export interface LaunchRequest {
+  command: string;
+  runtime?: "generic" | "claude-code" | "codex";
+  repo_path?: string;
+  cwd?: string;
+  branch?: string;
+  prompt?: string;
+  session_key?: string;
+}
+
+export interface CompareVariant {
+  runtime: "generic" | "claude-code" | "codex";
+  command: string;
+}
+
+export const api = {
+  launch: (req: LaunchRequest) =>
+    post<{ session_key: string }>("/sessions/launch", req),
+  fork: (key: string, opts: { command?: string; branch?: string }) =>
+    post<{ session_key: string }>(`/sessions/${key}/fork`, opts),
+  stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
+  checkpoint: (key: string, label: string) =>
+    post<{ commit: string }>(`/sessions/${key}/checkpoint`, { label }),
+  checkpoints: (key: string) =>
+    get<{
+      checkpoints: { commit_sha: string; label: string; created_at: number }[];
+    }>(`/sessions/${key}/checkpoints`),
+  rollback: (key: string, commit: string) =>
+    post<{ rolled_back_to: string }>(`/sessions/${key}/rollback`, { commit }),
+  spotlight: (key: string) =>
+    post<{ synced_files: string[] }>(`/sessions/${key}/spotlight`),
+  compare: (req: {
+    repo_path: string;
+    prompt: string;
+    variants: CompareVariant[];
+  }) =>
+    post<{ group: string; session_keys: string[] }>("/sessions/compare", req),
+  snapshot: () => post<{ id: string }>("/snapshots"),
+  snapshots: () =>
+    get<{ snapshots: { id: string; created_at: number }[] }>("/snapshots"),
+  restore: (snapshotId: string, key: string) =>
+    post<{ command: string }>(
+      `/snapshots/${snapshotId}/sessions/${key}/restore`,
+    ),
+  sessionEvents: (key: string) =>
+    get<{ events: RawEvent[] }>("/events").then((d) => ({
+      events: d.events.filter((e) => sessionKeyOf(e) === key),
+    })),
+};
+
+interface RawEvent {
+  _id: string;
+  _ts: number;
+  event_type?: string;
+  session_key?: string;
+  session_id?: string;
+  uvs_session_id?: string;
+  tool_name?: string;
+}
+
+export type { RawEvent };
+
+function sessionKeyOf(e: RawEvent): string | undefined {
+  return e.session_key ?? e.uvs_session_id ?? e.session_id;
+}

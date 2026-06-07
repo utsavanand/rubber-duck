@@ -15,6 +15,8 @@ import os
 import pty
 import signal
 import uuid
+from collections import deque
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Protocol
 
@@ -61,6 +63,9 @@ class SessionSupervisor:
         self._proc: asyncio.subprocess.Process | None = None
         self._state: SessionState = "busy"
         self._task: asyncio.Task[None] | None = None
+        self._primary_fd: int | None = None  # PTY master, for writing input
+        self._output = deque[str](maxlen=2000)  # recent output lines, for the UI
+        self._output_subs: set[asyncio.Queue[str]] = set()
 
     def _emit(self, event_type: str, **fields: object) -> None:
         self.bus.publish(
@@ -89,6 +94,7 @@ class SessionSupervisor:
             start_new_session=True,
         )
         os.close(secondary)
+        self._primary_fd = primary
         self._emit("SessionStart")
         self._task = asyncio.create_task(self._pump(primary))
 
@@ -101,6 +107,7 @@ class SessionSupervisor:
         try:
             async for raw in reader:
                 line = raw.decode(errors="replace")
+                self._record_output(line)
                 tool = self.runtime.tool_in(line)
                 if tool is not None:
                     self._emit("PreToolUse", tool_name=tool)
@@ -111,6 +118,36 @@ class SessionSupervisor:
         finally:
             transport.close()
             await self._finish()
+
+    def _record_output(self, line: str) -> None:
+        self._output.append(line)
+        for queue in self._output_subs:
+            queue.put_nowait(line)
+
+    def output_tail(self, limit: int = 500) -> list[str]:
+        lines = list(self._output)
+        return lines[-limit:] if limit < len(lines) else lines
+
+    async def subscribe_output(self) -> AsyncGenerator[str, None]:
+        """Yield output lines as the agent emits them. Replays the recent tail
+        first so a late subscriber sees context."""
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        for line in self.output_tail():
+            queue.put_nowait(line)
+        self._output_subs.add(queue)
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            self._output_subs.discard(queue)
+
+    def write_input(self, text: str) -> bool:
+        """Write to the agent's stdin (terminal-attach). Returns False if the
+        session isn't running."""
+        if self._primary_fd is None or not self.running:
+            return False
+        os.write(self._primary_fd, text.encode())
+        return True
 
     async def _finish(self) -> None:
         if self._proc is not None:
