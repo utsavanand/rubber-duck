@@ -148,22 +148,22 @@ export default function Home() {
           </div>
           <div className="steps">
             <Step
-              n="Step 1"
+              n="Once"
               title="Connect your agent"
-              body="Wire Claude Code once so every session streams in automatically."
+              body="A one-time setup: wire Claude Code so every session reports to Rubberduck. Run it once and forget it."
               code="rubberduck install-hooks --global"
             />
             <Step
-              n="Step 2"
+              n="Each time"
               title="Start the server"
-              body="A local process that watches and orchestrates your sessions."
+              body="The running process that listens, stores history, and serves the dashboard at localhost:4200. Leave it running."
               code="rubberduck serve"
             />
             <Step
-              n="Step 3"
-              title="Open the dashboard"
-              body="Launch the dashboard and use your agents as usual. Sessions appear on their own."
-              code="rubberduck dashboard"
+              n="Then"
+              title="Work as usual"
+              body="Use Claude Code normally. Sessions appear in the dashboard on their own — no extra steps."
+              code="open http://localhost:4200"
             />
           </div>
         </section>

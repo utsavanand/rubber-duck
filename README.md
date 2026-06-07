@@ -8,25 +8,41 @@ Codex, any CLI agent) into isolated git worktrees, supervises them, lets you
 fork a running session into a tree of parallel attempts, and keeps durable
 history with an intention → outcome summary per session.
 
-Design: [`rubberduck-design.md`](./rubberduck-design.md). Built Act by Act
-(0–10 complete).
+Design: [`rubberduck-design.md`](./rubberduck-design.md).
 
-## Run
+## Install
 
 ```sh
-pip install -e .
-rubberduck serve                       # http://127.0.0.1:4200
-# in another shell:
-rubberduck launch "claude" --cwd ~/myrepo --prompt "add a healthcheck"
-rubberduck snapshot                    # bundle active sessions
-
-cd web && npm install && npm run dev   # dashboard (proxies to the server)
+pip install rubberduckhq
 ```
 
-Launch on a repo to get an isolated git worktree per session; fork a session
-to branch it; sessions are tracked live and persisted with an intention →
-outcome summary. Runtimes: `generic` (any CLI), `claude-code` (richest —
-hook events + JSONL transcript), `codex`.
+Requires Python 3.11+. Bring your own agent (Claude Code, Codex, any CLI agent)
+and your own API key — Rubberduck never sees your code or credentials.
+
+## Use it
+
+There are two commands, and they do different things:
+
+```sh
+rubberduck install-hooks --global   # ONCE: wire Claude Code to report to Rubberduck
+rubberduck serve                    # EACH TIME: run the server + dashboard at :4200
+```
+
+- **`install-hooks`** edits Claude Code's config so every `claude` session
+  automatically streams into Rubberduck. Run it **once** per machine (or once
+  per repo without `--global`). You never run it again.
+- **`serve`** is the running process: it receives those events, stores history,
+  serves the dashboard, and orchestrates agents you launch. Run it **whenever**
+  you want Rubberduck active, and leave it running. Open **http://localhost:4200**.
+
+`install-hooks` makes Claude *talk to* Rubberduck; `serve` is what's *listening*.
+You need both — but only `serve` repeatedly.
+
+Then just use Claude Code as usual — sessions appear in the dashboard on their
+own. From there you can launch agents into isolated git worktrees, fork a
+session into a tree of parallel attempts, answer permission requests, and read
+per-session checkpoints (prompts, files, tools, outcome). Runtimes: `generic`
+(any CLI), `claude-code` (richest — hook events + JSONL transcript), `codex`.
 
 ## Develop
 
