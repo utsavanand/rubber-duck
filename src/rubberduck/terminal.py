@@ -49,7 +49,10 @@ def open_in_terminal(
     agent = " ".join(_q(a) for a in argv)
     if heartbeat is not None:
         agent = _with_heartbeat(agent, *heartbeat)
-    command = f"cd {_q(cwd)} && {exports}{agent}"
+    # Tag the tab so we can find and close it later. We set the title from the
+    # session key passed via env (RUBBERDUCK_SESSION_KEY), if any.
+    title = _title_command(env)
+    command = f"cd {_q(cwd)} && {title}{exports}{agent}"
     system = platform.system()
 
     if system == "Darwin":
@@ -65,6 +68,68 @@ def open_in_terminal(
 
     print(f"[rubberduck] open a terminal and run:\n  {command}")
     return False
+
+
+TITLE_PREFIX = "rubberduck:"
+
+
+def _title_command(env: dict[str, str] | None) -> str:
+    """Shell to set the tab title to `rubberduck:<key>` so close_terminal can
+    find it. Empty when there's no session key to tag with."""
+    key = (env or {}).get("RUBBERDUCK_SESSION_KEY")
+    if not key:
+        return ""
+    # OSC 0 sets the window/tab title; printf so it runs before the agent.
+    return f'printf "\\033]0;{TITLE_PREFIX}{key}\\007"; '
+
+
+def close_terminal(session_key: str, *, app: str | None = None) -> bool:
+    """Close the terminal tab Rubberduck opened for this session (tagged with
+    `rubberduck:<key>` in its title). Returns True if a close was attempted.
+    macOS only — no-op elsewhere."""
+    if platform.system() != "Darwin":
+        return False
+    target = f"{TITLE_PREFIX}{session_key}"
+    choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
+    if choice == "iterm" and _iterm_installed():
+        return _spawn(["osascript", "-e", _close_iterm_script(target)])
+    return _spawn(["osascript", "-e", _close_terminal_script(target)])
+
+
+def _close_terminal_script(target: str) -> str:
+    esc = _esc(target)
+    # Walk Terminal tabs; close the one whose custom title we set. Closing the
+    # tab kills the agent running in it.
+    return (
+        'tell application "Terminal"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        f'      if (custom title of t as string) contains "{esc}" then\n'
+        "        close t\n"
+        "        return\n"
+        "      end if\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell"
+    )
+
+
+def _close_iterm_script(target: str) -> str:
+    esc = _esc(target)
+    return (
+        'tell application "iTerm"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        "      repeat with s in sessions of t\n"
+        f'        if (name of s as string) contains "{esc}" then\n'
+        "          close t\n"
+        "          return\n"
+        "        end if\n"
+        "      end repeat\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell"
+    )
 
 
 def _with_heartbeat(agent: str, url: str, session_key: str) -> str:

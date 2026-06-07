@@ -28,6 +28,16 @@ function uptime(startedAt: number, now: number): string {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
+function createdAt(ts: number): string {
+  // Local date + time the session started, e.g. "Jun 7, 11:48 PM".
+  return new Date(ts).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function SessionCard({
   session,
   now,
@@ -75,7 +85,8 @@ function SessionCard({
         {session.lastTool ? ` · ${session.lastTool}` : ""}
       </div>
       <div className="sub">
-        up {uptime(session.startedAt, now)} · {session.eventCount} events
+        started {createdAt(session.startedAt)} · up{" "}
+        {uptime(session.startedAt, now)} · {session.eventCount} events
         {session.metrics?.build ? ` · ${session.metrics.build} builds` : ""}
         {session.metrics?.test ? ` · ${session.metrics.test} tests` : ""}
       </div>

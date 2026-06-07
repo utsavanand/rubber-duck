@@ -54,7 +54,7 @@ from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
 from rubberduck.snapshots import SnapshotManager, restore_command_for
 from rubberduck.spotlight import spotlight_to_main
-from rubberduck.terminal import available_terminals, open_in_terminal
+from rubberduck.terminal import available_terminals, close_terminal, open_in_terminal
 from rubberduck.websocket import (
     close_frame,
     encode_text_frame,
@@ -571,6 +571,10 @@ class Server:
             )
             return
         await self.orchestrator.stop(session_key)
+        # Close the terminal tab we opened (launched sessions only — never a
+        # watched session's terminal, which the user started themselves).
+        if row is not None and row.get("heartbeat"):
+            close_terminal(session_key)
         self._remove_worktree(row)
         deleted = self.history.delete_session(session_key)
         self.approvals.drop_session(session_key)

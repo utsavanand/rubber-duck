@@ -114,7 +114,8 @@ export function SessionDetail({
           <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
             {session.state} · {session.runtime ?? "—"} · {session.eventCount}{" "}
             events
-            {session.branch ? ` · ${session.branch}` : ""}
+            {session.branch ? ` · ${session.branch}` : ""} · started{" "}
+            {new Date(session.startedAt).toLocaleString()}
           </div>
           {session.intention && (
             <div
