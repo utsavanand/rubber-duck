@@ -11,7 +11,8 @@ type InitFrame = { type: "init"; events: RubberduckEvent[] };
 
 type Action =
   | { kind: "seed"; sessions: PersistedSession[] }
-  | { kind: "event"; event: RubberduckEvent };
+  | { kind: "event"; event: RubberduckEvent }
+  | { kind: "remove"; keys: string[] };
 
 function isInit(data: unknown): data is InitFrame {
   return (
@@ -34,12 +35,18 @@ function reduce(
     }
     return next;
   }
+  if (action.kind === "remove") {
+    const next = new Map(state);
+    for (const key of action.keys) next.delete(key);
+    return next;
+  }
   return applyEvent(state, action.event);
 }
 
 export function useEventStream(): {
   sessions: SessionView[];
   connected: boolean;
+  removeSessions: (keys: string[]) => void;
 } {
   const [sessions, dispatch] = useReducer(
     reduce,
@@ -80,5 +87,6 @@ export function useEventStream(): {
   const list = [...sessions.values()].sort(
     (a, b) => b.startedAt - a.startedAt || a.key.localeCompare(b.key),
   );
-  return { sessions: list, connected };
+  const removeSessions = (keys: string[]) => dispatch({ kind: "remove", keys });
+  return { sessions: list, connected, removeSessions };
 }

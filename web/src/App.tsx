@@ -32,11 +32,13 @@ function SessionCard({
   now,
   onOpen,
   onFork,
+  onDelete,
 }: {
   session: SessionView;
   now: number;
   onOpen: () => void;
   onFork: () => void;
+  onDelete: () => void;
 }) {
   const toast = useToast();
   const live = session.state !== "terminated";
@@ -147,7 +149,7 @@ function SessionCard({
         <button
           className="rd-btn rd-btn-sm rd-btn-danger"
           title="Remove this session from history"
-          onClick={() => act("Deleted", () => api.remove(session.key))}
+          onClick={onDelete}
         >
           Delete
         </button>
@@ -160,9 +162,31 @@ type Tab = "sessions" | "tree";
 type Filter = "active" | "all";
 
 function Dashboard() {
-  const { sessions, connected } = useEventStream();
+  const { sessions, connected, removeSessions } = useEventStream();
   const toast = useToast();
   const now = useNow(1000);
+
+  async function deleteSession(key: string) {
+    try {
+      await api.remove(key);
+      removeSessions([key]); // drop it from the grid immediately
+      toast("Deleted");
+    } catch (e) {
+      toast(`Delete failed: ${(e as Error).message}`, "err");
+    }
+  }
+
+  async function clearTerminated(terminatedKeys: string[]) {
+    try {
+      const r = await api.clearTerminated();
+      removeSessions(terminatedKeys);
+      toast(
+        `Cleared ${r.cleared} terminated session${r.cleared === 1 ? "" : "s"}`,
+      );
+    } catch (e) {
+      toast(`Clear failed: ${(e as Error).message}`, "err");
+    }
+  }
   const [tab, setTab] = useState<Tab>("sessions");
   const [filter, setFilter] = useState<Filter>("active");
   const [modal, setModal] = useState<"launch" | "compare" | "snapshots" | null>(
@@ -250,12 +274,13 @@ function Dashboard() {
               <button
                 className="rd-btn rd-btn-sm rd-btn-ghost"
                 title="Delete all terminated sessions from history"
-                onClick={async () => {
-                  const r = await api.clearTerminated();
-                  toast(
-                    `Cleared ${r.cleared} terminated session${r.cleared === 1 ? "" : "s"}`,
-                  );
-                }}
+                onClick={() =>
+                  clearTerminated(
+                    sessions
+                      .filter((s) => s.state === "terminated")
+                      .map((s) => s.key),
+                  )
+                }
               >
                 Clear terminated
               </button>
@@ -282,6 +307,7 @@ function Dashboard() {
                   now={now}
                   onOpen={() => setOpenKey(s.key)}
                   onFork={() => setForkKey(s.key)}
+                  onDelete={() => deleteSession(s.key)}
                 />
               ))}
             </div>
