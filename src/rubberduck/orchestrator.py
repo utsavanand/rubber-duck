@@ -274,3 +274,13 @@ class Orchestrator:
 
     def get(self, session_key: str) -> SessionSupervisor | None:
         return self._supervisors.get(session_key)
+
+    def inject_key(self, session_key: str, key: str) -> bool:
+        """Send a symbolic key (e.g. '1', 'Escape') to a live session's stdin.
+        Used by the approval workflow to answer a permission prompt. Only works
+        for sessions Rubberduck launched (it owns their PTY)."""
+        supervisor = self._supervisors.get(session_key)
+        if supervisor is None:
+            return False
+        text = {"Escape": "\x1b", "Enter": "\r"}.get(key, key + "\r")
+        return supervisor.write_input(text)

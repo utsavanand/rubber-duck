@@ -4,6 +4,8 @@
     GET  /events              last 100 events as JSON (polling fallback)
     GET  /sessions            persisted session rows, incl. terminated (SQLite)
     GET  /tree                fork lineage: nodes with parent_session_key
+    GET  /approvals           pending permission requests awaiting a decision
+    POST /approvals/:id/decide  answer an approval {decision: approve|deny}
     POST /sessions/launch     spawn a supervised agent {command, cwd, ...}
     POST /sessions/compare    launch one prompt as N variants side by side
     POST /sessions/:key/fork  fork a session: child worktree off parent's branch
@@ -33,6 +35,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rubberduck.approvals import ApprovalRegistry
 from rubberduck.checkpoints import create_checkpoint, rollback
 from rubberduck.eventbus import Event, EventBus
 from rubberduck.history import HistoryStore
@@ -60,9 +63,19 @@ KEEPALIVE_SECONDS = 15
 class Server:
     def __init__(self, bus: EventBus | None = None, history: HistoryStore | None = None) -> None:
         self.history = history if history is not None else HistoryStore()
-        self.bus = bus if bus is not None else EventBus(sink=self.history.record)
+        self.bus = bus if bus is not None else EventBus(sink=self._sink)
         self.orchestrator = Orchestrator(self.bus, history=self.history)
         self.snapshots = SnapshotManager(self.history)
+        self.approvals = ApprovalRegistry(self.orchestrator.inject_key)
+
+    def _sink(self, event: dict[str, Any]) -> None:
+        """Fan a published event to the durable store and the approval registry."""
+        self.history.record(event)
+        self.approvals.from_event(event)
+        if event.get("event_type") == "SessionEnd":
+            key = event.get("session_key") or event.get("session_id")
+            if key:
+                self.approvals.drop_session(str(key))
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
@@ -81,6 +94,12 @@ class Server:
                 await self._sessions(writer)
             elif method == "GET" and path == "/tree":
                 await self._tree(writer)
+            elif method == "GET" and path == "/approvals":
+                await self._list_approvals(writer)
+            elif method == "POST" and path.startswith("/approvals/") and path.endswith("/decide"):
+                await self._decide_approval(
+                    writer, path[len("/approvals/") : -len("/decide")], body
+                )
             elif method == "POST" and path == "/sessions/launch":
                 await self._launch(writer, body)
             elif method == "POST" and path == "/sessions/compare":
@@ -211,6 +230,30 @@ class Server:
 
     async def _tree(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"nodes": self.history.fork_tree()})
+
+    async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
+        pending = [
+            {
+                "id": a.id,
+                "session_key": a.session_key,
+                "tool_name": a.tool_name,
+                "detail": a.detail,
+                "created_at": a.created_at,
+            }
+            for a in self.approvals.pending()
+        ]
+        await _write_json(writer, 200, {"approvals": pending})
+
+    async def _decide_approval(
+        self, writer: asyncio.StreamWriter, approval_id: str, body: bytes
+    ) -> None:
+        decision = json.loads(body or b"{}").get("decision")
+        if decision not in ("approve", "deny"):
+            await _write_json(writer, 400, {"error": "decision must be approve or deny"})
+            return
+        landed = self.approvals.decide(approval_id, decision)
+        status = 200 if landed else 409
+        await _write_json(writer, status, {"decided": landed, "decision": decision})
 
     def _worktree_of(self, session_key: str) -> str | None:
         row = self.history.session(session_key)

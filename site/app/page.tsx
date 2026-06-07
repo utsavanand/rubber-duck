@@ -1,13 +1,12 @@
 export default function Home() {
   return (
     <>
+      {/* nav */}
       <div className="container">
         <nav className="nav">
           <div className="brand">
             <span>🦆</span>
-            <span>
-              Rubber<span className="duck">duck</span>
-            </span>
+            <span>Rubberduck</span>
           </div>
           <div className="nav-links">
             <a href="#features">Features</a>
@@ -26,117 +25,111 @@ export default function Home() {
       {/* hero */}
       <div className="container">
         <header className="hero">
-          <span className="eyebrow">
-            Local-first · runs on your machine · bring your own agent
-          </span>
-          <h1>
-            One window over your{" "}
-            <span className="grad">fleet of AI agents</span>
-          </h1>
+          <span className="eyebrow">Local-first · Bring your own agent</span>
+          <h1>One control plane for your AI coding agents.</h1>
           <p className="sub">
-            You run five coding agents in five terminals. Rubberduck is the one
-            window that tells you what they&rsquo;re all doing &mdash; and which
-            one needs you right now.
+            You run several coding agents in parallel. Rubberduck is the single
+            window that shows what each is doing, surfaces the one that needs
+            you, and orchestrates their work across isolated git worktrees
+            &mdash; on your machine, with your code never leaving it.
           </p>
           <div className="hero-cta">
             <a href="#install" className="btn btn-primary">
-              Install
+              Get started
             </a>
-            <a href="#how" className="btn btn-ghost">
-              See how it works
+            <a
+              href="https://github.com/utsavanand/rubber-duck"
+              className="btn btn-ghost"
+            >
+              View on GitHub
             </a>
-          </div>
-          <div>
-            <span className="code-chip">
-              <span className="dollar">$</span> pip install rubberduck
-            </span>
-          </div>
-
-          {/* live-dashboard mock */}
-          <div className="terminal">
-            <div className="terminal-bar">
-              <span className="dot r" />
-              <span className="dot y" />
-              <span className="dot g" />
-            </div>
-            <div className="terminal-body">
-              <div className="sess busy">
-                <div className="top">
-                  <span className="name">api-refactor</span>
-                  <span className="state">busy</span>
-                </div>
-                <div className="meta">
-                  PreToolUse · Edit · up 4m 12s · 31 events
-                </div>
-              </div>
-              <div className="sess waiting">
-                <div className="top">
-                  <span className="name">auth-migration</span>
-                  <span className="state">waiting on you</span>
-                </div>
-                <div className="meta">
-                  PermissionRequest · up 2m 03s · 14 events
-                </div>
-              </div>
-              <div className="sess idle">
-                <div className="top">
-                  <span className="name">docs-pass</span>
-                  <span className="state">idle</span>
-                </div>
-                <div className="meta">Stop · 2 builds · 1 test · 9 events</div>
-              </div>
-              <div className="sess busy">
-                <div className="top">
-                  <span className="name">search-feature</span>
-                  <span className="state">busy</span>
-                </div>
-                <div className="meta">forked from api-refactor · up 1m 40s</div>
-              </div>
-            </div>
           </div>
         </header>
       </div>
 
+      {/* product mock */}
+      <div className="container">
+        <div className="product">
+          <div className="window">
+            <div className="window-bar">
+              <span className="dot" />
+              <span className="dot" />
+              <span className="dot" />
+              <span className="title">Rubberduck &mdash; localhost:4200</span>
+            </div>
+            <div className="window-body">
+              <Sess
+                kind="busy"
+                name="api-refactor"
+                state="Busy"
+                meta="Edit · up 4m 12s · 31 events"
+              />
+              <Sess
+                kind="wait"
+                name="auth-migration"
+                state="Waiting on you"
+                meta="PermissionRequest · up 2m 03s · 14 events"
+              />
+              <Sess
+                kind="idle"
+                name="docs-pass"
+                state="Idle"
+                meta="2 builds · 1 test · 9 events"
+              />
+              <Sess
+                kind="busy"
+                name="search-feature"
+                state="Busy"
+                meta="forked from api-refactor · up 1m 40s"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* features */}
       <div className="container">
-        <section id="features">
-          <h2 className="section-title">
-            Built for running many agents at once
-          </h2>
-          <p className="section-sub">
-            Not another single-agent chat. Rubberduck is the control plane for
-            parallel work.
-          </p>
+        <section id="features" style={{ borderTop: "none", paddingTop: 0 }}>
+          <div className="section-head">
+            <div className="section-kicker">Capabilities</div>
+            <h2 className="section-title">
+              Built for running many agents at once
+            </h2>
+            <p className="section-sub">
+              Not a single-agent assistant. Rubberduck is the orchestration and
+              observability layer around the agents you already use.
+            </p>
+          </div>
           <div className="features">
             <Feature
-              icon="🌳"
+              tag="Isolation"
               title="One repo, many features"
-              body="Each session runs in its own isolated git worktree. Five agents on one repo, zero collisions."
+              body="Each session runs in its own git worktree. Several agents work the same repository in parallel without conflicts."
             />
             <Feature
-              icon="🔱"
+              tag="Lineage"
               title="Fork into a tree"
-              body="Fork any running session into a sibling branch and follow the whole lineage as a tree."
+              body="Fork any running session onto a sibling branch and follow the entire lineage as a tree of attempts."
             />
             <Feature
-              icon="🚦"
+              tag="Attention"
               title="See who needs you"
-              body="Live state per session — busy, idle, or waiting-on-you. Stop hovering over five terminals."
+              body="Live state for every session — busy, idle, or waiting on input. Stop watching five terminals at once."
             />
             <Feature
-              icon="📜"
-              title="Durable history + summaries"
-              body="Every session is kept with its intention and an outcome summary. Catch up without reading transcripts."
+              tag="History"
+              title="Durable record"
+              body="Every session is retained with its stated intention and an outcome summary. Catch up without reading transcripts."
             />
             <Feature
-              icon="🔌"
+              tag="Compatibility"
               title="Bring any agent"
-              body="Claude Code, Codex, or any CLI agent. Claude Code auto-streams in via hooks — no curl, no glue."
+              body="Claude Code, Codex, or any CLI agent. Claude Code connects automatically through hooks — no wiring required."
             />
             <Feature
-              icon="⚖️"
-              title="Compare models"
-              body="Run one prompt as several agents on sibling branches and compare the results side by side."
+              tag="Evaluation"
+              title="Compare approaches"
+              body="Run one prompt across multiple agents on sibling branches and review the results side by side."
             />
           </div>
         </section>
@@ -145,29 +138,32 @@ export default function Home() {
       {/* how it works */}
       <div className="container">
         <section id="how">
-          <h2 className="section-title">Up and running in three steps</h2>
-          <p className="section-sub">
-            It&rsquo;s a local server plus a dashboard. No account, no cloud,
-            your code never leaves your machine.
-          </p>
+          <div className="section-head">
+            <div className="section-kicker">Setup</div>
+            <h2 className="section-title">Running in three steps</h2>
+            <p className="section-sub">
+              A local server and a dashboard. No account, no cloud — your code
+              and API keys never leave your machine.
+            </p>
+          </div>
           <div className="steps">
             <Step
-              n={1}
-              title="Wire your agent"
-              body="Auto-connect Claude Code so every session streams in."
-              code={"rubberduck install-hooks --global"}
+              n="Step 1"
+              title="Connect your agent"
+              body="Wire Claude Code once so every session streams in automatically."
+              code="rubberduck install-hooks --global"
             />
             <Step
-              n={2}
+              n="Step 2"
               title="Start the server"
-              body="A local process that watches and orchestrates."
-              code={"rubberduck serve"}
+              body="A local process that watches and orchestrates your sessions."
+              code="rubberduck serve"
             />
             <Step
-              n={3}
-              title="Just use your agents"
-              body="Open the dashboard and work as usual — sessions appear automatically."
-              code={"cd web && npm run dev"}
+              n="Step 3"
+              title="Open the dashboard"
+              body="Launch the dashboard and use your agents as usual. Sessions appear on their own."
+              code="rubberduck dashboard"
             />
           </div>
         </section>
@@ -176,75 +172,97 @@ export default function Home() {
       {/* install */}
       <div className="container">
         <section id="install">
-          <div className="install">
-            <h2 className="section-title">Install</h2>
-            <p className="section-sub" style={{ margin: "0 auto 8px" }}>
-              Rubberduck is a zero-dependency Python package. The dashboard is a
-              small React app.
-            </p>
-            <pre>
-              {`# the orchestrator (Python)
+          <div className="install-wrap">
+            <div>
+              <div className="section-kicker">Install</div>
+              <h2 className="section-title">A single Python package.</h2>
+              <p className="section-sub">
+                Rubberduck installs with pip and runs locally. Bring your own
+                agent and your own API key — Rubberduck never sees your code or
+                credentials.
+              </p>
+              <p className="note">Requires Python 3.11 or later.</p>
+            </div>
+            <div>
+              <pre>
+                {`# install the orchestrator
 pip install rubberduck
 
-# wire it to Claude Code, then run it
+# connect it to Claude Code, then run it
 rubberduck install-hooks --global
 rubberduck serve`}
-            </pre>
-            <p className="note">
-              Requires Python 3.11+. Bring your own agent (Claude Code, Codex,
-              &hellip;) and your own API key &mdash; Rubberduck never sees your
-              code or keys.
-            </p>
+              </pre>
+            </div>
           </div>
         </section>
       </div>
 
-      {/* contact */}
+      {/* cta */}
       <div className="container">
-        <section className="contact">
-          <h2 className="section-title">
-            Interested? Building something similar?
-          </h2>
-          <p className="section-sub" style={{ margin: "0 auto 4px" }}>
-            Rubberduck is early. If you run a lot of agents and want to talk
-            &mdash; or want early access &mdash; reach out.
+        <section className="cta" style={{ border: "none" }}>
+          <h2>Interested in early access?</h2>
+          <p>
+            Rubberduck is in active development. If you run agents at scale and
+            want to talk — or want in early — reach out.
           </p>
           <a
             href="https://github.com/utsavanand/rubber-duck"
             className="btn btn-primary"
           >
-            Get in touch on GitHub
+            Get in touch
           </a>
-          <p className="note">Contact options coming soon.</p>
         </section>
       </div>
 
+      {/* footer */}
       <div className="container">
         <footer>
-          <span>
-            🦆 Rubberduck &mdash; local-first orchestrator for AI coding agents
-          </span>
-          <span>
-            Bring your own agent · runs on localhost · your code stays yours
-          </span>
+          <div className="brand">
+            <span>🦆</span>
+            <span>Rubberduck</span>
+          </div>
+          <span>Local-first · Runs on localhost · Your code stays yours</span>
         </footer>
       </div>
     </>
   );
 }
 
+function Sess({
+  kind,
+  name,
+  state,
+  meta,
+}: {
+  kind: "busy" | "idle" | "wait";
+  name: string;
+  state: string;
+  meta: string;
+}) {
+  return (
+    <div className={`sess s-${kind}`}>
+      <div className="bar" />
+      <div className="top">
+        <span className="name">{name}</span>
+        <span className="state">{state}</span>
+      </div>
+      <div className="meta">{meta}</div>
+    </div>
+  );
+}
+
 function Feature({
-  icon,
+  tag,
   title,
   body,
 }: {
-  icon: string;
+  tag: string;
   title: string;
   body: string;
 }) {
   return (
     <div className="feature">
-      <div className="icon">{icon}</div>
+      <div className="tag">{tag}</div>
       <h3>{title}</h3>
       <p>{body}</p>
     </div>
@@ -257,7 +275,7 @@ function Step({
   body,
   code,
 }: {
-  n: number;
+  n: string;
   title: string;
   body: string;
   code: string;
