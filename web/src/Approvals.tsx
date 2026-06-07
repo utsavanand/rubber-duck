@@ -6,6 +6,7 @@ interface Approval {
   session_key: string;
   tool_name: string;
   detail: string;
+  reachable: boolean;
 }
 
 // Surfaces pending permission requests so you can answer an agent without
@@ -75,19 +76,39 @@ export function Approvals({
                 <code>{a.detail}</code>
               </div>
             )}
+            {!a.reachable && (
+              <div className="what" style={{ opacity: 0.8 }}>
+                Answer in its own terminal — Rubberduck can only answer sessions
+                it launched.
+              </div>
+            )}
           </div>
-          <button
-            className="rd-btn rd-btn-sm rd-btn-ghost"
-            onClick={() => decide(a.id, "deny")}
-          >
-            Deny
-          </button>
-          <button
-            className="rd-btn rd-btn-sm rd-btn-primary"
-            onClick={() => decide(a.id, "approve")}
-          >
-            Approve
-          </button>
+          {a.reachable ? (
+            <>
+              <button
+                className="rd-btn rd-btn-sm rd-btn-ghost"
+                onClick={() => decide(a.id, "deny")}
+              >
+                Deny
+              </button>
+              <button
+                className="rd-btn rd-btn-sm rd-btn-primary"
+                onClick={() => decide(a.id, "approve")}
+              >
+                Approve
+              </button>
+            </>
+          ) : (
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              title="Stop showing this request"
+              onClick={() =>
+                setApprovals((list) => list.filter((x) => x.id !== a.id))
+              }
+            >
+              Dismiss
+            </button>
+          )}
         </div>
       ))}
     </div>

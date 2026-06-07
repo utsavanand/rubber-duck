@@ -33,6 +33,7 @@ export interface SessionView {
   runtime?: string;
   branch?: string;
   repoName?: string; // git repo basename, when the session is on a repo
+  worktreePath?: string; // set only when the session runs in a Rubberduck worktree
   parentKey?: string; // session this was forked from, if any
 }
 
@@ -55,6 +56,7 @@ export interface PersistedSession {
   runtime?: string | null;
   branch?: string | null;
   repo_path?: string | null;
+  worktree_path?: string | null;
   parent_session_key?: string | null;
 }
 
@@ -78,6 +80,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     repoName: s.repo_path
       ? s.repo_path.split("/").filter(Boolean).pop()
       : undefined,
+    worktreePath: s.worktree_path ?? undefined,
     parentKey: s.parent_session_key ?? undefined,
   };
 }

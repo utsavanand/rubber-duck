@@ -94,6 +94,11 @@ function SessionCard({
           (session.cwd ?? "—")
         )}
       </div>
+      {session.worktreePath && (
+        <div className="sub mono" style={{ opacity: 0.7 }}>
+          worktree: {session.worktreePath}
+        </div>
+      )}
 
       <div className="rd-actions">
         <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onOpen}>
@@ -177,7 +182,7 @@ function SessionCard({
 }
 
 type Tab = "sessions" | "tree";
-type Filter = "active" | "all";
+type Filter = "active" | "idle" | "all";
 
 function Dashboard() {
   const { sessions, connected, removeSessions } = useEventStream();
@@ -223,11 +228,17 @@ function Dashboard() {
     [sessions],
   );
 
-  const activeCount = sessions.filter((s) => s.state !== "terminated").length;
+  // Active = busy or waiting (working / needs you); Idle = quiet but alive.
+  const activeCount = sessions.filter(
+    (s) => s.state === "busy" || s.state === "waiting",
+  ).length;
+  const idleCount = sessions.filter((s) => s.state === "idle").length;
   const shown =
     filter === "active"
-      ? sessions.filter((s) => s.state !== "terminated")
-      : sessions;
+      ? sessions.filter((s) => s.state === "busy" || s.state === "waiting")
+      : filter === "idle"
+        ? sessions.filter((s) => s.state === "idle")
+        : sessions;
 
   return (
     <div className="rd-app">
@@ -288,6 +299,12 @@ function Dashboard() {
                 onClick={() => setFilter("active")}
               >
                 Active ({activeCount})
+              </button>
+              <button
+                className={filter === "idle" ? "active" : ""}
+                onClick={() => setFilter("idle")}
+              >
+                Idle ({idleCount})
               </button>
               <button
                 className={filter === "all" ? "active" : ""}

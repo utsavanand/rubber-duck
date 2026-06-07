@@ -34,7 +34,6 @@ wants direct control of the response stream. Zero runtime dependencies.
 import asyncio
 import contextlib
 import json
-import os
 import shlex
 import subprocess
 import time
@@ -465,6 +464,10 @@ class Server:
                 "tool_name": a.tool_name,
                 "detail": a.detail,
                 "created_at": a.created_at,
+                # Rubberduck can only answer sessions it launched (owns the PTY/
+                # tmux). Hook-watched sessions run in your own terminal, so the
+                # UI should not present Approve/Deny as actionable for them.
+                "reachable": self.orchestrator.get(a.session_key) is not None,
             }
             for a in self.approvals.pending()
         ]
@@ -745,29 +748,9 @@ class Server:
         adopted = await self.orchestrator.reconcile()
         if adopted:
             print(f"re-adopted {len(adopted)} tmux session(s): {', '.join(adopted)}")
-        sweep = asyncio.create_task(self._stale_sweep())
         server = await asyncio.start_server(self.handle, host, port)
-        try:
-            async with server:
-                await server.serve_forever()
-        finally:
-            sweep.cancel()
-
-    async def _stale_sweep(self) -> None:
-        """Periodically terminate sessions idle past the timeout. Claude doesn't
-        reliably send SessionEnd when a terminal closes, so without this, watched
-        sessions linger as busy/waiting forever."""
-        idle_ms = int(os.environ.get("RUBBERDUCK_IDLE_MINUTES", "20")) * 60_000
-        if idle_ms <= 0:
-            return
-        while True:
-            await asyncio.sleep(60)
-            # Don't expire sessions Rubberduck launched and is still supervising.
-            live = {k for k, s in self.orchestrator._supervisors.items() if s.running}
-            now = int(time.time() * 1000)
-            for key in self.history.expire_stale(now_ms=now, idle_ms=idle_ms):
-                if key not in live:
-                    self.bus.publish({"event_type": "SessionEnd", "session_key": key})
+        async with server:
+            await server.serve_forever()
 
 
 def _parse_request_line(line: bytes) -> tuple[str, str]:
