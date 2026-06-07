@@ -38,6 +38,7 @@ class StateRuntime(Protocol):
     def launch_command(self, *, cwd: Path, session_key: str, initial_prompt: str) -> list[str]: ...
     def detect_state(self, recent_output: str) -> SessionState: ...
     def tool_in(self, recent_output: str) -> str | None: ...
+    def locate_transcript(self, *, cwd: Path, session_id: str) -> Path | None: ...
 
 
 class SessionSupervisor:
@@ -203,9 +204,26 @@ class Orchestrator:
             return
         intention = str(row.get("intention") or "")
         events_summary = self.history.events_summary(key)
-        result = summarize(build_prompt(intention, "", events_summary))
+        transcript = self._transcript_text(key, row)
+        result = summarize(build_prompt(intention, transcript, events_summary))
         outcome = result.text or mechanical_summary(intention, events_summary)
         self.history.set_outcome(key, outcome)
+
+    def _transcript_text(self, key: str, row: dict[str, object]) -> str:
+        """Read the runtime's transcript if it has one; else empty (the generic
+        runtime, which makes the summarizer fall back to the activity digest)."""
+        supervisor = self._supervisors.get(key)
+        session_id = self.history.session_id_for(key) if self.history else None
+        cwd = row.get("cwd")
+        if supervisor is None or session_id is None or not cwd:
+            return ""
+        path = supervisor.runtime.locate_transcript(cwd=Path(str(cwd)), session_id=session_id)
+        if path is None:
+            return ""
+        from rubberduck.runtimes.claude_code import parse_transcript
+
+        records = parse_transcript(path)
+        return "\n".join(f"{r['role']}: {r['text']}" for r in records)
 
     async def stop(self, session_key: str) -> bool:
         supervisor = self._supervisors.get(session_key)

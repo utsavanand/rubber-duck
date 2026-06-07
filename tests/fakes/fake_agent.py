@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--script", type=Path, default=None)
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--cwd", type=Path, default=None)
+    # A real agent takes a prompt as a trailing positional; accept and ignore it.
+    parser.add_argument("prompt", nargs="*", default=None)
     args = parser.parse_args(argv)
     return run(iter(read_script(args.script)), args.delay)
 

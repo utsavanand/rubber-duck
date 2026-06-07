@@ -121,6 +121,17 @@ class HistoryStore:
         ).fetchall()
         return {r["kind"]: r["count"] for r in rows}
 
+    def session_id_for(self, key: str) -> str | None:
+        """The agent runtime's own session id (for transcript correlation), read
+        from the most recent event that carried one."""
+        row = self._conn.execute(
+            "SELECT json_extract(payload_json, '$.session_id') AS sid "
+            "FROM events WHERE session_key = ? AND sid IS NOT NULL "
+            "ORDER BY ts DESC LIMIT 1",
+            (key,),
+        ).fetchone()
+        return str(row["sid"]) if row and row["sid"] else None
+
     def set_intention(self, key: str, intention: str) -> None:
         self._conn.execute(
             "UPDATE sessions SET intention = ? WHERE session_key = ?", (intention, key)
