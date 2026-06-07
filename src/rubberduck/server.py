@@ -1057,10 +1057,15 @@ def dashboard_dir() -> Path | None:
 async def _write_file(writer: asyncio.StreamWriter, path: Path) -> None:
     body = path.read_bytes()
     ctype = _CONTENT_TYPES.get(path.suffix, "application/octet-stream")
+    # index.html must always be revalidated, else browsers serve a stale HTML
+    # that points at an old bundle hash and never picks up new builds. The
+    # content-hashed assets under /assets/ are immutable — cache them hard.
+    cache = "no-cache" if path.suffix == ".html" else "public, max-age=31536000, immutable"
     head = (
         f"HTTP/1.1 200 OK\r\n"
         f"Content-Length: {len(body)}\r\n"
         f"Content-Type: {ctype}\r\n"
+        f"Cache-Control: {cache}\r\n"
         f"{SELF_PROBE_HEADER}: 1\r\n"
         "Connection: close\r\n\r\n"
     )
