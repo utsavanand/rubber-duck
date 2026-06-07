@@ -27,6 +27,7 @@ export interface SessionView {
   metrics?: Record<string, number>;
   intention?: string;
   outcome?: string;
+  compareGroup?: string;
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -44,6 +45,7 @@ export interface PersistedSession {
   metrics?: Record<string, number>;
   intention?: string | null;
   outcome_summary?: string | null;
+  compare_group?: string | null;
 }
 
 export function viewFromPersisted(s: PersistedSession): SessionView {
@@ -60,6 +62,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     metrics: s.metrics,
     intention: s.intention ?? undefined,
     outcome: s.outcome_summary ?? undefined,
+    compareGroup: s.compare_group ?? undefined,
   };
 }
 

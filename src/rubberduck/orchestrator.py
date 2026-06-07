@@ -151,6 +151,7 @@ class Orchestrator:
         branch: str | None = None,
         base: str | None = None,
         parent_session_key: str | None = None,
+        compare_group: str | None = None,
     ) -> str:
         """Launch a supervised agent. If repo_path is given, the agent runs in a
         fresh git worktree on `branch` (default: a branch named for the session),
@@ -160,6 +161,8 @@ class Orchestrator:
         extra: dict[str, object] = {}
         if parent_session_key is not None:
             extra["parent_session_key"] = parent_session_key
+        if compare_group is not None:
+            extra["compare_group"] = compare_group
         run_cwd = cwd
 
         if repo_path is not None:

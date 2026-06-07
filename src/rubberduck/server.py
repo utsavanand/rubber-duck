@@ -5,8 +5,13 @@
     GET  /sessions            persisted session rows, incl. terminated (SQLite)
     GET  /tree                fork lineage: nodes with parent_session_key
     POST /sessions/launch     spawn a supervised agent {command, cwd, ...}
+    POST /sessions/compare    launch one prompt as N variants side by side
     POST /sessions/:key/fork  fork a session: child worktree off parent's branch
     POST /sessions/:key/stop  terminate a supervised agent
+    POST /sessions/:key/checkpoint   snapshot the session worktree
+    GET  /sessions/:key/checkpoints   list checkpoints
+    POST /sessions/:key/rollback      restore worktree to a checkpoint {commit}
+    POST /sessions/:key/spotlight     apply worktree changes onto the main checkout
     POST /snapshots           bundle recently-active sessions to disk
     GET  /snapshots           list snapshots
     GET  /snapshots/:id       fetch a snapshot manifest
@@ -21,8 +26,10 @@ wants direct control of the response stream. Zero runtime dependencies.
 import asyncio
 import json
 import time
+from pathlib import Path
 from typing import Any
 
+from rubberduck.checkpoints import create_checkpoint, rollback
 from rubberduck.eventbus import Event, EventBus
 from rubberduck.history import HistoryStore
 from rubberduck.orchestrator import Orchestrator, StateRuntime
@@ -30,6 +37,7 @@ from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
 from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
 from rubberduck.snapshots import SnapshotManager, open_in_terminal, restore_command_for
+from rubberduck.spotlight import spotlight_to_main
 from rubberduck.worktrees import GitError
 
 
@@ -71,10 +79,24 @@ class Server:
                 await self._tree(writer)
             elif method == "POST" and path == "/sessions/launch":
                 await self._launch(writer, body)
+            elif method == "POST" and path == "/sessions/compare":
+                await self._compare(writer, body)
             elif method == "POST" and path.startswith("/sessions/") and path.endswith("/fork"):
                 await self._fork(writer, path[len("/sessions/") : -len("/fork")], body)
             elif method == "POST" and path.startswith("/sessions/") and path.endswith("/stop"):
                 await self._stop(writer, path[len("/sessions/") : -len("/stop")])
+            elif (
+                method == "POST" and path.startswith("/sessions/") and path.endswith("/checkpoint")
+            ):
+                await self._checkpoint(writer, path[len("/sessions/") : -len("/checkpoint")], body)
+            elif (
+                method == "GET" and path.startswith("/sessions/") and path.endswith("/checkpoints")
+            ):
+                await self._list_checkpoints(writer, path[len("/sessions/") : -len("/checkpoints")])
+            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/rollback"):
+                await self._rollback(writer, path[len("/sessions/") : -len("/rollback")], body)
+            elif method == "POST" and path.startswith("/sessions/") and path.endswith("/spotlight"):
+                await self._spotlight(writer, path[len("/sessions/") : -len("/spotlight")])
             elif method == "POST" and path == "/snapshots":
                 await self._create_snapshot(writer)
             elif method == "GET" and path == "/snapshots":
@@ -179,6 +201,93 @@ class Server:
 
     async def _tree(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"nodes": self.history.fork_tree()})
+
+    def _worktree_of(self, session_key: str) -> str | None:
+        row = self.history.session(session_key)
+        if row is None:
+            return None
+        wt = row.get("worktree_path")
+        return str(wt) if wt else None
+
+    async def _checkpoint(
+        self, writer: asyncio.StreamWriter, session_key: str, body: bytes
+    ) -> None:
+        worktree = self._worktree_of(session_key)
+        if not worktree:
+            await _write_json(writer, 400, {"error": "session has no worktree"})
+            return
+        label = json.loads(body or b"{}").get("label", "checkpoint")
+        try:
+            cp = create_checkpoint(Path(worktree), label=label, now_ms=int(time.time() * 1000))
+        except GitError as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        self.history.add_checkpoint(session_key, cp.commit, cp.label, cp.created_at)
+        await _write_json(writer, 200, {"commit": cp.commit, "label": cp.label})
+
+    async def _list_checkpoints(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        await _write_json(writer, 200, {"checkpoints": self.history.checkpoints(session_key)})
+
+    async def _rollback(self, writer: asyncio.StreamWriter, session_key: str, body: bytes) -> None:
+        worktree = self._worktree_of(session_key)
+        if not worktree:
+            await _write_json(writer, 400, {"error": "session has no worktree"})
+            return
+        commit = json.loads(body or b"{}").get("commit")
+        if not commit:
+            await _write_json(writer, 400, {"error": "commit is required"})
+            return
+        try:
+            rollback(Path(worktree), commit)
+        except GitError as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        await _write_json(writer, 200, {"rolled_back_to": commit})
+
+    async def _spotlight(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        row = self.history.session(session_key)
+        if row is None or not row.get("worktree_path") or not row.get("repo_path"):
+            await _write_json(writer, 400, {"error": "session has no worktree/repo"})
+            return
+        try:
+            files = spotlight_to_main(
+                repo=Path(str(row["repo_path"])), worktree=Path(str(row["worktree_path"]))
+            )
+        except GitError as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        await _write_json(writer, 200, {"synced_files": files})
+
+    async def _compare(self, writer: asyncio.StreamWriter, body: bytes) -> None:
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        repo_path = req.get("repo_path")
+        prompt = req.get("prompt", "")
+        variants = req.get("variants")
+        if not repo_path or not isinstance(variants, list) or not variants:
+            await _write_json(
+                writer, 400, {"error": "repo_path and a non-empty variants list are required"}
+            )
+            return
+        group = req.get("group") or f"cmp-{int(time.time() * 1000)}"
+        keys = []
+        try:
+            for i, v in enumerate(variants):
+                key = await self.orchestrator.launch(
+                    runtime=_build_runtime(v.get("runtime", "generic"), v["command"]),
+                    repo_path=repo_path,
+                    branch=f"{group}/{v.get('runtime', 'generic')}-{i}",
+                    prompt=prompt,
+                    compare_group=group,
+                )
+                keys.append(key)
+        except (GitError, ValueError, KeyError) as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        await _write_json(writer, 200, {"group": group, "session_keys": keys})
 
     async def _create_snapshot(self, writer: asyncio.StreamWriter) -> None:
         snapshot_id = self.snapshots.create(now_ms=int(time.time() * 1000))

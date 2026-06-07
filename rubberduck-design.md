@@ -1,6 +1,6 @@
 # Rubberduck — Orchestrator Design
 
-**Status:** Built — Acts 0–10 complete and on `main`. Act 11 (Conductor-style extras) is the remaining optional follow-up.
+**Status:** Built — Acts 0–11 complete and on `main`. Act 11 adds checkpoints/rollback, spotlight (sync worktree → main), and multi-model compare.
 **Supersedes the scope of:** `rubberduck-extraction.md` (that doc described a passive observer; this describes the active orchestrator it grew into)
 **Stack:** Python (server) + React (dashboard) + SQLite (history)
 

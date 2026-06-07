@@ -50,6 +50,21 @@ function SessionCard({ session, now }: { session: SessionView; now: number }) {
           {session.state === "waiting" ? "waiting on you" : session.state}
         </span>
       </div>
+      {session.compareGroup && (
+        <div
+          style={{
+            display: "inline-block",
+            marginTop: 6,
+            padding: "1px 6px",
+            fontSize: 11,
+            borderRadius: 4,
+            background: "#ede9fe",
+            color: "#6d28d9",
+          }}
+        >
+          compare: {session.compareGroup}
+        </div>
+      )}
       <div style={{ fontSize: 13, color: "#374151", marginTop: 6 }}>
         {session.lastEventType}
         {session.lastTool ? ` · ${session.lastTool}` : ""}

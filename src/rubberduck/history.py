@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     worktree_path       TEXT,
     branch              TEXT,
     parent_session_key  TEXT REFERENCES sessions(session_key),
+    compare_group       TEXT,
     intention           TEXT,
     outcome_summary     TEXT,
     state               TEXT NOT NULL DEFAULT 'busy',
@@ -54,6 +55,13 @@ CREATE TABLE IF NOT EXISTS metrics (
     kind        TEXT NOT NULL,
     count       INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (session_key, kind)
+);
+CREATE TABLE IF NOT EXISTS checkpoints (
+    session_key TEXT NOT NULL,
+    commit_sha  TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (session_key, commit_sha)
 );
 """
 
@@ -132,6 +140,22 @@ class HistoryStore:
         ).fetchone()
         return str(row["sid"]) if row and row["sid"] else None
 
+    def add_checkpoint(self, key: str, commit: str, label: str, created_at: int) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO checkpoints (session_key, commit_sha, label, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (key, commit, label, created_at),
+        )
+        self._conn.commit()
+
+    def checkpoints(self, key: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT commit_sha, label, created_at FROM checkpoints "
+            "WHERE session_key = ? ORDER BY created_at DESC",
+            (key,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def set_intention(self, key: str, intention: str) -> None:
         self._conn.execute(
             "UPDATE sessions SET intention = ? WHERE session_key = ?", (intention, key)
@@ -178,9 +202,9 @@ class HistoryStore:
             self._conn.execute(
                 "INSERT INTO sessions "
                 "(session_key, runtime, repo_path, worktree_path, branch, "
-                " parent_session_key, state, source_app, cwd, last_event_type, last_tool, "
-                " event_count, started_at, updated_at, ended_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
+                " parent_session_key, compare_group, state, source_app, cwd, "
+                " last_event_type, last_tool, event_count, started_at, updated_at, ended_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
@@ -188,6 +212,7 @@ class HistoryStore:
                     event.get("worktree_path"),
                     event.get("branch"),
                     event.get("parent_session_key"),
+                    event.get("compare_group"),
                     state,
                     event.get("source_app"),
                     event.get("cwd"),
@@ -206,6 +231,7 @@ class HistoryStore:
                 "worktree_path = COALESCE(?, worktree_path), "
                 "branch = COALESCE(?, branch), "
                 "parent_session_key = COALESCE(?, parent_session_key), "
+                "compare_group = COALESCE(?, compare_group), "
                 "state = ?, "
                 "source_app = COALESCE(?, source_app), "
                 "cwd = COALESCE(?, cwd), "
@@ -221,6 +247,7 @@ class HistoryStore:
                     event.get("worktree_path"),
                     event.get("branch"),
                     event.get("parent_session_key"),
+                    event.get("compare_group"),
                     state,
                     event.get("source_app"),
                     event.get("cwd"),
