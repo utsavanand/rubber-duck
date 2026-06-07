@@ -42,6 +42,29 @@ def test_session_row_accumulates_across_events(tmp_path: Path) -> None:
     assert row["ended_at"] is None
 
 
+def test_old_db_missing_columns_is_migrated(tmp_path: Path) -> None:
+    import sqlite3
+
+    db = tmp_path / "db.sqlite"
+    # Simulate a v1 DB: a sessions table without the later columns.
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "CREATE TABLE sessions (session_key TEXT PRIMARY KEY, state TEXT, "
+        "event_count INTEGER, started_at INTEGER, updated_at INTEGER)"
+    )
+    conn.commit()
+    conn.close()
+
+    # Opening through HistoryStore must add the missing columns, not crash.
+    store = HistoryStore(db)
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s", "compare_group": "grp"})
+
+    row = store.session("s")
+    assert row is not None
+    assert row["compare_group"] == "grp"
+
+
 def test_runtime_is_persisted_from_event(tmp_path: Path) -> None:
     store = HistoryStore(tmp_path / "db.sqlite")
     bus = make_bus(store)

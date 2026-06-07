@@ -85,6 +85,25 @@ def derive_state(event: Event, prev: SessionState | None) -> SessionState:
             return prev or "busy"
 
 
+# Columns added to `sessions` after the first release. CREATE TABLE IF NOT
+# EXISTS won't add these to a pre-existing DB, so we ALTER them in on open.
+_SESSIONS_COLUMNS = {
+    "runtime": "TEXT",
+    "repo_path": "TEXT",
+    "worktree_path": "TEXT",
+    "branch": "TEXT",
+    "parent_session_key": "TEXT",
+    "compare_group": "TEXT",
+    "intention": "TEXT",
+    "outcome_summary": "TEXT",
+    "source_app": "TEXT",
+    "cwd": "TEXT",
+    "last_event_type": "TEXT",
+    "last_tool": "TEXT",
+    "ended_at": "INTEGER",
+}
+
+
 class HistoryStore:
     def __init__(self, db_path: Path | None = None) -> None:
         path = db_path if db_path is not None else paths.db_path()
@@ -92,7 +111,17 @@ class HistoryStore:
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add any columns missing from an older sessions table."""
+        existing = {
+            row["name"] for row in self._conn.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        for column, sql_type in _SESSIONS_COLUMNS.items():
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE sessions ADD COLUMN {column} {sql_type}")
 
     def record(self, event: Event) -> None:
         """Persist an event and fold it into its session row. Called for every

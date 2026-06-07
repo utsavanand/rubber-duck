@@ -8,6 +8,7 @@ import os
 import sys
 import urllib.request
 from collections.abc import Sequence
+from pathlib import Path
 
 from rubberduck import __version__
 
@@ -43,6 +44,19 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--prompt", default="")
 
     sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
+
+    inst = sub.add_parser(
+        "install-hooks", help="wire Claude Code so its sessions stream into Rubberduck"
+    )
+    inst.add_argument(
+        "--global",
+        dest="global_scope",
+        action="store_true",
+        help="install into ~/.claude/settings.json (every project) instead of this repo",
+    )
+
+    uninst = sub.add_parser("uninstall-hooks", help="remove Rubberduck's Claude Code hooks")
+    uninst.add_argument("--global", dest="global_scope", action="store_true")
     return parser
 
 
@@ -85,6 +99,24 @@ def _snapshot() -> int:
     return 0
 
 
+def _install_hooks(global_scope: bool) -> int:
+    from rubberduck.hooks_install import install
+
+    path = install(global_scope=global_scope, project_dir=Path.cwd())
+    scope = "every project" if global_scope else "this repo"
+    print(f"installed Rubberduck hooks for {scope}: {path}")
+    print("Now run `rubberduck serve`, then start Claude Code — sessions appear automatically.")
+    return 0
+
+
+def _uninstall_hooks(global_scope: bool) -> int:
+    from rubberduck.hooks_install import uninstall
+
+    path = uninstall(global_scope=global_scope, project_dir=Path.cwd())
+    print(f"removed Rubberduck hooks from {path}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
@@ -97,6 +129,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
     if args.command == "snapshot":
         return _snapshot()
+    if args.command == "install-hooks":
+        return _install_hooks(args.global_scope)
+    if args.command == "uninstall-hooks":
+        return _uninstall_hooks(args.global_scope)
     print(f"command '{args.command}' is not implemented yet", file=sys.stderr)
     return 1
 

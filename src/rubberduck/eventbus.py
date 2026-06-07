@@ -6,6 +6,7 @@ sink to publish(); until then events live only for the process lifetime.
 """
 
 import asyncio
+import sys
 import time
 import uuid
 from collections import deque
@@ -57,7 +58,12 @@ class EventBus:
         event["_ts"] = int(time.time() * 1000)
         self._ring.append(event)
         if self._sink is not None:
-            self._sink(event)
+            # A persistence failure must not break the live stream or the
+            # request; the event still reaches the ring and SSE subscribers.
+            try:
+                self._sink(event)
+            except Exception as exc:  # noqa: BLE001 - sink is untrusted at this boundary
+                print(f"[rubberduck] event sink failed: {exc}", file=sys.stderr)
         for queue in self._subscribers:
             queue.put_nowait(event)
         return event

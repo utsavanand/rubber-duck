@@ -18,6 +18,17 @@ def test_publish_does_not_mutate_caller_dict() -> None:
     assert "_id" not in raw
 
 
+def test_failing_sink_does_not_break_publish() -> None:
+    def boom(_event: dict) -> None:
+        raise RuntimeError("sink down")
+
+    bus = EventBus(sink=boom)
+    # The event must still be returned and land in the ring despite the sink error.
+    event = bus.publish({"event_type": "Stop", "session_key": "s"})
+    assert event["session_key"] == "s"
+    assert bus.recent()[-1]["session_key"] == "s"
+
+
 def test_ring_evicts_oldest_past_capacity() -> None:
     bus = EventBus(capacity=3)
     for i in range(5):
