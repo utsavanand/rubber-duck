@@ -75,6 +75,10 @@ export function useEventStream(): {
     return () => source.close();
   }, []);
 
-  const list = [...sessions.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  // Stable order: newest session first by START time, which never changes —
+  // so cards don't reshuffle (and buttons don't move) as events stream in.
+  const list = [...sessions.values()].sort(
+    (a, b) => b.startedAt - a.startedAt || a.key.localeCompare(b.key),
+  );
   return { sessions: list, connected };
 }

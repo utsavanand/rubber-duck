@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { Approvals } from "./Approvals";
 import { CompareModal } from "./CompareModal";
+import { ForkModal } from "./ForkModal";
 import { ForkTree } from "./ForkTree";
 import { LaunchModal } from "./LaunchModal";
 import { SessionDetail } from "./SessionDetail";
@@ -30,10 +31,12 @@ function SessionCard({
   session,
   now,
   onOpen,
+  onFork,
 }: {
   session: SessionView;
   now: number;
   onOpen: () => void;
+  onFork: () => void;
 }) {
   const toast = useToast();
   const live = session.state !== "terminated";
@@ -41,7 +44,7 @@ function SessionCard({
   async function act(label: string, fn: () => Promise<unknown>) {
     try {
       await fn();
-      toast(`${label}`);
+      toast(label);
     } catch (e) {
       toast(`${label} failed: ${(e as Error).message}`, "err");
     }
@@ -51,7 +54,7 @@ function SessionCard({
     session.state === "waiting" ? "waiting on you" : session.state;
 
   return (
-    <div className="rd-card">
+    <div className={`rd-card${live ? "" : " terminated"}`}>
       <div className="head" onClick={onOpen}>
         <span className="name">{session.label}</span>
         <span className={`rd-state st-${session.state}`}>
@@ -78,14 +81,9 @@ function SessionCard({
         <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onOpen}>
           Open
         </button>
-        {session.branch && (
+        {session.branch && live && (
           <>
-            <button
-              className="rd-btn rd-btn-sm rd-btn-ghost"
-              onClick={() =>
-                act("Forked", () => api.fork(session.key, { command: "true" }))
-              }
-            >
+            <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onFork}>
               Fork
             </button>
             <button
@@ -119,14 +117,34 @@ function SessionCard({
   );
 }
 
+type Tab = "sessions" | "tree";
+type Filter = "active" | "all";
+
 function Dashboard() {
   const { sessions, connected } = useEventStream();
   const now = useNow(1000);
+  const [tab, setTab] = useState<Tab>("sessions");
+  const [filter, setFilter] = useState<Filter>("active");
   const [modal, setModal] = useState<"launch" | "compare" | "snapshots" | null>(
     null,
   );
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [forkKey, setForkKey] = useState<string | null>(null);
+
   const openSession = sessions.find((s) => s.key === openKey) ?? null;
+  const forkSession = sessions.find((s) => s.key === forkKey) ?? null;
+
+  // session key -> human label, so approvals show names not IDs.
+  const labels = useMemo(
+    () => Object.fromEntries(sessions.map((s) => [s.key, s.label])),
+    [sessions],
+  );
+
+  const activeCount = sessions.filter((s) => s.state !== "terminated").length;
+  const shown =
+    filter === "active"
+      ? sessions.filter((s) => s.state !== "terminated")
+      : sessions;
 
   return (
     <div className="rd-app">
@@ -153,40 +171,80 @@ function Dashboard() {
         </button>
       </header>
 
-      <Approvals pollKey={sessions.length} />
+      <Approvals labels={labels} pollKey={sessions.length} />
 
-      {sessions.length === 0 ? (
-        <p className="rd-empty">
-          No sessions yet. Click <strong>New session</strong> to launch an
-          agent, or run Claude Code in a hooked repo.
-        </p>
-      ) : (
+      <nav className="rd-tabs">
+        <button
+          className={`rd-tab${tab === "sessions" ? " active" : ""}`}
+          onClick={() => setTab("sessions")}
+        >
+          Sessions <span className="count">{activeCount}</span>
+        </button>
+        <button
+          className={`rd-tab${tab === "tree" ? " active" : ""}`}
+          onClick={() => setTab("tree")}
+        >
+          Fork tree
+        </button>
+      </nav>
+
+      {tab === "sessions" && (
         <>
-          <div className="rd-section-title">Sessions</div>
-          <div className="rd-grid">
-            {sessions.map((s) => (
-              <SessionCard
-                key={s.key}
-                session={s}
-                now={now}
-                onOpen={() => setOpenKey(s.key)}
-              />
-            ))}
+          <div className="rd-filterbar">
+            <div className="rd-segment">
+              <button
+                className={filter === "active" ? "active" : ""}
+                onClick={() => setFilter("active")}
+              >
+                Active ({activeCount})
+              </button>
+              <button
+                className={filter === "all" ? "active" : ""}
+                onClick={() => setFilter("all")}
+              >
+                All ({sessions.length})
+              </button>
+            </div>
+          </div>
+
+          {shown.length === 0 ? (
+            <p className="rd-empty">
+              {sessions.length === 0 ? (
+                <>
+                  No sessions yet. Click <strong>New session</strong> to launch
+                  an agent, or run Claude Code in a hooked repo.
+                </>
+              ) : (
+                "No active sessions. Switch to All to see terminated ones."
+              )}
+            </p>
+          ) : (
+            <div className="rd-grid">
+              {shown.map((s) => (
+                <SessionCard
+                  key={s.key}
+                  session={s}
+                  now={now}
+                  onOpen={() => setOpenKey(s.key)}
+                  onFork={() => setForkKey(s.key)}
+                />
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: 28 }}>
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              onClick={() => setModal("compare")}
+              title="Run one prompt across multiple agents"
+            >
+              Compare models
+            </button>
           </div>
         </>
       )}
 
-      <ForkTree refreshKey={sessions.length} />
-
-      <div style={{ marginTop: 32 }}>
-        <button
-          className="rd-btn rd-btn-sm rd-btn-ghost"
-          onClick={() => setModal("compare")}
-          title="Run one prompt across multiple agents"
-        >
-          Compare models
-        </button>
-      </div>
+      {tab === "tree" && <ForkTree refreshKey={sessions.length} />}
 
       {modal === "launch" && <LaunchModal onClose={() => setModal(null)} />}
       {modal === "compare" && <CompareModal onClose={() => setModal(null)} />}
@@ -195,6 +253,9 @@ function Dashboard() {
           sessionKeys={sessions.map((s) => s.key)}
           onClose={() => setModal(null)}
         />
+      )}
+      {forkSession && (
+        <ForkModal session={forkSession} onClose={() => setForkKey(null)} />
       )}
       {openSession && (
         <SessionDetail session={openSession} onClose={() => setOpenKey(null)} />

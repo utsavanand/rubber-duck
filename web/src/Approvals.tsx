@@ -10,7 +10,13 @@ interface Approval {
 
 // Surfaces pending permission requests so you can answer an agent without
 // switching to its terminal. Approve sends "1"; Deny sends Escape.
-export function Approvals({ pollKey }: { pollKey: number }) {
+export function Approvals({
+  labels,
+  pollKey,
+}: {
+  labels: Record<string, string>;
+  pollKey: number;
+}) {
   const toast = useToast();
   const [approvals, setApprovals] = useState<Approval[]>([]);
 
@@ -61,7 +67,8 @@ export function Approvals({ pollKey }: { pollKey: number }) {
         <div className="rd-approval" key={a.id}>
           <div style={{ flex: 1 }}>
             <div className="who">
-              {a.session_key.slice(0, 12)} · {a.tool_name}
+              {labels[a.session_key] ?? a.session_key.slice(0, 8)} ·{" "}
+              {a.tool_name}
             </div>
             {a.detail && (
               <div className="what">

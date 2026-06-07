@@ -169,6 +169,80 @@ code,
   border-radius: 4px;
 }
 
+/* ── tabs ── */
+.rd-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.rd-tab {
+  border: none;
+  background: transparent;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-soft);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.rd-tab:hover {
+  color: var(--text);
+}
+.rd-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.rd-tab .count {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+.rd-tab .count.alert {
+  background: #fff0d6;
+  color: #92660a;
+}
+
+/* ── filter bar ── */
+.rd-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.rd-segment {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.rd-segment button {
+  border: none;
+  background: #fff;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.rd-segment button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.rd-segment button + button {
+  border-left: 1px solid var(--border);
+}
+.rd-card.terminated {
+  opacity: 0.62;
+}
+
 /* ── section heading ── */
 .rd-section-title {
   font-size: 13px;
