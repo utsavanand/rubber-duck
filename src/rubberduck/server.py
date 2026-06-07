@@ -39,6 +39,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rubberduck import gitdetect
 from rubberduck.approvals import ApprovalRegistry
 from rubberduck.checkpoints import build_checkpoint
 from rubberduck.eventbus import Event, EventBus
@@ -179,13 +180,29 @@ class Server:
         self.approvals = ApprovalRegistry(self.orchestrator.inject_key)
 
     def _sink(self, event: dict[str, Any]) -> None:
-        """Fan a published event to the durable store and the approval registry."""
+        """Fan a published event to the durable store and the approval registry.
+        Enrich watched sessions with git state detected from their cwd, so they
+        too can show repo/branch and be forked into a worktree."""
+        self._enrich_git(event)
         self.history.record(event)
         self.approvals.from_event(event)
         if event.get("event_type") == "SessionEnd":
             key = event.get("session_key") or event.get("session_id")
             if key:
                 self.approvals.drop_session(str(key))
+
+    def _enrich_git(self, event: dict[str, Any]) -> None:
+        """If an event has a cwd but no repo/branch yet (a watched session),
+        detect git state from the cwd and add it. Cached per cwd, so this is
+        effectively once per session, not per event."""
+        cwd = event.get("cwd")
+        if not cwd or event.get("repo_path") or event.get("branch"):
+            return
+        info = gitdetect.detect(str(cwd))
+        if info is not None:
+            event["repo_path"] = info.repo_path
+            event["branch"] = info.branch
+            event.setdefault("source_app", info.repo_name)
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
