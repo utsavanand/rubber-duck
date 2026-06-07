@@ -49,10 +49,7 @@ def open_in_terminal(
     agent = " ".join(_q(a) for a in argv)
     if heartbeat is not None:
         agent = _with_heartbeat(agent, *heartbeat)
-    # Tag the tab so we can find and close it later. We set the title from the
-    # session key passed via env (RUBBERDUCK_SESSION_KEY), if any.
-    title = _title_command(env)
-    command = f"cd {_q(cwd)} && {title}{exports}{agent}"
+    command = f"cd {_q(cwd)} && {exports}{agent}"
     system = platform.system()
 
     if system == "Darwin":
@@ -70,41 +67,25 @@ def open_in_terminal(
     return False
 
 
-TITLE_PREFIX = "rubberduck:"
-
-
-def _title_command(env: dict[str, str] | None) -> str:
-    """Shell to set the tab title to `rubberduck:<key>` so close_terminal can
-    find it. Empty when there's no session key to tag with."""
-    key = (env or {}).get("RUBBERDUCK_SESSION_KEY")
-    if not key:
-        return ""
-    # OSC 0 sets the window/tab title; printf so it runs before the agent.
-    return f'printf "\\033]0;{TITLE_PREFIX}{key}\\007"; '
-
-
-def close_terminal(session_key: str, *, app: str | None = None) -> bool:
-    """Close the terminal tab Rubberduck opened for this session (tagged with
-    `rubberduck:<key>` in its title). Returns True if a close was attempted.
-    macOS only — no-op elsewhere."""
-    if platform.system() != "Darwin":
+def close_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
+    """Close the terminal tab whose tty matches (e.g. /dev/ttys003). The tty is
+    stable and not clobbered by the agent (unlike the tab title), so this is the
+    reliable way to find the tab Rubberduck launched. macOS only."""
+    if platform.system() != "Darwin" or not tty:
         return False
-    target = f"{TITLE_PREFIX}{session_key}"
     choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
     if choice == "iterm" and _iterm_installed():
-        return _spawn(["osascript", "-e", _close_iterm_script(target)])
-    return _spawn(["osascript", "-e", _close_terminal_script(target)])
+        return _spawn(["osascript", "-e", _close_iterm_by_tty(tty)])
+    return _spawn(["osascript", "-e", _close_terminal_by_tty(tty)])
 
 
-def _close_terminal_script(target: str) -> str:
-    esc = _esc(target)
-    # Walk Terminal tabs; close the one whose custom title we set. Closing the
-    # tab kills the agent running in it.
+def _close_terminal_by_tty(tty: str) -> str:
+    esc = _esc(tty)
     return (
         'tell application "Terminal"\n'
         "  repeat with w in windows\n"
         "    repeat with t in tabs of w\n"
-        f'      if (custom title of t as string) contains "{esc}" then\n'
+        f'      if (tty of t as string) is "{esc}" then\n'
         "        close t\n"
         "        return\n"
         "      end if\n"
@@ -114,14 +95,14 @@ def _close_terminal_script(target: str) -> str:
     )
 
 
-def _close_iterm_script(target: str) -> str:
-    esc = _esc(target)
+def _close_iterm_by_tty(tty: str) -> str:
+    esc = _esc(tty)
     return (
         'tell application "iTerm"\n'
         "  repeat with w in windows\n"
         "    repeat with t in tabs of w\n"
         "      repeat with s in sessions of t\n"
-        f'        if (name of s as string) contains "{esc}" then\n'
+        f'        if (tty of s as string) is "{esc}" then\n'
         "          close t\n"
         "          return\n"
         "        end if\n"
@@ -136,9 +117,12 @@ def _with_heartbeat(agent: str, url: str, session_key: str) -> str:
     """Wrap the agent command so the tab pings `url` every 20s while alive and
     stops when the agent exits or the tab is killed. The trap kills the loop on
     EXIT; killing the tab takes the whole shell (loop included) down with it."""
+    # $(tty) is the tab's device (e.g. /dev/ttys003) — stable and reported on
+    # every ping so the server can find and close this exact tab on delete.
     ping = (
         f"curl -s -X POST {_q(url)} -H 'Content-Type: application/json' "
-        f'-d \'{{"session_key":"{session_key}"}}\' >/dev/null 2>&1'
+        f'-d "{{\\"session_key\\":\\"{session_key}\\",\\"tty\\":\\"$(tty)\\"}}" '
+        ">/dev/null 2>&1"
     )
     return (
         f"( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "

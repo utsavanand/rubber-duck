@@ -54,7 +54,7 @@ from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
 from rubberduck.snapshots import SnapshotManager, restore_command_for
 from rubberduck.spotlight import spotlight_to_main
-from rubberduck.terminal import available_terminals, close_terminal, open_in_terminal
+from rubberduck.terminal import available_terminals, close_terminal_by_tty, open_in_terminal
 from rubberduck.websocket import (
     close_frame,
     encode_text_frame,
@@ -309,7 +309,7 @@ class Server:
         if not key:
             await _write_json(writer, 400, {"error": "session_key required"})
             return
-        ok = self.history.touch(str(key), int(time.time() * 1000))
+        ok = self.history.touch(str(key), int(time.time() * 1000), tty=req.get("tty"))
         await _write_json(writer, 200, {"ok": ok})
 
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
@@ -572,9 +572,10 @@ class Server:
             return
         await self.orchestrator.stop(session_key)
         # Close the terminal tab we opened (launched sessions only — never a
-        # watched session's terminal, which the user started themselves).
-        if row is not None and row.get("heartbeat"):
-            close_terminal(session_key)
+        # watched session's terminal, which the user started themselves). We
+        # match by the tty the tab reported, which the agent can't clobber.
+        if row is not None and row.get("heartbeat") and row.get("tty"):
+            close_terminal_by_tty(str(row["tty"]))
         self._remove_worktree(row)
         deleted = self.history.delete_session(session_key, now=int(time.time() * 1000))
         self.approvals.drop_session(session_key)

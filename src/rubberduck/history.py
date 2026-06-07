@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at          INTEGER NOT NULL,
     ended_at            INTEGER,
     heartbeat           INTEGER NOT NULL DEFAULT 0,
-    last_seen           INTEGER
+    last_seen           INTEGER,
+    tty                 TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
     id           TEXT PRIMARY KEY,
@@ -118,6 +119,7 @@ _SESSIONS_COLUMNS = {
     "ended_at": "INTEGER",
     "heartbeat": "INTEGER NOT NULL DEFAULT 0",
     "last_seen": "INTEGER",
+    "tty": "TEXT",
 }
 
 
@@ -286,10 +288,12 @@ class HistoryStore:
         self._conn.execute("UPDATE sessions SET heartbeat = 1 WHERE session_key = ?", (key,))
         self._conn.commit()
 
-    def touch(self, key: str, ts: int) -> bool:
-        """Record a liveness ping. Returns whether the session exists."""
+    def touch(self, key: str, ts: int, *, tty: str | None = None) -> bool:
+        """Record a liveness ping (and the tab's tty, so delete can close it).
+        Returns whether the session exists."""
         cur = self._conn.execute(
-            "UPDATE sessions SET last_seen = ? WHERE session_key = ?", (ts, key)
+            "UPDATE sessions SET last_seen = ?, tty = COALESCE(?, tty) WHERE session_key = ?",
+            (ts, tty, key),
         )
         self._conn.commit()
         return cur.rowcount > 0
