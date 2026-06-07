@@ -6,6 +6,10 @@ import {
   sessionKeyOf,
 } from "./types";
 
+// After a Stop, a session keeps reading "busy" for this long before settling to
+// idle — so a session in rapid back-and-forth doesn't strobe each turn.
+export const IDLE_SETTLE_MS = 10_000;
+
 function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
   if (e.lifecycle === "terminated" || e.event_type === "SessionEnd")
     return "terminated";
@@ -22,10 +26,19 @@ function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
       // PostToolUse as idle made sessions flap busy↔idle on every tool call.
       return "busy";
     case "Stop":
-      return "idle";
+      // Stays busy now; effectiveState() flips it to idle after the settle grace.
+      return "busy";
     default:
       return prev ?? "busy";
   }
+}
+
+/** The state to display/filter on, applying the post-Stop settling grace. */
+export function effectiveState(s: SessionView, now: number): SessionState {
+  if (s.state === "terminated" || s.state === "waiting") return s.state;
+  if (s.idleSince !== undefined && now - s.idleSince >= IDLE_SETTLE_MS)
+    return "idle";
+  return s.state;
 }
 
 /** Fold an event into the session map. Pure; returns a new map. */
@@ -51,6 +64,14 @@ export function applyEvent(
       e.source_app ||
       key.slice(0, 8),
     state: deriveState(e, prev?.state),
+    // Stamp when the agent stopped; clear it on any new activity. effectiveState
+    // uses this to settle to idle only after a quiet grace period.
+    idleSince:
+      e.event_type === "Stop"
+        ? e._ts
+        : e.event_type === "SessionEnd"
+          ? prev?.idleSince
+          : undefined,
     lastEventType: e.event_type ?? prev?.lastEventType ?? "",
     lastTool: e.tool_name ?? prev?.lastTool,
     // Don't let a live event without these fields overwrite the seeded values.

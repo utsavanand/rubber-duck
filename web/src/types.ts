@@ -39,6 +39,7 @@ export interface SessionView {
   worktreePath?: string; // set only when the session runs in a Rubberduck worktree
   parentKey?: string; // session this was forked from, if any
   notes?: string; // personal, local-only notes
+  idleSince?: number; // ts of the last Stop; drives the idle settling grace
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -83,7 +84,10 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
   return {
     key: s.session_key,
     label: s.name || s.source_app || s.session_key.slice(0, 8),
-    state: s.state,
+    // Server already settled this row's state; if it's idle, backdate idleSince
+    // so effectiveState shows idle immediately rather than after a fresh grace.
+    state: s.state === "idle" ? "busy" : s.state,
+    idleSince: s.state === "idle" ? 0 : undefined,
     lastEventType: s.last_event_type ?? "",
     lastTool: s.last_tool ?? undefined,
     cwd: s.cwd ?? undefined,

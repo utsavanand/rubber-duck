@@ -7,6 +7,7 @@ import { ForkTree } from "./ForkTree";
 import { LaunchModal } from "./LaunchModal";
 import { SessionDetail } from "./SessionDetail";
 import { SnapshotsModal } from "./SnapshotsModal";
+import { effectiveState } from "./sessions";
 import { SessionView } from "./types";
 import { ToastProvider, useToast } from "./ui";
 import { useEventStream } from "./useEventStream";
@@ -54,7 +55,8 @@ function SessionCard({
   onDelete: () => void;
 }) {
   const toast = useToast();
-  const live = session.state !== "terminated";
+  const effState = effectiveState(session, now);
+  const live = effState !== "terminated";
 
   async function act(label: string, fn: () => Promise<unknown>) {
     try {
@@ -65,14 +67,13 @@ function SessionCard({
     }
   }
 
-  const stateLabel =
-    session.state === "waiting" ? "waiting on you" : session.state;
+  const stateLabel = effState === "waiting" ? "waiting on you" : effState;
 
   return (
     <div className={`rd-card${live ? "" : " terminated"}`}>
       <div className="head" onClick={onOpen}>
         <span className="name">{session.label}</span>
-        <span className={`rd-state st-${session.state}`}>
+        <span className={`rd-state st-${effState}`}>
           <span className="dot" />
           {stateLabel}
         </span>
@@ -250,15 +251,19 @@ function Dashboard() {
   );
 
   // Active = busy or waiting (working / needs you); Idle = quiet but alive.
-  const activeCount = sessions.filter(
-    (s) => s.state === "busy" || s.state === "waiting",
-  ).length;
-  const idleCount = sessions.filter((s) => s.state === "idle").length;
+  // effectiveState applies the post-Stop settling grace so counts don't strobe.
+  const isActive = (s: SessionView) => {
+    const st = effectiveState(s, now);
+    return st === "busy" || st === "waiting";
+  };
+  const isIdle = (s: SessionView) => effectiveState(s, now) === "idle";
+  const activeCount = sessions.filter(isActive).length;
+  const idleCount = sessions.filter(isIdle).length;
   const shown =
     filter === "active"
-      ? sessions.filter((s) => s.state === "busy" || s.state === "waiting")
+      ? sessions.filter(isActive)
       : filter === "idle"
-        ? sessions.filter((s) => s.state === "idle")
+        ? sessions.filter(isIdle)
         : sessions;
 
   return (
