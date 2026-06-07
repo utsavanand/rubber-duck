@@ -27,23 +27,34 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "#fff",
-          borderRadius: 12,
-          padding: 24,
-          width: 460,
+          borderRadius: 16,
+          padding: 28,
+          width: 480,
           maxWidth: "90vw",
           maxHeight: "85vh",
           overflowY: "auto",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+          boxShadow: "0 24px 60px -12px rgba(0,0,0,0.25)",
+          border: "1px solid #e8e8eb",
         }}
       >
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            marginBottom: 16,
+            alignItems: "center",
+            marginBottom: 20,
           }}
         >
-          <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 19,
+              fontWeight: 600,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {title}
+          </h2>
           <button onClick={onClose} style={iconBtn}>
             ✕
           </button>
@@ -89,11 +100,13 @@ export function Field({
 
 export const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "8px 10px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 12px",
+  border: "1px solid #d4d4d8",
+  borderRadius: 8,
   fontSize: 14,
   boxSizing: "border-box",
+  background: "#fff",
+  color: "#0d0d0d",
 };
 
 export function Button({
@@ -109,27 +122,9 @@ export function Button({
   disabled?: boolean;
   size?: "sm" | "md";
 }) {
-  const colors = {
-    primary: { bg: "#2563eb", fg: "#fff", border: "#2563eb" },
-    ghost: { bg: "#fff", fg: "#374151", border: "#d1d5db" },
-    danger: { bg: "#fff", fg: "#dc2626", border: "#fecaca" },
-  }[variant];
+  const cls = `rd-btn rd-btn-${variant}${size === "sm" ? " rd-btn-sm" : ""}`;
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        background: colors.bg,
-        color: colors.fg,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-        padding: size === "sm" ? "4px 10px" : "8px 14px",
-        fontSize: size === "sm" ? 12 : 14,
-        fontWeight: 500,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
+    <button className={cls} onClick={onClick} disabled={disabled}>
       {children}
     </button>
   );

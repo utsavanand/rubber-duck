@@ -22,6 +22,7 @@
     GET  /snapshots/:id       fetch a snapshot manifest
     POST /snapshots/:id/sessions/:key/restore  relaunch a session in a terminal
     GET  /stream              SSE: {type:"init", events:[...]} then per-event frames
+    GET  /ws                  WebSocket: same event stream, bidirectional
     GET  /                    liveness; carries the X-Rubberduck self-probe header
 
 Hand-rolled over asyncio rather than a framework: routing is trivial and SSE
@@ -29,6 +30,7 @@ wants direct control of the response stream. Zero runtime dependencies.
 """
 
 import asyncio
+import contextlib
 import json
 import subprocess
 import time
@@ -45,6 +47,12 @@ from rubberduck.runtimes.codex import CodexRuntime
 from rubberduck.runtimes.generic import GenericRuntime
 from rubberduck.snapshots import SnapshotManager, open_in_terminal, restore_command_for
 from rubberduck.spotlight import spotlight_to_main
+from rubberduck.websocket import (
+    close_frame,
+    encode_text_frame,
+    handshake_response,
+    read_frame_opcode,
+)
 from rubberduck.worktrees import GitError
 
 
@@ -136,6 +144,8 @@ class Server:
                 await self._get_snapshot(writer, path[len("/snapshots/") :])
             elif method == "GET" and path == "/stream":
                 await self._stream(reader, writer)
+            elif method == "GET" and path == "/ws":
+                await self._websocket(reader, writer, headers)
             elif method == "GET" and (path == "/" or path.startswith("/assets/")):
                 await self._dashboard(writer, path)
             else:
@@ -492,6 +502,50 @@ class Server:
         finally:
             disconnect.cancel()
             subscription.close()
+
+    async def _websocket(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        headers: dict[str, str],
+    ) -> None:
+        """Bidirectional event stream over WebSocket, a sibling to /stream. Sends
+        an init frame, then one text frame per event; closes on client close."""
+        key = headers.get("sec-websocket-key")
+        if not key:
+            await _write_response(writer, 400, "expected a WebSocket upgrade")
+            return
+        writer.write(handshake_response(key))
+        await writer.drain()
+        writer.write(encode_text_frame(json.dumps({"type": "init", "events": self.bus.recent()})))
+        await writer.drain()
+
+        subscription = self.bus.subscribe()
+        incoming = asyncio.ensure_future(read_frame_opcode(reader))
+        try:
+            while True:
+                nxt = asyncio.ensure_future(subscription.next())
+                done, _ = await asyncio.wait(
+                    {nxt, incoming}, timeout=KEEPALIVE_SECONDS, return_when=asyncio.FIRST_COMPLETED
+                )
+                if incoming in done:
+                    opcode = incoming.result()
+                    nxt.cancel()
+                    if opcode in (None, 0x8):  # EOF or close frame
+                        break
+                    incoming = asyncio.ensure_future(read_frame_opcode(reader))
+                    continue
+                if nxt not in done:
+                    nxt.cancel()
+                    continue  # keepalive tick; nothing to send
+                writer.write(encode_text_frame(json.dumps(nxt.result())))
+                await writer.drain()
+        finally:
+            incoming.cancel()
+            subscription.close()
+            with contextlib.suppress(OSError):
+                writer.write(close_frame())
+                await writer.drain()
 
     async def serve(self, host: str, port: int) -> None:
         server = await asyncio.start_server(self.handle, host, port)
