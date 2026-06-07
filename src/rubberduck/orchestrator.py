@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Protocol
 
 from rubberduck.eventbus import EventBus
+from rubberduck.history import HistoryStore
 from rubberduck.runtimes.base import SessionState
+from rubberduck.summarizer import build_prompt, mechanical_summary, summarize
 from rubberduck.worktrees import WorktreeManager
 
 # State -> the event_type whose derive_state yields that state. One vocabulary.
@@ -126,9 +128,15 @@ class SessionSupervisor:
 
 
 class Orchestrator:
-    def __init__(self, bus: EventBus, worktrees: WorktreeManager | None = None) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        worktrees: WorktreeManager | None = None,
+        history: HistoryStore | None = None,
+    ) -> None:
         self.bus = bus
         self.worktrees = worktrees if worktrees is not None else WorktreeManager()
+        self.history = history
         self._supervisors: dict[str, SessionSupervisor] = {}
 
     async def launch(
@@ -175,7 +183,29 @@ class Orchestrator:
         )
         self._supervisors[key] = supervisor
         await supervisor.start()
+        if self.history is not None and prompt:
+            self.history.set_intention(key, prompt)
+        if self.history is not None and supervisor._task is not None:
+
+            def _on_done(_task: asyncio.Task[None], k: str = key) -> None:
+                self._write_summary(k)
+
+            supervisor._task.add_done_callback(_on_done)
         return key
+
+    def _write_summary(self, key: str) -> None:
+        """Write the outcome summary after a session ends. Runs the (possibly
+        slow) summarizer off the event loop so it never stalls the bus."""
+        if self.history is None:
+            return
+        row = self.history.session(key)
+        if row is None:
+            return
+        intention = str(row.get("intention") or "")
+        events_summary = self.history.events_summary(key)
+        result = summarize(build_prompt(intention, "", events_summary))
+        outcome = result.text or mechanical_summary(intention, events_summary)
+        self.history.set_outcome(key, outcome)
 
     async def stop(self, session_key: str) -> bool:
         supervisor = self._supervisors.get(session_key)

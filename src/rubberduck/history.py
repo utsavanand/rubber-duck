@@ -121,6 +121,39 @@ class HistoryStore:
         ).fetchall()
         return {r["kind"]: r["count"] for r in rows}
 
+    def set_intention(self, key: str, intention: str) -> None:
+        self._conn.execute(
+            "UPDATE sessions SET intention = ? WHERE session_key = ?", (intention, key)
+        )
+        self._conn.commit()
+
+    def set_outcome(self, key: str, outcome: str) -> None:
+        self._conn.execute(
+            "UPDATE sessions SET outcome_summary = ? WHERE session_key = ?", (outcome, key)
+        )
+        self._conn.commit()
+
+    def events_summary(self, key: str) -> str:
+        """A one-line factual digest of a session's activity, for summaries."""
+        row = self._conn.execute(
+            "SELECT event_count FROM sessions WHERE session_key = ?", (key,)
+        ).fetchone()
+        if row is None:
+            return "no activity recorded"
+        tools = self._conn.execute(
+            "SELECT json_extract(payload_json, '$.tool_name') AS tool "
+            "FROM events WHERE session_key = ? AND tool IS NOT NULL",
+            (key,),
+        ).fetchall()
+        tool_names = [t["tool"] for t in tools]
+        m = self.metrics(key)
+        parts = [f"{row['event_count']} events"]
+        if tool_names:
+            parts.append(f"tools used: {', '.join(sorted(set(tool_names)))}")
+        if m:
+            parts.append(", ".join(f"{v} {k}s" for k, v in m.items()))
+        return "; ".join(parts) + "."
+
     def _upsert_session(self, key: str, event: Event) -> None:
         row = self._conn.execute(
             "SELECT state, started_at FROM sessions WHERE session_key = ?", (key,)

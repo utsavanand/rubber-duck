@@ -59,6 +59,23 @@ function SessionCard({ session, now }: { session: SessionView; now: number }) {
         {session.metrics?.build ? ` · ${session.metrics.build} builds` : ""}
         {session.metrics?.test ? ` · ${session.metrics.test} tests` : ""}
       </div>
+      {session.intention && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "#374151",
+            marginTop: 6,
+            fontStyle: "italic",
+          }}
+        >
+          intent: {session.intention}
+        </div>
+      )}
+      {session.outcome && (
+        <div style={{ fontSize: 12, color: "#4b5563", marginTop: 4 }}>
+          {session.outcome}
+        </div>
+      )}
       {session.cwd && (
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
           {session.cwd}

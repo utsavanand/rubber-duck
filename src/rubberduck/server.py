@@ -32,7 +32,7 @@ class Server:
     def __init__(self, bus: EventBus | None = None, history: HistoryStore | None = None) -> None:
         self.history = history if history is not None else HistoryStore()
         self.bus = bus if bus is not None else EventBus(sink=self.history.record)
-        self.orchestrator = Orchestrator(self.bus)
+        self.orchestrator = Orchestrator(self.bus, history=self.history)
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
