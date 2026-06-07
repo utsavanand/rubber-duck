@@ -24,6 +24,7 @@ export interface SessionView {
   startedAt: number;
   updatedAt: number;
   eventCount: number;
+  metrics?: Record<string, number>;
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -38,6 +39,7 @@ export interface PersistedSession {
   started_at: number;
   updated_at: number;
   ended_at?: number | null;
+  metrics?: Record<string, number>;
 }
 
 export function viewFromPersisted(s: PersistedSession): SessionView {
@@ -51,6 +53,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     startedAt: s.started_at,
     updatedAt: s.updated_at,
     eventCount: s.event_count,
+    metrics: s.metrics,
   };
 }
 

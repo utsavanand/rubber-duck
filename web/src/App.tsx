@@ -56,6 +56,8 @@ function SessionCard({ session, now }: { session: SessionView; now: number }) {
       </div>
       <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
         up {uptime(session.startedAt, now)} · {session.eventCount} events
+        {session.metrics?.build ? ` · ${session.metrics.build} builds` : ""}
+        {session.metrics?.test ? ` · ${session.metrics.test} tests` : ""}
       </div>
       {session.cwd && (
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>

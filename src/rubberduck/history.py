@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from rubberduck import paths
+from rubberduck.metrics import classify
 from rubberduck.runtimes.base import SessionState
 
 Event = dict[str, Any]
@@ -102,7 +103,23 @@ class HistoryStore:
         key = session_key_of(event)
         if key is not None:
             self._upsert_session(key, event)
+            kind = classify(event)
+            if kind is not None:
+                self._bump_metric(key, kind)
         self._conn.commit()
+
+    def _bump_metric(self, key: str, kind: str) -> None:
+        self._conn.execute(
+            "INSERT INTO metrics (session_key, kind, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(session_key, kind) DO UPDATE SET count = count + 1",
+            (key, kind),
+        )
+
+    def metrics(self, key: str) -> dict[str, int]:
+        rows = self._conn.execute(
+            "SELECT kind, count FROM metrics WHERE session_key = ?", (key,)
+        ).fetchall()
+        return {r["kind"]: r["count"] for r in rows}
 
     def _upsert_session(self, key: str, event: Event) -> None:
         row = self._conn.execute(
@@ -173,7 +190,12 @@ class HistoryStore:
 
     def sessions(self) -> list[dict[str, Any]]:
         rows = self._conn.execute("SELECT * FROM sessions ORDER BY updated_at DESC").fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            row = dict(r)
+            row["metrics"] = self.metrics(row["session_key"])
+            out.append(row)
+        return out
 
     def session(self, key: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM sessions WHERE session_key = ?", (key,)).fetchone()
