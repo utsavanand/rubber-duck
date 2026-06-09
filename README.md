@@ -13,11 +13,16 @@ Design: [`rubberduck-design.md`](./rubberduck-design.md).
 ## Install
 
 ```sh
-pip install rubberduckhq
+pipx install rubberduckhq
 ```
 
-Requires Python 3.11+. Bring your own agent (Claude Code, Codex, any CLI agent)
-and your own API key — Rubberduck never sees your code or credentials.
+Requires Python 3.11+. No pipx? `brew install pipx` (macOS) or see
+[pipx docs](https://pipx.pypa.io/stable/installation/). pipx installs the CLI in
+its own isolated environment, which avoids the `externally-managed-environment`
+error a bare `pip install` hits on Homebrew Python.
+
+Bring your own agent (Claude Code, Codex, any CLI agent) and your own API key —
+Rubberduck never sees your code or credentials.
 
 ## Use it
 

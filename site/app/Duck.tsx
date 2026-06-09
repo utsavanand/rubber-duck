@@ -1,6 +1,9 @@
-// An orange rubber duck mark, used as the logo. Inline SVG so it inherits size
-// from the surrounding text and needs no asset request.
-export function Duck({ size = 28 }: { size?: number }) {
+// An orange rubber duck mark, used as the logo and as the fleet glyph. Inline
+// SVG so it inherits size from surrounding text and needs no asset request.
+// Built from overlapping ellipses (body, chest, head) so the silhouette reads
+// as a duck at any size. `color` overrides the body fill for the hero fleet.
+export function Duck({ size = 28, color }: { size?: number; color?: string }) {
+  const body = color ?? "#FFB020";
   return (
     <svg
       width={size}
@@ -11,28 +14,14 @@ export function Duck({ size = 28 }: { size?: number }) {
       aria-label="Rubber duck"
       role="img"
     >
-      {/* body */}
-      <path
-        d="M14 40c0-9 7-15 16-15 4 0 7 1 10 3 2-7 1-13-2-17 6 1 11 6 12 13 6 1 10 5 10 10 0 8-9 14-23 14-13 0-23-3-23-8z"
-        fill="#FFB020"
-      />
-      {/* head highlight */}
-      <path
-        d="M40 28c-2-2-5-3-9-3-7 0-12 4-14 9 2-9 9-15 18-15 2 4 3 6 5 9z"
-        fill="#FFC247"
-      />
-      {/* beak */}
-      <path d="M2 28l12-1-3 6-9-2c-1 0-1-2 0-3z" fill="#F5821F" />
-      {/* eye */}
-      <circle cx="20" cy="22" r="2.6" fill="#1a1a1a" />
-      {/* water line */}
-      <path
-        d="M8 50h48"
-        stroke="#FFB020"
-        strokeWidth="3"
-        strokeLinecap="round"
-        opacity="0.5"
-      />
+      <g fill={body}>
+        <ellipse cx="30" cy="42" rx="24" ry="13" />
+        <ellipse cx="38" cy="33" rx="12" ry="11" />
+        <path d="M8 36c-4-2-7-1-8 2 3 2 6 2 8 1z" />
+        <circle cx="44" cy="22" r="12" />
+      </g>
+      <path d="M55 21c5-1 8 0 9 3-2 2-5 3-9 3-1-2-1-4 0-6z" fill="#F5821F" />
+      <circle cx="46" cy="19" r="2.4" fill="#1a1a1a" />
     </svg>
   );
 }

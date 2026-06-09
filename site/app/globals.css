@@ -105,6 +105,15 @@ a {
   padding: 104px 0 80px;
   max-width: 820px;
 }
+.fleet {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.fleet svg:nth-child(even) {
+  transform: translateY(-4px);
+}
 .eyebrow {
   display: inline-block;
   font-size: 13px;
@@ -195,6 +204,9 @@ a {
 .sess .name {
   font-weight: 600;
   font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 .sess .state {
   font-size: 11px;

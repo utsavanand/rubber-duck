@@ -1,5 +1,13 @@
 import { Duck } from "./Duck";
 
+const FLEET: { kind: "busy" | "idle" | "wait"; color: string }[] = [
+  { kind: "busy", color: "#4b5cff" },
+  { kind: "wait", color: "#c2820b" },
+  { kind: "idle", color: "#18a957" },
+  { kind: "busy", color: "#4b5cff" },
+  { kind: "idle", color: "#18a957" },
+];
+
 export default function Home() {
   return (
     <>
@@ -8,12 +16,12 @@ export default function Home() {
         <nav className="nav">
           <div className="brand">
             <Duck size={26} />
-            <span>Rubberduck</span>
+            <span>RubberDuckHQ</span>
           </div>
           <div className="nav-links">
             <a href="#features">Features</a>
-            <a href="#how">How it works</a>
             <a href="#install">Install</a>
+            <a href="#how">How it works</a>
             <a
               href="https://github.com/utsavanand/rubber-duck"
               className="btn btn-ghost"
@@ -27,13 +35,18 @@ export default function Home() {
       {/* hero */}
       <div className="container">
         <header className="hero">
-          <span className="eyebrow">Local-first · Bring your own agent</span>
-          <h1>One control plane for your AI coding agents.</h1>
+          <div className="fleet" aria-label="A fleet of agents">
+            {FLEET.map((d, i) => (
+              <Duck key={i} size={30} color={d.color} />
+            ))}
+          </div>
+          <span className="eyebrow">Local-first · Bring your own agents</span>
+          <h1>Headquarters for your fleet of AI agents.</h1>
           <p className="sub">
-            You run several coding agents in parallel. Rubberduck is the single
-            window that shows what each is doing, surfaces the one that needs
-            you, and orchestrates their work across isolated git worktrees
-            &mdash; on your machine, with your code never leaving it.
+            Run many agents at once, coding and non-coding alike. RubberDuckHQ
+            is the single window that orchestrates them across isolated git
+            worktrees, shows what each is doing, and surfaces the one that needs
+            you. On your machine, with your code never leaving it.
           </p>
           <div className="hero-cta">
             <a href="#install" className="btn btn-primary">
@@ -57,7 +70,6 @@ export default function Home() {
               <span className="dot" />
               <span className="dot" />
               <span className="dot" />
-              <span className="title">Rubberduck &mdash; localhost:4200</span>
             </div>
             <div className="window-body">
               <Sess
@@ -74,9 +86,9 @@ export default function Home() {
               />
               <Sess
                 kind="idle"
-                name="docs-pass"
+                name="release-notes"
                 state="Idle"
-                meta="2 builds · 1 test · 9 events"
+                meta="research · 2 drafts · 9 events"
               />
               <Sess
                 kind="busy"
@@ -94,19 +106,18 @@ export default function Home() {
         <section id="features" style={{ borderTop: "none", paddingTop: 0 }}>
           <div className="section-head">
             <div className="section-kicker">Capabilities</div>
-            <h2 className="section-title">
-              Built for running many agents at once
-            </h2>
+            <h2 className="section-title">Orchestrate many agents at once</h2>
             <p className="section-sub">
-              Not a single-agent assistant. Rubberduck is the orchestration and
-              observability layer around the agents you already use.
+              Not a single-agent assistant. RubberDuckHQ is the orchestration
+              and observability layer around every agent you run, coding and
+              non-coding work side by side.
             </p>
           </div>
           <div className="features">
             <Feature
               tag="Isolation"
               title="One repo, many features"
-              body="Each session runs in its own git worktree on a fresh branch in your repo. Several agents work the same repository in parallel without conflicts — merge any branch back with a normal git merge."
+              body="Each session runs in its own git worktree on a fresh branch in your repo. Several agents work the same repository in parallel without conflicts. Merge any branch back with a normal git merge."
             />
             <Feature
               tag="Lineage"
@@ -116,7 +127,7 @@ export default function Home() {
             <Feature
               tag="Attention"
               title="See who needs you"
-              body="Live state for every session — busy, idle, or waiting on input. Stop watching five terminals at once."
+              body="Live state for every session: busy, idle, or waiting on input. Stop watching five terminals at once."
             />
             <Feature
               tag="History"
@@ -126,46 +137,12 @@ export default function Home() {
             <Feature
               tag="Compatibility"
               title="Bring any agent"
-              body="Claude Code, Codex, or any CLI agent. Claude Code connects automatically through hooks — no wiring required."
+              body="Claude Code, Codex, or any CLI agent. Claude Code connects automatically through hooks, no wiring required."
             />
             <Feature
               tag="Evaluation"
               title="Compare approaches"
               body="Run one prompt across multiple agents on sibling branches and review the results side by side."
-            />
-          </div>
-        </section>
-      </div>
-
-      {/* how it works */}
-      <div className="container">
-        <section id="how">
-          <div className="section-head">
-            <div className="section-kicker">Setup</div>
-            <h2 className="section-title">Running in three steps</h2>
-            <p className="section-sub">
-              A local server and a dashboard. No account, no cloud — your code
-              and API keys never leave your machine.
-            </p>
-          </div>
-          <div className="steps">
-            <Step
-              n="Once"
-              title="Connect your agent"
-              body="A one-time setup: wire Claude Code so every session reports to Rubberduck. Run it once and forget it."
-              code="rubberduck install-hooks --global"
-            />
-            <Step
-              n="Each time"
-              title="Start the server"
-              body="The running process that listens, stores history, and serves the dashboard at localhost:4200. Leave it running."
-              code="rubberduck serve"
-            />
-            <Step
-              n="Then"
-              title="Work as usual"
-              body="Use Claude Code normally. Sessions appear in the dashboard on their own — no extra steps."
-              code="open http://localhost:4200"
             />
           </div>
         </section>
@@ -179,16 +156,19 @@ export default function Home() {
               <div className="section-kicker">Install</div>
               <h2 className="section-title">A single Python package.</h2>
               <p className="section-sub">
-                Rubberduck installs with pip and runs locally. Bring your own
-                agent and your own API key — Rubberduck never sees your code or
-                credentials.
+                RubberDuckHQ installs with pipx and runs locally. Bring your own
+                agents and your own API key. RubberDuckHQ never sees your code
+                or credentials.
               </p>
-              <p className="note">Requires Python 3.11 or later.</p>
+              <p className="note">
+                Requires Python 3.11 or later. No pipx?{" "}
+                <code>brew install pipx</code>.
+              </p>
             </div>
             <div>
               <pre>
                 {`# install the orchestrator
-pip install rubberduckhq
+pipx install rubberduckhq
 
 # connect it to Claude Code, then run it
 rubberduck install-hooks --global
@@ -199,13 +179,47 @@ rubberduck serve`}
         </section>
       </div>
 
+      {/* how it works */}
+      <div className="container">
+        <section id="how">
+          <div className="section-head">
+            <div className="section-kicker">How it works</div>
+            <h2 className="section-title">Running in three steps</h2>
+            <p className="section-sub">
+              A local server and a dashboard. No account, no cloud. Your code
+              and API keys never leave your machine.
+            </p>
+          </div>
+          <div className="steps">
+            <Step
+              n="Once"
+              title="Connect your agent"
+              body="A one-time setup: wire Claude Code so every session reports to RubberDuckHQ. Run it once and forget it."
+              code="rubberduck install-hooks --global"
+            />
+            <Step
+              n="Each time"
+              title="Start the server"
+              body="The running process that listens, stores history, and serves the dashboard. Leave it running."
+              code="rubberduck serve"
+            />
+            <Step
+              n="Then"
+              title="Work as usual"
+              body="Use your agents normally. Sessions appear in the dashboard on their own, no extra steps."
+              code="open the dashboard"
+            />
+          </div>
+        </section>
+      </div>
+
       {/* cta */}
       <div className="container">
         <section className="cta" style={{ border: "none" }}>
           <h2>Interested in early access?</h2>
           <p>
-            Rubberduck is in active development. If you run agents at scale and
-            want to talk — or want in early — reach out.
+            RubberDuckHQ is in active development. If you run agents at scale
+            and want to talk, or want in early, reach out.
           </p>
           <a
             href="https://github.com/utsavanand/rubber-duck"
@@ -221,7 +235,7 @@ rubberduck serve`}
         <footer>
           <div className="brand">
             <Duck size={22} />
-            <span>Rubberduck</span>
+            <span>RubberDuckHQ</span>
           </div>
           <span>Local-first · Runs on localhost · Your code stays yours</span>
         </footer>
@@ -241,11 +255,16 @@ function Sess({
   state: string;
   meta: string;
 }) {
+  const hue =
+    kind === "busy" ? "#4b5cff" : kind === "wait" ? "#c2820b" : "#18a957";
   return (
     <div className={`sess s-${kind}`}>
       <div className="bar" />
       <div className="top">
-        <span className="name">{name}</span>
+        <span className="name">
+          <Duck size={16} color={hue} />
+          {name}
+        </span>
         <span className="state">{state}</span>
       </div>
       <div className="meta">{meta}</div>
