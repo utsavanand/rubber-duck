@@ -41,6 +41,7 @@ import subprocess
 import time
 import urllib.parse
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from rubberduck import browse, gitdetect
@@ -945,11 +946,18 @@ class Server:
                 writer.write(close_frame())
                 await writer.drain()
 
-    async def serve(self, host: str, port: int) -> None:
+    async def serve(
+        self,
+        host: str,
+        port: int,
+        on_listening: Callable[[str, int], None] | None = None,
+    ) -> None:
         adopted = await self.orchestrator.reconcile()
         if adopted:
             print(f"re-adopted {len(adopted)} tmux session(s): {', '.join(adopted)}")
         server = await asyncio.start_server(self.handle, host, port)
+        if on_listening is not None:
+            on_listening(host, port)
         sweeper = asyncio.create_task(self._sweep_dead_loop())
         async with server:
             try:

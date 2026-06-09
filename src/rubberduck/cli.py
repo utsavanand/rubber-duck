@@ -3,6 +3,7 @@ serve (Act 1), launch/fork (Acts 3/5), emit (Act 1+)."""
 
 import argparse
 import asyncio
+import errno
 import json
 import os
 import sys
@@ -64,12 +65,45 @@ def build_parser() -> argparse.ArgumentParser:
 def _serve(host: str, port: int) -> int:
     from rubberduck.server import Server
 
-    print(f"rubberduck serving on http://{host}:{port}", file=sys.stderr)
     try:
-        asyncio.run(Server().serve(host, port))
+        asyncio.run(Server().serve(host, port, on_listening=_print_listening))
     except KeyboardInterrupt:
         return 0
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        _print_port_in_use(host, port)
+        return 1
     return 0
+
+
+def _print_listening(host: str, port: int) -> None:
+    print(f"rubberduck serving on http://{host}:{port}", file=sys.stderr)
+
+
+def _print_port_in_use(host: str, port: int) -> None:
+    print(f"Port {port} is already in use.", file=sys.stderr)
+    if _rubberduck_responds(host, port):
+        print(
+            f"\nAnother Rubberduck is already running:\n  open http://{host}:{port}",
+            file=sys.stderr,
+        )
+    print(
+        f"\nFree the port or pick another:\n"
+        f"  lsof -ti :{port} | xargs kill\n"
+        f"  rubberduck serve --port {port + 100}",
+        file=sys.stderr,
+    )
+
+
+def _rubberduck_responds(host: str, port: int) -> bool:
+    """True if whatever owns the port answers with Rubberduck's self-probe
+    header, so we can tell 'already running' from 'foreign process'."""
+    try:
+        resp = urllib.request.urlopen(f"http://{host}:{port}/", timeout=1)
+    except OSError:
+        return False
+    return bool(resp.headers.get("X-Rubberduck") == "1")
 
 
 def _launch(command: str, cwd: str, session_key: str | None, prompt: str) -> int:
