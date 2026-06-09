@@ -45,7 +45,9 @@ export function SessionDetail({
     if (tab === "diff") {
       fetch(`/sessions/${session.key}/diff`)
         .then((r) => r.json())
-        .then((d: { diff: string }) => setDiff(d.diff))
+        .then((d: { diff?: string; error?: string }) =>
+          setDiff(d.error ? `git diff failed: ${d.error}` : (d.diff ?? "")),
+        )
         .catch(() => setDiff(""));
     }
   }, [tab, session.key]);

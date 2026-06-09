@@ -2,6 +2,8 @@ from pathlib import Path
 
 from rubberduck.eventbus import EventBus
 from rubberduck.history import HistoryStore
+from rubberduck.server import Server
+from rubberduck.worktrees import GitError
 
 
 def seed(store: HistoryStore) -> EventBus:
@@ -55,3 +57,22 @@ def test_deleted_session_is_not_resurrected_by_later_events(tmp_path: Path) -> N
     assert store.session("s1") is None  # SessionEnd itself doesn't recreate
     bus.publish({"event_type": "SessionStart", "session_key": "s1", "cwd": "/repo"})
     assert store.session("s1") is not None
+
+
+def test_unmerged_check_failure_is_unsafe_not_zero(tmp_path: Path, monkeypatch) -> None:
+    """A failed git check must NOT read as 'zero unmerged commits' — that would
+    silently bypass the delete guard and discard the agent's work."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    server = Server(history=store)
+
+    wt = tmp_path / "worktrees" / "wt"
+    wt.mkdir(parents=True)
+    monkeypatch.setattr(server, "_worktree_path_of", lambda row: wt)
+
+    def boom(_path: Path) -> int:
+        raise GitError("git exploded")
+
+    monkeypatch.setattr(server.orchestrator.worktrees, "unmerged_commits", boom)
+
+    # -1 sentinel = "couldn't tell", which the delete handler treats as unsafe.
+    assert server._worktree_unmerged({"worktree_path": str(wt)}) == -1

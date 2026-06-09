@@ -599,8 +599,10 @@ class Server:
         with contextlib.suppress(json.JSONDecodeError):
             force = bool(json.loads(body or b"{}").get("force"))
         row = self.history.session(session_key)
+        # -1 means the unmerged check failed; treat unknown as unsafe and refuse
+        # (unless forced), same as if there were unmerged commits.
         unmerged = self._worktree_unmerged(row)
-        if unmerged > 0 and not force:
+        if unmerged != 0 and not force:
             await _write_json(
                 writer,
                 409,
@@ -608,6 +610,7 @@ class Server:
                     "deleted": False,
                     "session_key": session_key,
                     "unmerged_commits": unmerged,
+                    "unmerged_check_failed": unmerged < 0,
                     "branch": row.get("branch") if row else None,
                 },
             )
@@ -635,13 +638,17 @@ class Server:
         return Path(str(wt))
 
     def _worktree_unmerged(self, row: dict[str, Any] | None) -> int:
+        """Count commits on the worktree branch not yet in main. Returns -1 when
+        the git check itself fails: 'we couldn't tell' must NOT be treated as
+        'zero unmerged', or a broken check would silently bypass the delete guard
+        and discard the agent's work."""
         wt = self._worktree_path_of(row)
         if wt is None or not wt.exists():
             return 0
         try:
             return self.orchestrator.worktrees.unmerged_commits(wt)
         except GitError:
-            return 0
+            return -1
 
     def _remove_worktree(self, row: dict[str, Any] | None) -> None:
         """Remove the git worktree + branch for a Rubberduck-created session.
@@ -791,6 +798,13 @@ class Server:
             capture_output=True,
             text=True,
         )
+        # A nonzero exit means the diff failed (bad repo, detached state). Don't
+        # report it as an empty diff — that reads as "no changes" in the UI.
+        if result.returncode != 0:
+            await _write_json(
+                writer, 500, {"error": result.stderr.strip() or "git diff failed"}
+            )
+            return
         await _write_json(writer, 200, {"diff": result.stdout})
 
     async def _input(self, writer: asyncio.StreamWriter, session_key: str, body: bytes) -> None:

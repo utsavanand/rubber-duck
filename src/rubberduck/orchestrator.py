@@ -15,6 +15,7 @@ import os
 import pty
 import shlex
 import signal
+import sys
 import uuid
 from collections import deque
 from collections.abc import AsyncGenerator
@@ -134,28 +135,34 @@ class SessionSupervisor:
 
     async def _tail_pipe(self) -> None:
         """Follow the tmux pane's output file, applying the same state/tool
-        detection as the PTY pump. Ends when the tmux session is gone."""
+        detection as the PTY pump. Ends when the tmux session is gone. Always
+        emits SessionEnd, even if the loop raises — otherwise a crash here would
+        leave the session stuck 'live' forever with no signal of why."""
         assert self._tmux_target is not None
         target = self._tmux_target
         path = Path(self._pipe_path)
-        with path.open("r", errors="replace") as fh:
-            fh.seek(0, os.SEEK_END)
-            while True:
-                line = fh.readline()
-                if line:
-                    self._record_output(line)
-                    tool = self.runtime.tool_in(line)
-                    if tool is not None:
-                        self._emit("PreToolUse", tool_name=tool)
-                    new_state = self.runtime.detect_state(line)
-                    if new_state != self._state:
-                        self._state = new_state
-                        self._emit(_STATE_EVENT[new_state])
-                    continue
-                if not tmux.session_exists(target):
-                    break
-                await asyncio.sleep(0.15)
-        self._emit("SessionEnd")
+        try:
+            with path.open("r", errors="replace") as fh:
+                fh.seek(0, os.SEEK_END)
+                while True:
+                    line = fh.readline()
+                    if line:
+                        self._record_output(line)
+                        tool = self.runtime.tool_in(line)
+                        if tool is not None:
+                            self._emit("PreToolUse", tool_name=tool)
+                        new_state = self.runtime.detect_state(line)
+                        if new_state != self._state:
+                            self._state = new_state
+                            self._emit(_STATE_EVENT[new_state])
+                        continue
+                    if not tmux.session_exists(target):
+                        break
+                    await asyncio.sleep(0.15)
+        except Exception as e:  # noqa: BLE001 — boundary: a background task
+            print(f"[rubberduck] tail-pipe for {self.session_key} failed: {e}", file=sys.stderr)
+        finally:
+            self._emit("SessionEnd")
 
     async def _pump(self, primary: int) -> None:
         loop = asyncio.get_running_loop()
@@ -174,6 +181,8 @@ class SessionSupervisor:
                 if new_state != self._state:
                     self._state = new_state
                     self._emit(_STATE_EVENT[new_state])
+        except Exception as e:  # noqa: BLE001 — boundary: a background task
+            print(f"[rubberduck] output pump for {self.session_key} failed: {e}", file=sys.stderr)
         finally:
             transport.close()
             await self._finish()
@@ -324,8 +333,19 @@ class Orchestrator:
             self.history.set_intention(key, prompt)
         if self.history is not None and supervisor._task is not None:
 
-            def _on_done(_task: asyncio.Task[None], k: str = key) -> None:
-                self._write_summary(k)
+            def _on_done(task: asyncio.Task[None], k: str = key) -> None:
+                # Surface a crash in the supervisor task — a done-callback that
+                # ignores task.exception() would let it vanish silently.
+                if not task.cancelled() and task.exception() is not None:
+                    print(
+                        f"[rubberduck] session {k} task ended with error: "
+                        f"{task.exception()}",
+                        file=sys.stderr,
+                    )
+                try:
+                    self._write_summary(k)
+                except Exception as e:  # noqa: BLE001 — boundary: DB + summarizer
+                    print(f"[rubberduck] summary for {k} failed: {e}", file=sys.stderr)
 
             supervisor._task.add_done_callback(_on_done)
         return key
