@@ -10,6 +10,9 @@ export default defineConfig({
       "/sessions": "http://localhost:4200",
       "/snapshots": "http://localhost:4200",
       "/tree": "http://localhost:4200",
+      "/approvals": "http://localhost:4200",
+      "/terminals": "http://localhost:4200",
+      "/browse": "http://localhost:4200",
     },
   },
 });

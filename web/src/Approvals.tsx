@@ -56,7 +56,8 @@ export function Approvals({
     }
   }
 
-  if (approvals.length === 0) return null;
+  if (approvals.length === 0)
+    return <p className="rd-panel-empty">Nothing needs you right now.</p>;
 
   return (
     <div className="rd-approvals">

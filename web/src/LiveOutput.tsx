@@ -58,7 +58,7 @@ export function LiveOutput({ sessionKey }: { sessionKey: string }) {
       >
         {attached
           ? "● attached to live output"
-          : "○ not a live (Rubberduck-launched) session"}
+          : "○ runs in your own terminal — type there, not here"}
       </div>
       <div
         ref={scrollRef}
@@ -82,25 +82,30 @@ export function LiveOutput({ sessionKey }: { sessionKey: string }) {
           lines.map((l, i) => <div key={i}>{l}</div>)
         )}
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="type to the agent and press Enter…"
-          style={{
-            flex: 1,
-            padding: "8px 10px",
-            border: "1px solid #d1d5db",
-            borderRadius: 6,
-            fontSize: 13,
-            fontFamily: "ui-monospace, Menlo, monospace",
-          }}
-        />
-        <Button size="sm" onClick={send}>
-          Send
-        </Button>
-      </div>
+      {/* Input only works when Rubberduck owns the PTY (a session it launched).
+          Watched sessions stream output but have no stdin we can write to, so
+          hide the box rather than offer an action that always fails. */}
+      {attached && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder="type to the agent and press Enter…"
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              fontSize: 13,
+              fontFamily: "ui-monospace, Menlo, monospace",
+            }}
+          />
+          <Button size="sm" onClick={send}>
+            Send
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

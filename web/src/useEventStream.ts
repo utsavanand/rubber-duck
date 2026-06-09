@@ -58,6 +58,7 @@ function reduce(
 export function useEventStream(): {
   sessions: SessionView[];
   connected: boolean;
+  recentEvents: RubberduckEvent[];
   removeSessions: (keys: string[]) => void;
 } {
   const [sessions, dispatch] = useReducer(
@@ -65,6 +66,8 @@ export function useEventStream(): {
     new Map<string, SessionView>(),
   );
   const [connected, setConnected] = useState(false);
+  // Rolling buffer of the newest events, newest first, for the Pulse ticker.
+  const [recentEvents, setRecentEvents] = useState<RubberduckEvent[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,8 +90,13 @@ export function useEventStream(): {
       const data: unknown = JSON.parse(msg.data);
       if (isInit(data)) {
         data.events.forEach((event) => dispatch({ kind: "event", event }));
+        setRecentEvents((prev) =>
+          [...data.events].reverse().concat(prev).slice(0, 100),
+        );
       } else {
-        dispatch({ kind: "event", event: data as RubberduckEvent });
+        const event = data as RubberduckEvent;
+        dispatch({ kind: "event", event });
+        setRecentEvents((prev) => [event, ...prev].slice(0, 100));
       }
     };
     return () => source.close();
@@ -100,5 +108,5 @@ export function useEventStream(): {
     (a, b) => b.startedAt - a.startedAt || a.key.localeCompare(b.key),
   );
   const removeSessions = (keys: string[]) => dispatch({ kind: "remove", keys });
-  return { sessions: list, connected, removeSessions };
+  return { sessions: list, connected, recentEvents, removeSessions };
 }
