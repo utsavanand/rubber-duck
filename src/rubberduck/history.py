@@ -199,6 +199,7 @@ class HistoryStore:
         )
 
     def metrics(self, key: str) -> dict[str, int]:
+        """Per-kind counts (e.g. build/test) recorded for a session."""
         rows = self._conn.execute(
             "SELECT kind, count FROM metrics WHERE session_key = ?", (key,)
         ).fetchall()
@@ -226,6 +227,7 @@ class HistoryStore:
         markdown_path: str | None,
         created_at: int,
     ) -> None:
+        """Persist a checkpoint record (summary + raw record JSON) for a session."""
         self._conn.execute(
             "INSERT INTO checkpoints "
             "(id, session_key, label, summary, record_json, markdown_path, created_at) "
@@ -243,6 +245,7 @@ class HistoryStore:
         self._conn.commit()
 
     def checkpoints(self, key: str) -> list[dict[str, Any]]:
+        """A session's checkpoint records, newest first."""
         rows = self._conn.execute(
             "SELECT id, label, summary, record_json, markdown_path, created_at "
             "FROM checkpoints WHERE session_key = ? ORDER BY created_at DESC",
@@ -267,6 +270,7 @@ class HistoryStore:
         return events
 
     def set_intention(self, key: str, intention: str) -> None:
+        """Record what a session set out to do (its launch prompt)."""
         self._conn.execute(
             "UPDATE sessions SET intention = ? WHERE session_key = ?", (intention, key)
         )
@@ -318,6 +322,7 @@ class HistoryStore:
         return keys
 
     def set_outcome(self, key: str, outcome: str) -> None:
+        """Record a session's outcome summary (written when it ends)."""
         self._conn.execute(
             "UPDATE sessions SET outcome_summary = ? WHERE session_key = ?", (outcome, key)
         )
@@ -419,6 +424,7 @@ class HistoryStore:
             )
 
     def sessions(self) -> list[dict[str, Any]]:
+        """All session rows, newest-updated first, each with its metrics."""
         rows = self._conn.execute("SELECT * FROM sessions ORDER BY updated_at DESC").fetchall()
         out = []
         for r in rows:
@@ -428,6 +434,7 @@ class HistoryStore:
         return out
 
     def session(self, key: str) -> dict[str, Any] | None:
+        """One session row by key, or None if there's no such session."""
         row = self._conn.execute("SELECT * FROM sessions WHERE session_key = ?", (key,)).fetchone()
         return dict(row) if row else None
 
@@ -466,4 +473,5 @@ class HistoryStore:
         return keys
 
     def close(self) -> None:
+        """Close the underlying SQLite connection."""
         self._conn.close()

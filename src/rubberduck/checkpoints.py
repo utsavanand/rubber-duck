@@ -202,8 +202,9 @@ def _write_markdown(
     else:
         lines.append(f"- not a git repo ({record.get('path')})")
     path = dest / f"checkpoint-{now_ms}.md"
-    path.write_text("\n".join(lines) + "\n")
-    (dest / "latest.md").write_text("\n".join(lines) + "\n")
+    text = "\n".join(lines) + "\n"
+    path.write_text(text)
+    (dest / "latest.md").write_text(text)
     return path
 
 

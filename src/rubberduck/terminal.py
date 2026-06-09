@@ -13,6 +13,7 @@ import os
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 MAC_TERMINALS = ("iterm", "terminal")
 
@@ -147,7 +148,7 @@ def _default_mac() -> str:
 
 
 def _iterm_installed() -> bool:
-    return os.path.isdir("/Applications/iTerm.app") or shutil.which("iterm2") is not None
+    return Path("/Applications/iTerm.app").is_dir() or shutil.which("iterm2") is not None
 
 
 def _open_terminal(command: str) -> bool:

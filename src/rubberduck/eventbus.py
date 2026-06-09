@@ -53,6 +53,9 @@ class EventBus:
         self._sink = sink
 
     def publish(self, raw: Event) -> Event:
+        """Stamp the event with _id/_ts, append to the ring buffer, mirror it to
+        the sink (persistence), and fan it out to subscribers. Returns the
+        stamped event. A sink failure is logged, not raised."""
         event = dict(raw)
         event["_id"] = uuid.uuid4().hex
         event["_ts"] = int(time.time() * 1000)
@@ -69,13 +72,16 @@ class EventBus:
         return event
 
     def recent(self, limit: int = 100) -> list[Event]:
+        """The most recent `limit` events from the ring buffer, oldest first."""
         if limit >= len(self._ring):
             return list(self._ring)
         return list(self._ring)[-limit:]
 
     def subscribe(self) -> Subscription:
+        """A live subscription that yields every event published from now on."""
         return Subscription(self)
 
     @property
     def subscriber_count(self) -> int:
+        """Number of open live subscriptions."""
         return len(self._subscribers)

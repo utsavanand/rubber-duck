@@ -57,9 +57,12 @@ class ApprovalRegistry:
         return approval
 
     def pending(self) -> list[Approval]:
+        """Approvals awaiting a decision."""
         return [a for a in self._pending.values() if a.decided is None]
 
     def decide(self, approval_id: str, decision: Decision) -> bool:
+        """Inject the keystroke for `decision` into the agent and mark the
+        approval decided only if it landed. Returns whether it landed."""
         approval = self._pending.get(approval_id)
         if approval is None or approval.decided is not None:
             return False

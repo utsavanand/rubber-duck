@@ -77,7 +77,7 @@ class SessionSupervisor:
             {
                 "event_type": event_type,
                 "session_key": self.session_key,
-                "source_app": os.path.basename(self.cwd) or self.session_key,
+                "source_app": Path(self.cwd).name or self.session_key,
                 "cwd": self.cwd,
                 "runtime": self.runtime.name,
                 **self._extra,
@@ -382,6 +382,8 @@ class Orchestrator:
         return "\n".join(f"{r['role']}: {r['text']}" for r in records)
 
     async def stop(self, session_key: str) -> bool:
+        """Terminate a supervised session. Returns False if it isn't one we run
+        (e.g. a watched session, which we don't own)."""
         supervisor = self._supervisors.get(session_key)
         if supervisor is None:
             return False
@@ -389,6 +391,8 @@ class Orchestrator:
         return True
 
     def get(self, session_key: str) -> SessionSupervisor | None:
+        """The live supervisor for a session, or None if Rubberduck didn't
+        launch it (so there's no PTY/tmux we own)."""
         return self._supervisors.get(session_key)
 
     def inject_key(self, session_key: str, key: str) -> bool:

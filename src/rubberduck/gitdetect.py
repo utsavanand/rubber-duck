@@ -11,6 +11,7 @@ runs in doesn't change, so we detect once.
 
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -45,4 +46,4 @@ def _detect_uncached(cwd: str) -> GitInfo | None:
     if not root:
         return None
     branch = git("rev-parse", "--abbrev-ref", "HEAD") or "HEAD"
-    return GitInfo(repo_path=root, repo_name=root.rsplit("/", 1)[-1], branch=branch)
+    return GitInfo(repo_path=root, repo_name=Path(root).name, branch=branch)
