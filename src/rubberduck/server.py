@@ -47,8 +47,20 @@ from typing import Any
 from rubberduck import browse, gitdetect, security
 from rubberduck.approvals import ApprovalRegistry
 from rubberduck.checkpoints import build_checkpoint
-from rubberduck.eventbus import Event, EventBus
+from rubberduck.eventbus import EventBus
 from rubberduck.history import HistoryStore
+from rubberduck.httpio import (
+    KEEPALIVE_SECONDS,
+    SELF_PROBE_HEADER,
+    dashboard_dir,
+)
+from rubberduck.httpio import parse_request_line as _parse_request_line
+from rubberduck.httpio import read_body as _read_body
+from rubberduck.httpio import read_headers as _read_headers
+from rubberduck.httpio import write_file as _write_file
+from rubberduck.httpio import write_json as _write_json
+from rubberduck.httpio import write_response as _write_response
+from rubberduck.httpio import write_sse as _write_sse
 from rubberduck.orchestrator import Orchestrator, StateRuntime
 from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
 from rubberduck.runtimes.codex import CodexRuntime
@@ -191,10 +203,6 @@ _ROUTES: list[Route] = [
           prefix="/assets/"),
 ]
 # fmt: on
-
-
-SELF_PROBE_HEADER = "X-Rubberduck"
-KEEPALIVE_SECONDS = 15
 
 
 class Server:
@@ -1043,105 +1051,3 @@ def _branch_name(name: str | None) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
     return f"rubberduck/{slug}" if slug else f"rubberduck/{int(time.time())}"
 
-
-def _parse_request_line(line: bytes) -> tuple[str, str]:
-    parts = line.decode("latin-1").split()
-    if len(parts) < 2:
-        return "", ""
-    return parts[0], parts[1]
-
-
-async def _read_headers(reader: asyncio.StreamReader) -> dict[str, str]:
-    headers: dict[str, str] = {}
-    while True:
-        line = await reader.readline()
-        if line in (b"\r\n", b"\n", b""):
-            break
-        name, _, value = line.decode("latin-1").partition(":")
-        headers[name.strip().lower()] = value.strip()
-    return headers
-
-
-async def _read_body(reader: asyncio.StreamReader, headers: dict[str, str]) -> bytes:
-    length = int(headers.get("content-length", "0") or "0")
-    return await reader.readexactly(length) if length else b""
-
-
-def _sse_frame(event: Event) -> bytes:
-    return f"data: {json.dumps(event)}\n\n".encode()
-
-
-def _write_sse(writer: asyncio.StreamWriter, event: Event) -> None:
-    writer.write(_sse_frame(event))
-
-
-async def _write_response(
-    writer: asyncio.StreamWriter,
-    status: int,
-    text: str,
-    extra_headers: dict[str, str] | None = None,
-    content_type: str = "text/plain",
-) -> None:
-    body = text.encode()
-    head = f"HTTP/1.1 {status} {_REASON.get(status, 'OK')}\r\n"
-    head += f"Content-Length: {len(body)}\r\nContent-Type: {content_type}\r\n"
-    for name, value in (extra_headers or {}).items():
-        head += f"{name}: {value}\r\n"
-    head += "Connection: close\r\n\r\n"
-    writer.write(head.encode() + body)
-    await writer.drain()
-
-
-async def _write_json(writer: asyncio.StreamWriter, status: int, payload: Any) -> None:
-    body = json.dumps(payload).encode()
-    head = (
-        f"HTTP/1.1 {status} {_REASON.get(status, 'OK')}\r\n"
-        f"Content-Length: {len(body)}\r\n"
-        "Content-Type: application/json\r\n"
-        "Connection: close\r\n\r\n"
-    )
-    writer.write(head.encode() + body)
-    await writer.drain()
-
-
-_CONTENT_TYPES = {
-    ".html": "text/html",
-    ".js": "text/javascript",
-    ".css": "text/css",
-    ".svg": "image/svg+xml",
-    ".json": "application/json",
-    ".ico": "image/x-icon",
-}
-
-
-def dashboard_dir() -> Path | None:
-    """Locate the built dashboard. Prefer the copy bundled in the installed
-    package (src/rubberduck/dashboard); fall back to the dev build at web/dist
-    so a repo checkout serves the freshly-built UI."""
-    packaged = Path(__file__).resolve().parent / "dashboard"
-    if (packaged / "index.html").is_file():
-        return packaged
-    dev = Path(__file__).resolve().parents[2] / "web" / "dist"
-    return dev if (dev / "index.html").is_file() else None
-
-
-async def _write_file(writer: asyncio.StreamWriter, path: Path) -> None:
-    body = path.read_bytes()
-    ctype = _CONTENT_TYPES.get(path.suffix, "application/octet-stream")
-    # index.html must always be revalidated, else browsers serve a stale HTML
-    # that points at an old bundle hash and never picks up new builds. The
-    # content-hashed assets under /assets/ are immutable — cache them hard.
-    cache = "no-cache" if path.suffix == ".html" else "public, max-age=31536000, immutable"
-    head = (
-        f"HTTP/1.1 200 OK\r\n"
-        f"Content-Length: {len(body)}\r\n"
-        f"Content-Type: {ctype}\r\n"
-        f"Cache-Control: {cache}\r\n"
-        f"{SELF_PROBE_HEADER}: 1\r\n"
-        "Connection: close\r\n\r\n"
-    )
-    writer.write(head.encode() + body)
-    await writer.drain()
-
-
-_REASON = {200: "OK", 400: "Bad Request", 404: "Not Found"}

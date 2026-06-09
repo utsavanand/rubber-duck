@@ -167,7 +167,7 @@ def _dashboard() -> int:
     import subprocess
     import webbrowser
 
-    from rubberduck.server import dashboard_dir
+    from rubberduck.httpio import dashboard_dir
 
     if dashboard_dir() is None:
         web = Path(__file__).resolve().parents[2] / "web"
