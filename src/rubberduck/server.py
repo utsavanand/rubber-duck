@@ -40,11 +40,11 @@ import shlex
 import subprocess
 import time
 import urllib.parse
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from rubberduck import browse, gitdetect
+from rubberduck import browse, gitdetect, security
 from rubberduck.approvals import ApprovalRegistry
 from rubberduck.checkpoints import build_checkpoint
 from rubberduck.eventbus import Event, EventBus
@@ -204,6 +204,7 @@ class Server:
         self.orchestrator = Orchestrator(self.bus, history=self.history)
         self.snapshots = SnapshotManager(self.history)
         self.approvals = ApprovalRegistry(self.orchestrator.inject_key)
+        self.token = security.load_or_create_token()
 
     def _sink(self, event: dict[str, Any]) -> None:
         """Fan a published event to the durable store and the approval registry.
@@ -253,6 +254,21 @@ class Server:
         headers: dict[str, str],
         body: bytes,
     ) -> None:
+        # Cross-origin requests are refused outright: a malicious web page must
+        # not be able to drive this server (which executes commands and touches
+        # the filesystem) even though it binds localhost. Same-origin requests
+        # and CLI tools send no Origin and pass.
+        if not security.origin_allowed(headers):
+            await _write_response(writer, 403, "cross-origin request refused")
+            return
+        # State-changing requests additionally require the per-install secret,
+        # which a blind CSRF can't read and therefore can't forge. GETs (the
+        # dashboard, static assets, read-only data) stay open so the browser can
+        # load the UI; they're already protected by the same-origin check above.
+        if method != "GET" and not security.token_valid(headers, self.token):
+            await _write_json(writer, 401, {"error": "missing or invalid token"})
+            return
+
         for route in self._routes():
             if route.matches(method, path):
                 await route.call(self, reader, writer, headers, body, route.segment(path))
@@ -281,6 +297,18 @@ class Server:
         target = (dist / rel).resolve()
         if not str(target).startswith(str(dist.resolve())) or not target.is_file():
             target = dist / "index.html"  # SPA fallback
+        if target.name == "index.html":
+            # Inject the per-install token so the dashboard's fetches can send it.
+            # Same-origin script can read it; a cross-origin attacker can't.
+            html = target.read_text().replace(
+                "<head>",
+                f'<head><meta name="rubberduck-token" content="{self.token}">',
+                1,
+            )
+            await _write_response(
+                writer, 200, html, content_type="text/html", extra_headers={SELF_PROBE_HEADER: "1"}
+            )
+            return
         await _write_file(writer, target)
 
     async def _ingest(self, writer: asyncio.StreamWriter, body: bytes) -> None:
@@ -307,10 +335,15 @@ class Server:
             await _write_json(writer, 400, {"error": "invalid JSON"})
             return
         key = req.get("session_key")
-        if not key:
-            await _write_json(writer, 400, {"error": "session_key required"})
+        if not security.valid_session_key(key):
+            await _write_json(writer, 400, {"error": "valid session_key required"})
             return
-        ok = self.history.touch(str(key), int(time.time() * 1000), tty=req.get("tty"))
+        # tty is later injected into AppleScript to close the tab; constrain it to
+        # the /dev/tty… shape so it can't carry a script-breaking payload.
+        tty = req.get("tty")
+        if tty is not None and not security.valid_tty(tty):
+            tty = None
+        ok = self.history.touch(str(key), int(time.time() * 1000), tty=tty)
         await _write_json(writer, 200, {"ok": ok})
 
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
@@ -370,7 +403,12 @@ class Server:
             branch = wt.branch
             worktree_path = str(wt.path)
 
-        key = req.get("session_key") or f"new-{int(time.time())}"
+        # Unguessable key so the input/attach endpoints can't be hit by guessing
+        # a predictable `new-<timestamp>`. A caller-supplied key must be sane.
+        key = req.get("session_key") or security.new_session_key("new")
+        if not security.valid_session_key(key):
+            await _write_json(writer, 400, {"error": "invalid session_key"})
+            return
         opened = open_in_terminal(
             str(run_cwd),
             shlex.split(command),
@@ -451,7 +489,10 @@ class Server:
         except (GitError, ValueError) as e:
             await _write_json(writer, 400, {"error": str(e)})
             return
-        child_key = req.get("session_key") or f"fork-{branch}"
+        child_key = req.get("session_key") or security.new_session_key("fork")
+        if not security.valid_session_key(child_key):
+            await _write_json(writer, 400, {"error": "invalid session_key"})
+            return
         opened = open_in_terminal(
             str(worktree.path),
             shlex.split(command),
@@ -1025,10 +1066,11 @@ async def _write_response(
     status: int,
     text: str,
     extra_headers: dict[str, str] | None = None,
+    content_type: str = "text/plain",
 ) -> None:
     body = text.encode()
     head = f"HTTP/1.1 {status} {_REASON.get(status, 'OK')}\r\n"
-    head += f"Content-Length: {len(body)}\r\nContent-Type: text/plain\r\n"
+    head += f"Content-Length: {len(body)}\r\nContent-Type: {content_type}\r\n"
     for name, value in (extra_headers or {}).items():
         head += f"{name}: {value}\r\n"
     head += "Connection: close\r\n\r\n"

@@ -106,12 +106,21 @@ def _rubberduck_responds(host: str, port: int) -> bool:
     return bool(resp.headers.get("X-Rubberduck") == "1")
 
 
+def _auth_headers(content_type: bool = True) -> dict[str, str]:
+    from rubberduck import security
+
+    headers = {security.TOKEN_HEADER: security.load_or_create_token()}
+    if content_type:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
 def _launch(command: str, cwd: str, session_key: str | None, prompt: str) -> int:
     payload = {"command": command, "cwd": cwd, "session_key": session_key, "prompt": prompt}
     req = urllib.request.Request(
         f"{_server_url()}/sessions/launch",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=_auth_headers(),
         method="POST",
     )
     try:
@@ -124,7 +133,9 @@ def _launch(command: str, cwd: str, session_key: str | None, prompt: str) -> int
 
 
 def _snapshot() -> int:
-    req = urllib.request.Request(f"{_server_url()}/snapshots", data=b"", method="POST")
+    req = urllib.request.Request(
+        f"{_server_url()}/snapshots", data=b"", headers=_auth_headers(False), method="POST"
+    )
     try:
         resp = urllib.request.urlopen(req, timeout=10)
     except OSError as e:

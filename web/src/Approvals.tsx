@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { authHeaders } from "./api";
 import { useToast } from "./ui";
 
 interface Approval {
@@ -38,7 +39,7 @@ export function Approvals({
     try {
       const res = await fetch(`/approvals/${id}/decide`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ decision }),
       });
       const data = await res.json();

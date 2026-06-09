@@ -12,11 +12,20 @@ from rubberduck.history import HistoryStore
 from rubberduck.server import Server
 
 
+def _token() -> str:
+    from rubberduck import security
+
+    return security.load_or_create_token()
+
+
 def _post(port: int, path: str, payload: dict[str, object]) -> tuple[int, dict[str, object]]:
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Rubberduck-Token": _token(),
+        },
         method="POST",
     )
     try:

@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rubberduck import paths
+from rubberduck import paths, security
 from rubberduck.history import HistoryStore
 
 ACTIVE_WINDOW_MS = 60 * 60 * 1000
@@ -46,7 +46,16 @@ class SnapshotManager:
         return out
 
     def get(self, snapshot_id: str) -> dict[str, Any] | None:
+        """Load a snapshot manifest by id. The id must match the server-minted
+        ``snap-<digits>`` form — anything else (e.g. a ``../`` traversal trying
+        to read a manifest.json elsewhere on disk) is rejected before any
+        filesystem access."""
+        if not security.valid_snapshot_id(snapshot_id):
+            return None
         manifest = self._root / snapshot_id / "manifest.json"
+        # Belt and suspenders: the resolved path must stay inside the root.
+        if not manifest.resolve().is_relative_to(self._root.resolve()):
+            return None
         if not manifest.is_file():
             return None
         return json.loads(manifest.read_text())  # type: ignore[no-any-return]

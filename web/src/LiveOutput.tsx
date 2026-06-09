@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { authHeaders } from "./api";
 import { Button } from "./ui";
 
 // Live agent output (PTY) for a session, with a stdin input line for
@@ -33,7 +34,7 @@ export function LiveOutput({ sessionKey }: { sessionKey: string }) {
     try {
       const res = await fetch(`/sessions/${sessionKey}/input`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ text }),
       });
       if (!res.ok) {

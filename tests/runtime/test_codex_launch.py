@@ -14,11 +14,20 @@ from rubberduck.server import Server
 FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"
 
 
+def _token() -> str:
+    from rubberduck import security
+
+    return security.load_or_create_token()
+
+
 def _post(port: int, path: str, payload: dict[str, object]) -> dict[str, object]:
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Rubberduck-Token": _token(),
+        },
         method="POST",
     )
     return json.loads(urllib.request.urlopen(req, timeout=5).read())  # type: ignore[no-any-return]

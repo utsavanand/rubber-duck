@@ -84,18 +84,32 @@ def test_invalid_json_rejected() -> None:
     assert asyncio.run(scenario()) == 400
 
 
+def _token() -> str:
+    from rubberduck import security
+
+    return security.load_or_create_token()
+
+
 def _post_event(port: int, payload: dict[str, object]) -> None:
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/events",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Rubberduck-Token": _token(),
+        },
         method="POST",
     )
     urllib.request.urlopen(req, timeout=2).read()
 
 
 def _post_raw_status(port: int, body: bytes) -> int:
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/events", data=body, method="POST")
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/events",
+        data=body,
+        headers={"X-Rubberduck-Token": _token()},
+        method="POST",
+    )
     try:
         return urllib.request.urlopen(req, timeout=2).status
     except urllib.error.HTTPError as e:

@@ -1,10 +1,22 @@
 // Thin wrapper over the Rubberduck server. Every POST action the backend
 // exposes lives here so components never hand-roll fetches.
 
+// The per-install secret, injected into index.html by the server. Sent on every
+// state-changing request so the server can tell the real dashboard from a
+// cross-origin forgery. Read once at module load.
+const TOKEN =
+  document
+    .querySelector('meta[name="rubberduck-token"]')
+    ?.getAttribute("content") ?? "";
+
+export function authHeaders(extra?: Record<string, string>): HeadersInit {
+  return { "X-Rubberduck-Token": TOKEN, ...extra };
+}
+
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body ?? {}),
   });
   const data = await res.json().catch(() => ({}));
@@ -66,7 +78,7 @@ export const api = {
   updateSession: (key: string, meta: { name?: string; notes?: string }) =>
     fetch(`/sessions/${key}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(meta),
     }).then((r) => r.json()),
   getSession: (key: string) =>

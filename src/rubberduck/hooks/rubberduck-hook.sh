@@ -44,8 +44,16 @@ if [ -z "$PAYLOAD" ] || [ "$PAYLOAD" = "null" ]; then
     "$EVENT_TYPE" "$SKEY_FIELD" "$SID" "$CWD" "$APP" "$TOOL")
 fi
 
+# The server writes a per-install secret to this file (0600). We read it and
+# send it as a header so the server accepts our /events POST — same machine,
+# same user, so the file is readable. Missing file => empty token => the post is
+# rejected, which is correct (no server, or a server that predates the token).
+TOKEN_FILE="${RUBBERDUCK_HOME:-$HOME/.rubberduck}/token"
+TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null)
+
 curl -s -X POST "$URL/events" \
   -H 'Content-Type: application/json' \
+  -H "X-Rubberduck-Token: $TOKEN" \
   -d "$PAYLOAD" >/dev/null 2>&1 &
 
 exit 0
