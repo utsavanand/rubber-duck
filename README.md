@@ -16,24 +16,7 @@ Works with **Claude Code · Codex · GitHub Copilot CLI · any CLI agent**
 
 ---
 
-```
-┌─ 🦆 RubberDuckHQ          ● Live        [◐] [Compare] [Snapshots] [New session] ┐
-├──────────────────────────┬───────────────────────────┬─────────────────────────┤
-│ AGENTS                   │ NEEDS HUMAN               │ PULSE          ▌▎▍ live   │
-│ [Active] [Idle] [All]    │                           │                          │
-│                          │  ⚠ payments-audit         │  15:42:11 checkout  → Edit│
-│ ⎇ checkout-refactor BUSY │    Bash                   │  15:42:09 checkout  → Bash│
-│   launched               │    psql -c 'DROP TABLE…'  │  15:42:04 payments  → Grep│
-│   ├ ⑂ checkout·idem  BUSY│   [ Deny ]   [ Approve ]  │  15:41:58 idem      → Read│
-│   └ ⑂ checkout·retry BUSY│                           │  15:41:50 release   → Web │
-│                          │                           │  15:41:42 checkout  → Edit│
-│ ⎇ payments-audit    WAIT │  Nothing else needs you.  │  15:41:33 payments  → Read│
-│   launched               │                           │  15:41:20 retry     → Edit│
-│                          │                           │  15:41:08 checkout  start │
-│   release-notes     IDLE │                           │     ⋮  (keeps scrolling) │
-│   watched                │                           │                          │
-└──────────────────────────┴───────────────────────────┴─────────────────────────┘
-```
+![Rubberduck dashboard — Agents, Needs human, and Pulse panels](docs/dashboard.png)
 
 ## Install
 
