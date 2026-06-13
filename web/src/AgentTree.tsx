@@ -147,6 +147,19 @@ function TreeRow({
               Fork
             </button>
           )}
+          {/* An in-place session (no worktree yet) can be promoted onto a branch
+              when the user decides the work is worth publishing. */}
+          {!s.worktreePath && s.cwd && live && (
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              title="Create a git worktree + branch for this session so you can publish its work"
+              onClick={() =>
+                act("Worktree created", () => api.promote(s.key, {}))
+              }
+            >
+              Create worktree
+            </button>
+          )}
           <button
             className={`rd-btn rd-btn-sm rd-btn-ghost${notesOpen ? " active" : ""}`}
             title="Personal notes for this session (local only)"
@@ -180,14 +193,27 @@ function TreeRow({
           </button>
         </div>
         {notesOpen && (
-          <textarea
-            className="rd-row-notes"
-            value={notes}
-            placeholder="Notes for this session (saved on blur, local only)…"
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={saveNotes}
-            rows={2}
-          />
+          <div className="rd-row-notes-wrap">
+            <textarea
+              className="rd-row-notes"
+              value={notes}
+              placeholder="Notes for this session (local only)…"
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+            />
+            <div className="rd-row-notes-bar">
+              <span className="hint">
+                {notes !== (s.notes ?? "") ? "Unsaved changes" : "Saved"}
+              </span>
+              <button
+                className="rd-btn rd-btn-sm rd-btn-primary"
+                disabled={notes === (s.notes ?? "")}
+                onClick={saveNotes}
+              >
+                Save
+              </button>
+            </div>
+          </div>
         )}
       </div>
       {node.children.map((child) => (

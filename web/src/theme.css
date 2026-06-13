@@ -193,10 +193,12 @@ code,
   max-height: 48px;
   opacity: 1;
 }
+.rd-row-notes-wrap {
+  margin-top: 8px;
+}
 .rd-row-notes {
   display: block;
   width: 100%;
-  margin-top: 8px;
   padding: 8px 10px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -205,6 +207,45 @@ code,
   font: inherit;
   font-size: 13px;
   resize: vertical;
+}
+.rd-row-notes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.rd-row-notes-bar .hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* radio choice rows (run-in-place vs worktree, fork mode) */
+.rd-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.rd-radio:hover {
+  background: var(--bg-soft);
+}
+.rd-radio input {
+  margin-top: 2px;
+}
+.rd-radio strong {
+  font-weight: 600;
+}
+.rd-inline-code {
+  background: var(--bg-soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 /* ── right panel: pulse ── */

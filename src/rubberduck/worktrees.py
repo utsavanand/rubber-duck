@@ -6,6 +6,9 @@ real checkout sharing the repo's object store but with its own working tree and
 branch. Pure `git` subprocess calls; no dependencies.
 """
 
+from __future__ import annotations
+
+import contextlib
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,7 +56,8 @@ class WorktreeManager:
         _git(repo, *args)
         return Worktree(path=dest, branch=branch, repo_path=repo)
 
-    def list(self, repo_path: Path) -> list[Worktree]:
+    def list_worktrees(self, repo_path: Path) -> list[Worktree]:
+        """The session worktrees under this repo (excludes the main checkout)."""
         repo = repo_path.resolve()
         out = _git(repo, "worktree", "list", "--porcelain")
         return _parse_worktree_list(out, repo)
@@ -70,6 +74,34 @@ class WorktreeManager:
         the worktree's shared git dir, so the caller needn't track repo_path."""
         repo = _main_repo_of(worktree_path)
         self.remove(repo, worktree_path, delete_branch=delete_branch)
+
+    def branches(self, repo_path: Path, *, fetch: bool = True) -> list[str]:
+        """Branches you can base a new worktree off: local branch names plus
+        remote-tracking ones (origin/…). Fetches first (best-effort) so a branch
+        just pushed elsewhere shows up. HEAD is listed first when present."""
+        repo = repo_path.resolve()
+        if not (repo / ".git").exists():
+            raise GitError(f"{repo} is not a git repository")
+        if fetch:
+            # Network call; never let a fetch failure (offline, no remote) block
+            # the list — we still have the local branches.
+            with contextlib.suppress(GitError):
+                _git(repo, "fetch", "--quiet", "--all")
+        out = _git(
+            repo,
+            "for-each-ref",
+            "--format=%(refname:short)",
+            "refs/heads",
+            "refs/remotes",
+        )
+        names = [
+            n
+            for n in (line.strip() for line in out.splitlines())
+            if n and not n.endswith("/HEAD")  # drop the symbolic origin/HEAD entry
+        ]
+        head = _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        # Put the current branch first; keep the rest in git's order.
+        return [head, *[n for n in names if n != head]] if head in names else names
 
     def unmerged_commits(self, worktree_path: Path) -> int:
         """How many commits the worktree's branch has that aren't reachable from

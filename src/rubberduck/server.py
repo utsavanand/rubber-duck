@@ -156,6 +156,7 @@ _ROUTES: list[Route] = [
     Route("GET", "/sessions", lambda s, r, w, h, b, seg: s._sessions(w)),
     Route("GET", "/tree", lambda s, r, w, h, b, seg: s._tree(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._browse(w, seg), prefix="/browse"),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._branches(w, seg), prefix="/branches"),
     Route("GET", "/approvals", lambda s, r, w, h, b, seg: s._list_approvals(w)),
     Route("GET", "/terminals", lambda s, r, w, h, b, seg: s._terminals(w)),
     Route("GET", "/snapshots", lambda s, r, w, h, b, seg: s._list_snapshots(w)),
@@ -175,6 +176,8 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/fork-conversation")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._fork(w, seg, b),
           **_mid("/sessions/", "/fork")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._promote(w, seg, b),
+          **_mid("/sessions/", "/promote")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._stop(w, seg),
           **_mid("/sessions/", "/stop")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._checkpoint(w, seg, b),
@@ -381,6 +384,7 @@ class Server:
                     cwd=cwd,
                     repo_path=repo_path,
                     branch=req.get("branch"),
+                    base=req.get("base"),
                     session_key=req.get("session_key"),
                     prompt=req.get("prompt", ""),
                     name=name,
@@ -401,7 +405,9 @@ class Server:
         if repo_path:
             try:
                 wt = self.orchestrator.worktrees.add(
-                    Path(repo_path), req.get("branch") or _branch_name(name)
+                    Path(repo_path),
+                    req.get("branch") or _branch_name(name),
+                    base=req.get("base") or None,
                 )
             except (GitError, ValueError) as e:
                 await _write_json(writer, 400, {"error": str(e)})
@@ -535,6 +541,60 @@ class Server:
                 "worktree": str(worktree.path),
                 "branch": worktree.branch,
                 "command": command,
+            },
+        )
+
+    async def _promote(
+        self, writer: asyncio.StreamWriter, session_key: str, body: bytes
+    ) -> None:
+        """Create a git worktree + branch for a session that's been running in
+        place (no worktree yet) — for when the user decides the work is worth
+        isolating onto a branch they can publish. The repo is the session's cwd;
+        the new worktree is branched off `base` (default: the repo's HEAD)."""
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        row = self.history.session(session_key)
+        if row is None:
+            await _write_json(writer, 404, {"error": "no such session"})
+            return
+        if row.get("worktree_path"):
+            await _write_json(writer, 409, {"error": "session already has a worktree"})
+            return
+        repo_dir = row.get("repo_path") or row.get("cwd")
+        if not repo_dir:
+            await _write_json(writer, 400, {"error": "session has no directory to branch from"})
+            return
+        repo = Path(str(repo_dir))
+        branch = req.get("branch") or _branch_name(row.get("name") or session_key)
+        base = req.get("base") or None
+        try:
+            worktree = await asyncio.to_thread(
+                self.orchestrator.worktrees.add, repo, branch, base=base
+            )
+        except (GitError, ValueError) as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        # Record the new worktree/branch on the session row so the dashboard
+        # shows it and worktree-only actions (fork, spotlight) light up.
+        self.bus.publish(
+            {
+                "event_type": "Notification",
+                "session_key": session_key,
+                "repo_path": str(repo),
+                "worktree_path": str(worktree.path),
+                "branch": worktree.branch,
+            }
+        )
+        await _write_json(
+            writer,
+            200,
+            {
+                "session_key": session_key,
+                "worktree": str(worktree.path),
+                "branch": worktree.branch,
             },
         )
 
@@ -707,6 +767,23 @@ class Server:
         query = urllib.parse.urlparse("/browse" + seg).query
         path = urllib.parse.parse_qs(query).get("path", [None])[0]
         await _write_json(writer, 200, browse.listing(path))
+
+    async def _branches(self, writer: asyncio.StreamWriter, seg: str) -> None:
+        """Branches in the repo at ?path=, for the 'base off' picker. Fetches
+        first so freshly-pushed remote branches appear."""
+        query = urllib.parse.urlparse("/branches" + seg).query
+        path = urllib.parse.parse_qs(query).get("path", [None])[0]
+        if not path:
+            await _write_json(writer, 400, {"error": "path required"})
+            return
+        try:
+            names = await asyncio.to_thread(
+                self.orchestrator.worktrees.branches, Path(path)
+            )
+        except GitError as e:
+            await _write_json(writer, 400, {"error": str(e)})
+            return
+        await _write_json(writer, 200, {"branches": names})
 
     async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
         pending = [

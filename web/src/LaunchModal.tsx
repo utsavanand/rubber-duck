@@ -14,6 +14,12 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
   const [terminals, setTerminals] = useState<string[]>([]);
   const [terminal, setTerminal] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  // For a git folder: run in the folder as-is, or branch off into an isolated
+  // worktree. No default — the user picks.
+  const [mode, setMode] = useState<"in-place" | "worktree" | null>(null);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [base, setBase] = useState("");
+  const [newBranch, setNewBranch] = useState("");
 
   useEffect(() => {
     api
@@ -28,21 +34,47 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
   const path = picked?.path;
   const isGit = picked?.is_git ?? false;
 
+  // When a git folder is picked and the user wants a worktree, fetch the
+  // branches to base off (local + remote, fetched fresh on the server).
+  useEffect(() => {
+    if (mode === "worktree" && path) {
+      setBranches([]);
+      api
+        .branches(path)
+        .then((d) => {
+          setBranches(d.branches);
+          setBase(d.branches[0] ?? "");
+        })
+        .catch(() => undefined);
+    }
+  }, [mode, path]);
+
   async function submit() {
     if (!command.trim() || !path) {
       toast("A command and a folder are required", "err");
       return;
     }
+    if (isGit && mode === null) {
+      toast("Choose whether to run in place or in an isolated worktree", "err");
+      return;
+    }
     setBusy(true);
     try {
-      // A git folder gets an isolated worktree (repo_path); a plain folder runs
-      // in place (cwd). Opens in the chosen terminal as a new tab.
+      // Worktree mode → repo_path (+ branch/base) so the server branches off.
+      // In-place (or a plain folder) → cwd, touching nothing.
+      const worktree = isGit && mode === "worktree";
       const r = await api.launch({
         command,
         name: name || undefined,
         prompt: prompt || undefined,
         terminal: terminal || undefined,
-        ...(isGit ? { repo_path: path } : { cwd: path }),
+        ...(worktree
+          ? {
+              repo_path: path,
+              branch: newBranch || undefined,
+              base: base || undefined,
+            }
+          : { cwd: path }),
       });
       if (r.opened_in_terminal === false) {
         toast(`Couldn't open a terminal — run it yourself: ${command}`, "err");
@@ -108,10 +140,65 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
           start={path}
           onPick={(r) => {
             setPicked(r);
+            setMode(null);
             setBrowsing(false);
           }}
           onCancel={() => setBrowsing(false)}
         />
+      )}
+
+      {path && isGit && (
+        <Field label="How should this run?">
+          <label className="rd-radio">
+            <input
+              type="radio"
+              checked={mode === "in-place"}
+              onChange={() => setMode("in-place")}
+            />
+            <span>
+              <strong>Run in place</strong> — work directly in the folder, no
+              branch or worktree created
+            </span>
+          </label>
+          <label className="rd-radio">
+            <input
+              type="radio"
+              checked={mode === "worktree"}
+              onChange={() => setMode("worktree")}
+            />
+            <span>
+              <strong>Isolated worktree</strong> — branch off into a separate
+              checkout so several agents don't collide
+            </span>
+          </label>
+        </Field>
+      )}
+
+      {path && isGit && mode === "worktree" && (
+        <>
+          <Field label="Base the new branch off">
+            <select
+              style={inputStyle}
+              value={base}
+              onChange={(e) => setBase(e.target.value)}
+            >
+              {branches.length === 0 && <option value="">Loading…</option>}
+              {branches.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="New branch name (optional — auto-named if blank)">
+            <input
+              style={inputStyle}
+              value={newBranch}
+              onChange={(e) => setNewBranch(e.target.value)}
+              placeholder="rubberduck/login-refactor"
+            />
+          </Field>
+        </>
       )}
 
       <Field label="Name (optional)">

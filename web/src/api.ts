@@ -40,6 +40,7 @@ export interface LaunchRequest {
   repo_path?: string;
   cwd?: string;
   branch?: string;
+  base?: string;
   prompt?: string;
   session_key?: string;
   name?: string;
@@ -74,6 +75,13 @@ export const api = {
   browse: (path?: string) =>
     get<BrowseResult>(
       `/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+    ),
+  branches: (path: string) =>
+    get<{ branches: string[] }>(`/branches?path=${encodeURIComponent(path)}`),
+  promote: (key: string, opts: { branch?: string; base?: string }) =>
+    post<{ worktree: string; branch: string }>(
+      `/sessions/${key}/promote`,
+      opts,
     ),
   updateSession: (key: string, meta: { name?: string; notes?: string }) =>
     fetch(`/sessions/${key}`, {

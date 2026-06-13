@@ -13,6 +13,12 @@ export function ForkModal({
   onClose: () => void;
 }) {
   const toast = useToast();
+  const canConversationFork = session.runtime === "claude-code";
+  const canWorktreeFork = Boolean(session.branch);
+  // Default to whichever the session supports; worktree if both.
+  const [mode, setMode] = useState<"worktree" | "conversation">(
+    canWorktreeFork ? "worktree" : "conversation",
+  );
   const [branch, setBranch] = useState(
     session.branch ? `${session.branch}-fork` : "",
   );
@@ -34,18 +40,30 @@ export function ForkModal({
   async function submit() {
     setBusy(true);
     try {
-      const r = await api.fork(session.key, {
-        command,
-        branch: branch || undefined,
-        terminal: terminal || undefined,
-      });
-      if (r.opened_in_terminal) {
-        toast(`Opened fork on ${r.branch} in ${terminal || "a terminal"}`);
-      } else {
-        toast(
-          `Worktree created; run in a terminal: cd ${r.worktree} && ${r.command}`,
-          "err",
+      if (mode === "conversation") {
+        const r = await api.forkConversation(
+          session.key,
+          terminal || undefined,
         );
+        if (r.opened_in_terminal) {
+          toast(`Opened forked conversation in ${terminal || "a terminal"}`);
+        } else {
+          toast(`Run it yourself: ${r.command}`, "err");
+        }
+      } else {
+        const r = await api.fork(session.key, {
+          command,
+          branch: branch || undefined,
+          terminal: terminal || undefined,
+        });
+        if (r.opened_in_terminal) {
+          toast(`Opened fork on ${r.branch} in ${terminal || "a terminal"}`);
+        } else {
+          toast(
+            `Worktree created; run in a terminal: cd ${r.worktree} && ${r.command}`,
+            "err",
+          );
+        }
       }
       onClose();
     } catch (e) {
@@ -57,34 +75,61 @@ export function ForkModal({
 
   return (
     <Modal title={`Fork ${session.label}`} onClose={onClose}>
-      <p style={{ marginTop: 0, fontSize: 13, color: "var(--text-soft)" }}>
-        Creates a new git worktree on a new branch off{" "}
-        <code
-          style={{
-            background: "var(--bg-soft)",
-            padding: "1px 5px",
-            borderRadius: 4,
-          }}
+      <Field label="What kind of fork?">
+        <label
+          className="rd-radio"
+          style={{ opacity: canWorktreeFork ? 1 : 0.5 }}
         >
-          {session.branch ?? "the session"}
-        </code>{" "}
-        and opens the agent in a terminal you can drive.
-      </p>
-      <Field label="New branch">
-        <input
-          style={inputStyle}
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-          placeholder="feature/login-v2"
-        />
+          <input
+            type="radio"
+            checked={mode === "worktree"}
+            disabled={!canWorktreeFork}
+            onChange={() => setMode("worktree")}
+          />
+          <span>
+            <strong>Git worktree</strong> — branch off{" "}
+            <code className="rd-inline-code">{session.branch ?? "—"}</code> into
+            a new checkout so the fork's code is isolated
+            {!canWorktreeFork && " (this session has no branch)"}
+          </span>
+        </label>
+        <label
+          className="rd-radio"
+          style={{ opacity: canConversationFork ? 1 : 0.5 }}
+        >
+          <input
+            type="radio"
+            checked={mode === "conversation"}
+            disabled={!canConversationFork}
+            onChange={() => setMode("conversation")}
+          />
+          <span>
+            <strong>Conversation only</strong> — resume the agent's conversation
+            in a new terminal, no git branch
+            {!canConversationFork && " (Claude Code sessions only)"}
+          </span>
+        </label>
       </Field>
-      <Field label="Agent command">
-        <input
-          style={inputStyle}
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-        />
-      </Field>
+
+      {mode === "worktree" && (
+        <>
+          <Field label="New branch">
+            <input
+              style={inputStyle}
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              placeholder="feature/login-v2"
+            />
+          </Field>
+          <Field label="Agent command">
+            <input
+              style={inputStyle}
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+            />
+          </Field>
+        </>
+      )}
       {terminals.length > 0 && (
         <Field label="Open in">
           <select
