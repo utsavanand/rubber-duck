@@ -195,7 +195,7 @@ function Dashboard() {
 
         <section className="rd-attention">
           <div className="rd-panel-head">
-            <span>Needs you</span>
+            <span>Needs human</span>
           </div>
           <div className="rd-attention-body">
             <Approvals labels={labels} pollKey={sessions.length} />

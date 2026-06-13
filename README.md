@@ -19,7 +19,7 @@ Works with **Claude Code · Codex · GitHub Copilot CLI · any CLI agent**
 ```
 ┌─ 🦆 RubberDuckHQ          ● Live        [◐] [Compare] [Snapshots] [New session] ┐
 ├──────────────────────────┬───────────────────────────┬─────────────────────────┤
-│ AGENTS                   │ NEEDS YOU                 │ PULSE          ▌▎▍ live   │
+│ AGENTS                   │ NEEDS HUMAN               │ PULSE          ▌▎▍ live   │
 │ [Active] [Idle] [All]    │                           │                          │
 │                          │  ⚠ payments-audit         │  15:42:11 checkout  → Edit│
 │ ⎇ checkout-refactor BUSY │    Bash                   │  15:42:09 checkout  → Bash│
@@ -66,10 +66,11 @@ Fork a running session — the code (a new worktree branch) or just the
 conversation — and follow the whole lineage as a tree. Try three approaches to
 the same problem side by side.
 
-### 🔔 See who needs you
+### 🔔 Human in the loop (HITL)
 Live state for every session: busy, idle, or waiting on a permission request.
-Answer prompts from the dashboard for sessions Rubberduck launched, without
-switching terminals.
+The **Needs human** panel surfaces the sessions waiting on you — answer their
+prompts from the dashboard for sessions Rubberduck launched, without switching
+terminals.
 
 ### 📜 Durable history
 Every session is kept with its stated intention and an outcome summary, plus
@@ -89,8 +90,8 @@ live pulse of activity (pictured at the top of this page).
   marks each **watched** (you started it) or **launched** (Rubberduck started it
   and can drive it); a `⎇` glyph marks the ones on a git branch. Click a row for
   its detail drawer — timeline, diff, live output, checkpoints, and inline notes.
-- **Needs you** — sessions waiting on a permission request, with inline
-  Approve/Deny for the ones Rubberduck can reach.
+- **Needs human** — the human-in-the-loop (HITL) panel: sessions waiting on a
+  permission request, with inline Approve/Deny for the ones Rubberduck can reach.
 - **Pulse** — a live ticker of the latest action across every agent.
 
 ## Using it
