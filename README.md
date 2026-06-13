@@ -3,13 +3,11 @@
 Shadow companion across multiple agents and sessions — a second brain looking
 over your shoulder.
 
-Local-first orchestrator for AI coding agents. Launches agents (Claude Code,
-Codex, GitHub Copilot CLI, any CLI agent) into isolated git worktrees,
-supervises them, lets you fork a running session into a tree of parallel
-attempts, and keeps durable history with an intention → outcome summary per
-session.
-
-Design: [`rubberduck-design.md`](./rubberduck-design.md).
+Local-first orchestrator for AI coding agents. Run many agents at once — coding
+and non-coding — in one window: launch them into isolated git worktrees, fork a
+running session into a tree of parallel attempts, answer their permission
+prompts, and keep a durable intention → outcome record of every session. Your
+code and API keys never leave your machine.
 
 ## Install
 
@@ -17,151 +15,130 @@ Design: [`rubberduck-design.md`](./rubberduck-design.md).
 pipx install rubberduckhq
 ```
 
-Requires Python 3.11+. No pipx? `brew install pipx` (macOS) or see
-[pipx docs](https://pipx.pypa.io/stable/installation/). pipx installs the CLI in
-its own isolated environment, which avoids the `externally-managed-environment`
-error a bare `pip install` hits on Homebrew Python.
+Requires Python 3.11+.
 
-Bring your own agent (Claude Code, Codex, GitHub Copilot CLI, any CLI agent) and
-your own API key — Rubberduck never sees your code or credentials.
+## What it does
 
-## Use it
+### One window over every agent
+Stop juggling five terminals. Rubberduck shows every running session in a single
+dashboard — what each is doing, which one needs you, and how they relate.
 
-There are two commands, and they do different things:
+### Isolated git worktrees
+Run several agents on the same repo without collisions. Each session can get its
+own git worktree on its own branch; merge any branch back with a normal
+`git merge`. Or run in place when you don't want a branch — it's your choice per
+session.
+
+### Fork into a tree of attempts
+Fork a running session — the code (a new worktree branch) or just the
+conversation — and follow the whole lineage as a tree. Try three approaches to
+the same problem side by side.
+
+### See who needs you
+Live state for every session: busy, idle, or waiting on a permission request.
+Answer prompts from the dashboard for sessions Rubberduck launched, without
+switching terminals.
+
+### Durable history
+Every session is kept with its stated intention and an outcome summary, plus
+checkpoints of prompts, files, and tools. Catch up later without re-reading
+transcripts.
+
+### Local-first and private
+The server runs on `127.0.0.1`, gated by a per-install secret so a web page you
+visit can't drive it. Rubberduck never sees your code or your API keys.
+
+## Using it
+
+Two commands, always:
 
 ```sh
-rubberduck install-hooks --global   # ONCE: wire your agent to report to Rubberduck
+rubberduck install-hooks --global   # ONCE: wire an agent to report to Rubberduck
 rubberduck serve                    # EACH TIME: run the server + dashboard at :4200
 ```
 
-- **`install-hooks`** edits the agent's hook config so every session
-  automatically streams into Rubberduck. Run it **once** per machine (or once
-  per repo without `--global`). Defaults to Claude Code; wire others with
-  `--agent`:
+`install-hooks` runs once per machine and persists across reboots. `serve` is the
+process that listens, stores history, and serves the dashboard — run it whenever
+you want Rubberduck active, then open **http://localhost:4200**.
 
-  ```sh
-  rubberduck install-hooks --global                  # Claude Code (default)
-  rubberduck install-hooks --agent codex --global    # Codex
-  rubberduck install-hooks --agent copilot --global  # GitHub Copilot CLI
-  ```
+### Claude Code
 
-  Per-agent notes:
-  - **Claude Code** and **Copilot** work as soon as you run `serve`.
-  - **Codex** writes the config, but Codex won't run a hook until you *trust*
-    it: start `codex`, run `/hooks`, and trust the Rubberduck hook (you'll
-    re-trust if Rubberduck updates the hook script). Use `--global` — Codex's
-    repo-local hooks are unreliable upstream.
+```sh
+rubberduck install-hooks --global
+rubberduck serve
+```
 
-- **`serve`** is the running process: it receives those events, stores history,
-  serves the dashboard, and orchestrates agents you launch. Run it **whenever**
-  you want Rubberduck active, and leave it running. Open **http://localhost:4200**.
+Start `claude` as usual — sessions appear in the dashboard automatically. The
+richest integration: hook events plus the JSONL transcript.
 
-`install-hooks` makes the agent *talk to* Rubberduck; `serve` is what's
-*listening*. You need both — but only `serve` repeatedly.
+### Codex
 
-Then just use your agent as usual — sessions appear in the dashboard on their
-own. From there you can launch agents into isolated git worktrees, fork a
-session into a tree of parallel attempts, answer permission requests, and read
-per-session checkpoints (prompts, files, tools, outcome). Runtimes: `generic`
-(any CLI), `claude-code` (richest — hook events + JSONL transcript), `codex`,
-`copilot`.
+```sh
+rubberduck install-hooks --agent codex --global
+rubberduck serve
+```
 
-The server binds `127.0.0.1` and gates requests with a per-install secret
-(stored `0600` at `~/.rubberduck/token`) plus a same-origin check, so a web page
-you visit can't drive it. The hook script and dashboard read the token
-automatically; you never handle it.
+One extra step: Codex won't run a hook until you trust it. Start `codex`, run
+`/hooks`, and trust the Rubberduck hook (re-trust if Rubberduck later updates the
+hook script). Use `--global` — Codex's repo-local hooks are unreliable upstream.
+
+### GitHub Copilot CLI
+
+```sh
+rubberduck install-hooks --agent copilot --global
+rubberduck serve
+```
+
+Start `copilot` as usual — sessions appear automatically, no extra steps.
+
+### Bring your own agent
+
+Any CLI agent works through the **launch** path: click **New session** in the
+dashboard, point it at a command (`claude`, `codex`, or anything else) and a
+folder. Rubberduck spawns it in a terminal tab and supervises the process
+directly — no hooks needed. State is read from the agent's terminal output, so
+it's coarser than the hook-driven integrations above, but it works for anything.
 
 ## The dashboard
 
-`http://localhost:4200` is three columns:
+`http://localhost:4200` is three columns: your agents, what needs you, and a live
+pulse of activity.
 
-- **Agents** — every session as a row, with forks nested under their parent.
-  A badge marks each as **watched** or **launched** (see below); a `⎇` glyph
-  marks the ones working on a git branch. Click a row for its detail drawer
-  (timeline, diff, output, checkpoints, notes); notes save inline.
+```
+┌─ 🦆 RubberDuckHQ          ● Live        [◐] [Compare] [Snapshots] [New session] ┐
+├──────────────────────────┬───────────────────────────┬─────────────────────────┤
+│ AGENTS                   │ NEEDS YOU                 │ PULSE          ▌▎▍ live   │
+│ [Active] [Idle] [All]    │                           │                          │
+│                          │  ⚠ payments-audit         │  15:42:11 checkout  → Edit│
+│ ⎇ checkout-refactor BUSY │    Bash                   │  15:42:09 checkout  → Bash│
+│   launched               │    psql -c 'DROP TABLE…'  │  15:42:04 payments  → Grep│
+│   ├ ⑂ checkout·idem  BUSY│   [ Deny ]   [ Approve ]  │  15:41:58 idem      → Read│
+│   └ ⑂ checkout·retry BUSY│                           │  15:41:50 release   → Web │
+│                          │                           │  15:41:42 checkout  → Edit│
+│ ⎇ payments-audit    WAIT │  Nothing else needs you.  │  15:41:33 payments  → Read│
+│   launched               │                           │  15:41:20 retry     → Edit│
+│                          │                           │  15:41:08 checkout  start │
+│   release-notes     IDLE │                           │     ⋮  (keeps scrolling) │
+│   watched                │                           │                          │
+└──────────────────────────┴───────────────────────────┴─────────────────────────┘
+```
+
+- **Agents** — every session as a row, forks nested under their parent. A badge
+  marks each **watched** (you started it) or **launched** (Rubberduck started it
+  and can drive it); a `⎇` glyph marks the ones on a git branch. Click a row for
+  its detail drawer — timeline, diff, live output, checkpoints, and notes you can
+  edit inline.
 - **Needs you** — sessions waiting on a permission request, with inline
-  Approve/Deny (for sessions Rubberduck can reach).
+  Approve/Deny for the ones Rubberduck can reach.
 - **Pulse** — a live ticker of the latest action across every agent.
 
 ## Two kinds of session
 
 - **Watched** — you start the agent (`claude`, `codex`, `copilot`) in your own
-  terminal; its hooks report each event to Rubberduck. Rubberduck observes but
-  doesn't own the process, so it can't type to it or answer its prompts — those
-  happen in your terminal. Watched sessions run on whatever branch you have
-  checked out.
-- **Launched** — you click **New session** in the dashboard. Rubberduck opens a
-  new tab in your terminal (iTerm or Terminal), runs the agent there, and owns
-  the process — so you can drive it and answer permission requests from the
-  dashboard. It detects a killed tab via a 20s heartbeat and marks the session
-  terminated after 60s of silence.
-
-Each row's **watched/launched** badge tells you which is which at a glance.
-
-## Git is opt-in
-
-Launching a session on a git repo asks how to run it:
-
-- **Run in place** — the agent works directly in the folder, on whatever branch
-  is checked out. No branch or worktree is created.
-- **Isolated worktree** — the agent gets its own **git worktree**: a second
-  working directory that shares your repo's `.git` object store, on a new branch
-  off a base you pick (any local or remote branch). Picking the repo
-  `~/code/myapp` creates:
-
-  ```
-  ~/.rubberduck/worktrees/myapp/rubberduck/<branch>/   # the worktree (a checkout)
-  ```
-
-  The branch lives **in your repo** — `git branch` in `~/code/myapp` lists it —
-  and the agent works there without touching your main checkout.
-
-Changed your mind? An in-place session has a **Create worktree** action to
-branch its work onto a worktree later, for when it turns out worth publishing.
-
-To fold a worktree session's work back in, from your repo:
-
-```sh
-git merge rubberduck/<branch>     # or rebase, or open a PR from that branch
-```
-
-Deleting a session from the dashboard removes its worktree and branch. If the
-branch has commits not yet in `main`, delete asks before discarding them.
-
-## Forking a session
-
-Fork offers two kinds:
-
-- **Git worktree fork** — branch the code into a new worktree off the parent's
-  branch, and open a fresh agent there.
-- **Conversation fork** — resume the agent's conversation in a new terminal
-  (Claude Code's `--fork-session`), no branch.
-
-## Notes
-
-Each session has a **Notes** tab — a private, local-only list of reminders or
-TODOs for that session. Notes never leave your machine and are never sent to any
-agent or service.
-
-## Develop
-
-```sh
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-
-ruff check src tests        # lint
-black --check src tests scripts
-mypy                        # types (strict)
-pytest                      # unit + runtime tests
-python scripts/slop_check.py
-
-cd web && npm install
-npm run lint && npm run typecheck && npm run build
-```
-
-The dashboard ships bundled inside the package. `scripts/build_package.sh`
-rebuilds the web app, copies it into `src/rubberduck/dashboard/`, and builds the
-wheel + sdist — run it before publishing. During development, `cd web && npm run
-dev` serves the UI at `:5173` and proxies the API to a `serve` on `:4200`.
+  terminal; its hooks report to Rubberduck. Rubberduck observes but doesn't own
+  the process, so you drive it and answer its prompts in your terminal.
+- **Launched** — you click **New session**; Rubberduck opens a terminal tab,
+  runs the agent, and owns the process — so you can drive it and answer
+  permission requests from the dashboard.
 
 State lives in `~/.rubberduck/` (override with `RUBBERDUCK_HOME`).
