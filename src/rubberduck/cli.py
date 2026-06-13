@@ -168,6 +168,16 @@ def _install_hooks(global_scope: bool, agent: str) -> int:
     scope = "every project" if global_scope else "this repo"
     print(f"installed Rubberduck hooks for {agent} ({scope}): {path}")
     print(f"Now run `rubberduck serve`, then start {agent} — sessions appear automatically.")
+    if agent == "codex":
+        # Codex won't run a hook until you trust it (recorded against the
+        # script's hash; revoked if the script changes). There's no
+        # programmatic trust — it's an interactive review.
+        print(
+            "\nOne extra step for codex: hooks must be TRUSTED before they run.\n"
+            "  Start codex, run /hooks, and trust the Rubberduck hook.\n"
+            "  (You'll need to re-trust if Rubberduck updates the hook script.)",
+            file=sys.stderr,
+        )
     return 0
 
 
