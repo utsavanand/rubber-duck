@@ -127,6 +127,16 @@ function TreeRow({
             </span>
           )}
           <span className="rd-row-name">{s.label}</span>
+          <span
+            className={`rd-origin ${s.launched ? "launched" : "watched"}`}
+            title={
+              s.launched
+                ? "Launched by Rubberduck — it owns this tab, so you can type to it and answer prompts here"
+                : "Watched — you started this agent yourself; Rubberduck observes it but can't drive it"
+            }
+          >
+            {s.launched ? "launched" : "watched"}
+          </span>
           <span className={`rd-state st-${effState}`}>
             <span className="dot" />
             {stateLabel}

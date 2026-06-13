@@ -40,6 +40,7 @@ export interface SessionView {
   parentKey?: string; // session this was forked from, if any
   notes?: string; // personal, local-only notes
   idleSince?: number; // ts of the last Stop; drives the idle settling grace
+  launched?: boolean; // true if Rubberduck launched it (owns the tab); else watched
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -63,6 +64,7 @@ export interface PersistedSession {
   repo_path?: string | null;
   worktree_path?: string | null;
   parent_session_key?: string | null;
+  heartbeat?: number | null; // 1 if Rubberduck launched it (owns the tab)
   name?: string | null;
   notes?: string | null;
 }
@@ -102,6 +104,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     branch: s.branch ?? undefined,
     repoName: repoNameFrom(s.repo_path, s.source_app),
     worktreePath: s.worktree_path ?? undefined,
+    launched: s.heartbeat === 1,
     parentKey: s.parent_session_key ?? undefined,
     notes: s.notes ?? undefined,
   };

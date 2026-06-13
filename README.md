@@ -33,9 +33,11 @@ rubberduck install-hooks --global   # ONCE: wire Claude Code to report to Rubber
 rubberduck serve                    # EACH TIME: run the server + dashboard at :4200
 ```
 
-- **`install-hooks`** edits Claude Code's config so every `claude` session
+- **`install-hooks`** edits the agent's hook config so every session
   automatically streams into Rubberduck. Run it **once** per machine (or once
-  per repo without `--global`). You never run it again.
+  per repo without `--global`). Defaults to Claude Code; pass `--agent codex`
+  or `--agent copilot` to wire those too (Codex: use `--global`, its repo-local
+  hooks are unreliable upstream).
 - **`serve`** is the running process: it receives those events, stores history,
   serves the dashboard, and orchestrates agents you launch. Run it **whenever**
   you want Rubberduck active, and leave it running. Open **http://localhost:4200**.

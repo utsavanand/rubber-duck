@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from rubberduck.hooks_install import (
-    _HOOK_EVENTS,
+    _EVENTS,
     install,
     settings_path,
     uninstall,
@@ -16,11 +16,11 @@ def read_settings(project: Path) -> dict:
 def test_install_creates_settings_with_all_events(tmp_path: Path) -> None:
     install(global_scope=False, project_dir=tmp_path)
     settings = read_settings(tmp_path)
-    assert set(settings["hooks"]) == set(_HOOK_EVENTS)
-    # Each event runs the rubberduck hook with its own event type as the arg.
+    assert set(settings["hooks"]) == set(_EVENTS)
+    # Each event runs the rubberduck hook with its event type + runtime as args.
     cmd = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
     assert "rubberduck-hook.sh" in cmd
-    assert cmd.endswith(" PostToolUse")
+    assert cmd.endswith(" PostToolUse claude-code")
 
 
 def test_install_is_idempotent(tmp_path: Path) -> None:
@@ -77,3 +77,33 @@ def test_global_scope_targets_home(tmp_path: Path, monkeypatch) -> None:  # type
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     path = settings_path(global_scope=True, project_dir=Path("/ignored"))
     assert path == tmp_path / ".claude" / "settings.json"
+
+
+def test_codex_uses_hooks_json_with_claude_style_shape(tmp_path: Path) -> None:
+    path = install(global_scope=False, project_dir=tmp_path, agent="codex")
+    assert path == tmp_path / ".codex" / "hooks.json"
+    config = json.loads(path.read_text())
+    assert set(config["hooks"]) == set(_EVENTS)
+    cmd = config["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    # Codex shares Claude's event names; runtime is tagged as codex.
+    assert cmd.endswith(" PreToolUse codex")
+
+
+def test_copilot_uses_camelcase_events_and_runtime(tmp_path: Path) -> None:
+    path = install(global_scope=False, project_dir=tmp_path, agent="copilot")
+    assert path == tmp_path / ".github" / "hooks" / "rubberduck.json"
+    config = json.loads(path.read_text())
+    assert config["version"] == 1
+    # Copilot's event keys are camelCase, but the canonical name is passed to
+    # the script so the server sees one vocabulary.
+    assert "sessionStart" in config["hooks"]
+    cmd = config["hooks"]["preToolUse"][0]["command"]
+    assert cmd.endswith(" PreToolUse copilot")
+
+
+def test_uninstall_is_per_agent(tmp_path: Path) -> None:
+    install(global_scope=False, project_dir=tmp_path, agent="codex")
+    uninstall(global_scope=False, project_dir=tmp_path, agent="codex")
+    config = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
+    # All rubberduck entries gone; empty hooks block removed.
+    assert config.get("hooks", {}) == {}

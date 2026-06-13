@@ -48,17 +48,27 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("dashboard", help="build (if needed) and open the dashboard in a browser")
 
     inst = sub.add_parser(
-        "install-hooks", help="wire Claude Code so its sessions stream into Rubberduck"
+        "install-hooks", help="wire an agent so its sessions stream into Rubberduck"
     )
     inst.add_argument(
         "--global",
         dest="global_scope",
         action="store_true",
-        help="install into ~/.claude/settings.json (every project) instead of this repo",
+        help="install into the user-level config (every project) instead of this repo",
+    )
+    inst.add_argument(
+        "--agent",
+        choices=["claude-code", "codex", "copilot"],
+        default="claude-code",
+        help="which agent to wire (default: claude-code). codex: prefer --global "
+        "(repo-local hooks are unreliable upstream)",
     )
 
-    uninst = sub.add_parser("uninstall-hooks", help="remove Rubberduck's Claude Code hooks")
+    uninst = sub.add_parser("uninstall-hooks", help="remove Rubberduck's hooks for an agent")
     uninst.add_argument("--global", dest="global_scope", action="store_true")
+    uninst.add_argument(
+        "--agent", choices=["claude-code", "codex", "copilot"], default="claude-code"
+    )
     return parser
 
 
@@ -145,21 +155,27 @@ def _snapshot() -> int:
     return 0
 
 
-def _install_hooks(global_scope: bool) -> int:
+def _install_hooks(global_scope: bool, agent: str) -> int:
     from rubberduck.hooks_install import install
 
-    path = install(global_scope=global_scope, project_dir=Path.cwd())
+    if agent == "codex" and not global_scope:
+        print(
+            "note: codex repo-local hooks are unreliable upstream "
+            "(openai/codex#17532). Prefer: rubberduck install-hooks --codex --global",
+            file=sys.stderr,
+        )
+    path = install(global_scope=global_scope, project_dir=Path.cwd(), agent=agent)
     scope = "every project" if global_scope else "this repo"
-    print(f"installed Rubberduck hooks for {scope}: {path}")
-    print("Now run `rubberduck serve`, then start Claude Code — sessions appear automatically.")
+    print(f"installed Rubberduck hooks for {agent} ({scope}): {path}")
+    print(f"Now run `rubberduck serve`, then start {agent} — sessions appear automatically.")
     return 0
 
 
-def _uninstall_hooks(global_scope: bool) -> int:
+def _uninstall_hooks(global_scope: bool, agent: str) -> int:
     from rubberduck.hooks_install import uninstall
 
-    path = uninstall(global_scope=global_scope, project_dir=Path.cwd())
-    print(f"removed Rubberduck hooks from {path}")
+    path = uninstall(global_scope=global_scope, project_dir=Path.cwd(), agent=agent)
+    print(f"removed Rubberduck {agent} hooks from {path}")
     return 0
 
 
@@ -205,9 +221,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "dashboard":
         return _dashboard()
     if args.command == "install-hooks":
-        return _install_hooks(args.global_scope)
+        return _install_hooks(args.global_scope, args.agent)
     if args.command == "uninstall-hooks":
-        return _uninstall_hooks(args.global_scope)
+        return _uninstall_hooks(args.global_scope, args.agent)
     print(f"command '{args.command}' is not implemented yet", file=sys.stderr)
     return 1
 

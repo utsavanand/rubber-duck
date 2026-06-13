@@ -248,6 +248,26 @@ code,
   font-size: 12px;
 }
 
+/* watched vs launched origin badge on an agent row */
+.rd-origin {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.rd-origin.launched {
+  background: color-mix(in srgb, #4b5cff 16%, transparent);
+  color: #4b5cff;
+}
+.rd-origin.watched {
+  background: var(--bg-soft);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
 /* ── right panel: pulse ── */
 .rd-pulse-live {
   display: inline-flex;

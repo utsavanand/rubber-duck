@@ -11,6 +11,9 @@
 # The event type is passed as $1; Claude's hook JSON arrives on stdin.
 
 EVENT_TYPE="${1:-Unknown}"
+# Which agent this hook is for (claude-code | codex | copilot). Defaults to
+# claude-code so older installs that pass only the event type keep working.
+RUNTIME="${2:-claude-code}"
 INPUT=$(cat)
 URL="${RUBBERDUCK_URL:-http://127.0.0.1:4200}"
 # Set by Rubberduck when it launches the agent in a terminal, so the agent's
@@ -19,16 +22,19 @@ URL="${RUBBERDUCK_URL:-http://127.0.0.1:4200}"
 SESSION_KEY="${RUBBERDUCK_SESSION_KEY:-}"
 
 if command -v jq >/dev/null 2>&1; then
-  PAYLOAD=$(printf '%s' "$INPUT" | jq -c --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" '
+  # Field names differ across agents: Claude/Codex use snake_case (session_id,
+  # tool_name); Copilot uses camelCase (sessionId, toolName). Accept either.
+  PAYLOAD=$(printf '%s' "$INPUT" | jq -c \
+    --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" --arg rt "$RUNTIME" '
     {
       event_type: $etype,
       session_key: (if $skey == "" then null else $skey end),
-      session_id: .session_id,
+      session_id: (.session_id // .sessionId),
       cwd: .cwd,
-      source_app: (.cwd // "" | split("/") | last),
-      tool_name: .tool_name,
-      tool_input: .tool_input,
-      runtime: "claude-code"
+      source_app: ((.cwd // "") | split("/") | last),
+      tool_name: (.tool_name // .toolName),
+      tool_input: (.tool_input // .toolInput),
+      runtime: $rt
     } | with_entries(select(.value != null))' 2>/dev/null)
 fi
 
@@ -40,8 +46,9 @@ if [ -z "$PAYLOAD" ] || [ "$PAYLOAD" = "null" ]; then
   APP=$(basename "$CWD" 2>/dev/null)
   SKEY_FIELD=""
   [ -n "$SESSION_KEY" ] && SKEY_FIELD=$(printf '"session_key":"%s",' "$SESSION_KEY")
-  PAYLOAD=$(printf '{"event_type":"%s",%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"claude-code"}' \
-    "$EVENT_TYPE" "$SKEY_FIELD" "$SID" "$CWD" "$APP" "$TOOL")
+  [ -z "$SID" ] && SID=$(printf '%s' "$INPUT" | grep -o '"sessionId"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+  PAYLOAD=$(printf '{"event_type":"%s",%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"%s"}' \
+    "$EVENT_TYPE" "$SKEY_FIELD" "$SID" "$CWD" "$APP" "$TOOL" "$RUNTIME")
 fi
 
 # The server writes a per-install secret to this file (0600). We read it and
