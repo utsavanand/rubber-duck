@@ -19,7 +19,7 @@ export function AgentTree({
   labels: Record<string, string>;
   onOpen: (key: string) => void;
   onFork: (key: string) => void;
-  onDelete: (key: string) => void;
+  onDelete: (key: string) => Promise<boolean>;
 }) {
   const roots = buildForest(sessions);
   if (sessions.length === 0) {
@@ -82,7 +82,7 @@ function TreeRow({
   labels: Record<string, string>;
   onOpen: (key: string) => void;
   onFork: (key: string) => void;
-  onDelete: (key: string) => void;
+  onDelete: (key: string) => Promise<boolean>;
 }) {
   const toast = useToast();
   const s = node.session;
@@ -93,6 +93,9 @@ function TreeRow({
   const [notes, setNotes] = useState(s.notes ?? "");
   const [collapsed, setCollapsed] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  // Once stop/delete is in flight, grey the whole row's actions so a second
+  // click can't fire a phantom request before the row is removed.
+  const [ending, setEnding] = useState(false);
   const hasChildren = node.children.length > 0;
   // Branching is possible for any live session on a git repo (worktree fork or
   // promote) and for any live claude-code session (conversation fork, even with
@@ -112,6 +115,19 @@ function TreeRow({
     if (notes === (s.notes ?? "")) return;
     await act("Notes saved", () => api.updateSession(s.key, { notes }));
     setNotesOpen(false);
+  }
+
+  async function stopSession() {
+    if (ending) return;
+    setEnding(true);
+    try {
+      await api.stop(s.key);
+      toast("Stopped");
+      // Leave it greyed — the resulting Stop/terminated event removes the row.
+    } catch (e) {
+      toast(`Stop failed: ${(e as Error).message}`, "err");
+      setEnding(false); // let the user retry
+    }
   }
 
   async function captureCheckpoint() {
@@ -232,15 +248,28 @@ function TreeRow({
           {live && (
             <button
               className="rd-btn rd-btn-sm rd-btn-danger"
-              onClick={() => act("Stopped", () => api.stop(s.key))}
+              disabled={ending}
+              onClick={stopSession}
             >
-              Stop
+              {ending ? (
+                <span className="rd-inline-spin">
+                  <span className="rd-spinner" />
+                  Stopping…
+                </span>
+              ) : (
+                "Stop"
+              )}
             </button>
           )}
           <button
             className="rd-btn rd-btn-sm rd-btn-danger"
             title="Remove this session from history"
-            onClick={() => onDelete(s.key)}
+            disabled={ending}
+            onClick={async () => {
+              setEnding(true);
+              const deleted = await onDelete(s.key);
+              if (!deleted) setEnding(false); // cancelled or failed — re-enable
+            }}
           >
             Delete
           </button>

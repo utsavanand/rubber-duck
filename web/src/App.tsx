@@ -32,7 +32,7 @@ function Dashboard() {
   const now = useNow(1000);
   const { theme, cycle: cycleTheme } = useTheme();
 
-  async function deleteSession(key: string) {
+  async function deleteSession(key: string): Promise<boolean> {
     try {
       let res = await api.remove(key);
       // 409: the worktree branch has commits not in main — deleting drops that
@@ -42,13 +42,15 @@ function Dashboard() {
           `Branch ${res.branch} has ${res.unmerged_commits} commit(s) not merged into main. ` +
             `Delete anyway and discard that work?`,
         );
-        if (!ok) return;
+        if (!ok) return false;
         res = await api.remove(key, true);
       }
       removeSessions([key]);
       toast("Deleted");
+      return true;
     } catch (e) {
       toast(`Delete failed: ${(e as Error).message}`, "err");
+      return false;
     }
   }
 
