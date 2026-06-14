@@ -89,6 +89,11 @@ case "$EVENT_TYPE" in
   PermissionRequest|preToolUse) ;;
   *) exit 0 ;;
 esac
+# AskUserQuestion isn't a tool-permission gate — it's the agent asking YOU a
+# multiple-choice question. The dashboard can't answer it with allow/deny (the
+# agent needs an option), so don't route it: fall through to the terminal prompt
+# where the choices render and you actually answer.
+case "$PAYLOAD" in *'"tool_name":"AskUserQuestion"'*) exit 0 ;; esac
 [ -z "$TOKEN" ] && exit 0  # no server/token -> fall through to the agent's prompt
 
 # Register the request; get an id to poll. (jq required for the blocking path;

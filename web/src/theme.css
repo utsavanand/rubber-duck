@@ -736,11 +736,13 @@ code,
 .rd-segment button {
   border: none;
   background: var(--card);
-  padding: 6px 14px;
+  padding: 6px 11px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-soft);
   cursor: pointer;
+  white-space: nowrap;
+  text-transform: none;
 }
 .rd-segment button.active {
   background: var(--accent);
@@ -749,12 +751,19 @@ code,
 .rd-segment button + button {
   border-left: 1px solid var(--border);
 }
+/* The Agents panel head stacks: title row, then a filters row beneath it, so
+   the lifecycle tabs + Origin dropdown never crowd the title out of line. */
+.rd-panel-head-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
 .rd-filters {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: space-between;
 }
 .rd-origin {
   display: inline-flex;

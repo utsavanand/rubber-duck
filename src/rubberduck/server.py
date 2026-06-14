@@ -82,6 +82,11 @@ from rubberduck.transport.websocket import (
     read_frame_opcode,
 )
 
+# How long the blocking hook polls for a decision before giving up (the
+# rubberduck-hook.sh DEADLINE). A blocking approval older than this whose session
+# has moved on is abandoned and gets swept from "Needs human".
+_BLOCKING_POLL_MS = 180_000
+
 
 def infer_runtime(command: str) -> str:
     """Guess the runtime from the command's first word, so callers don't have to
@@ -256,7 +261,12 @@ class Server:
         if event.get("event_type") in self._RESOLVES_APPROVAL:
             key = event.get("session_key") or event.get("session_id")
             if key:
-                self.approvals.drop_session_before(str(key), int(event.get("_ts", 0)))
+                ts = int(event.get("_ts", 0))
+                self.approvals.drop_session_before(str(key), ts)
+                # A blocking approval older than the hook's poll deadline whose
+                # session has since moved on is abandoned — the hook stopped
+                # polling. Clear it so it doesn't linger in "Needs human".
+                self.approvals.drop_abandoned_blocking(str(key), ts, _BLOCKING_POLL_MS)
 
     def _enrich_git(self, event: dict[str, Any]) -> None:
         """If an event has a cwd but no repo/branch yet (a watched session),
@@ -1095,6 +1105,14 @@ class Server:
         key = req.get("session_key") or req.get("session_id")
         if not key:
             await _write_json(writer, 400, {"error": "session_key required"})
+            return
+        # AskUserQuestion is the agent asking the human a multiple-choice question,
+        # not a tool-permission gate. The dashboard can't answer it with
+        # approve/deny, so don't register it — the agent prompts in its terminal.
+        # (Defends against pre-update hooks that still POST it; current hooks skip
+        # it client-side.)
+        if req.get("tool_name") == "AskUserQuestion":
+            await _write_json(writer, 200, {"id": None})
             return
         approval = self.approvals.register(
             str(key),

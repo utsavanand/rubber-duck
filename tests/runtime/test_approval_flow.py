@@ -103,6 +103,29 @@ def test_blocking_approval_round_trip(tmp_path: Path) -> None:
     assert gone == "gone"  # forgotten after the hook consumed it
 
 
+def test_ask_user_question_is_not_registered(tmp_path: Path) -> None:
+    """AskUserQuestion is the agent asking the human a question, not a tool gate.
+    Registering it returns no id and adds no row to 'Needs human'."""
+
+    async def scenario() -> tuple[object, int]:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            _, reg = await asyncio.to_thread(
+                _post,
+                port,
+                "/approvals",
+                {"session_key": "s1", "tool_name": "AskUserQuestion", "tool_input": {}},
+            )
+            listing = await asyncio.to_thread(_get, port, "/approvals")
+        return reg["id"], len(listing["approvals"])  # type: ignore[index,arg-type]
+
+    rid, count = asyncio.run(scenario())
+    assert rid is None
+    assert count == 0
+
+
 def test_bad_decision_rejected(tmp_path: Path) -> None:
     async def scenario() -> int:
         store = HistoryStore(tmp_path / "db.sqlite")

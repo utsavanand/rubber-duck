@@ -165,3 +165,17 @@ class ApprovalRegistry:
             for aid, a in self._pending.items()
             if a.session_key != session_key or a.created_at >= ts or a.blocking
         }
+
+    def drop_abandoned_blocking(self, session_key: str, now: int, max_age_ms: int) -> None:
+        """Drop a session's blocking approvals older than `max_age_ms` — the hook
+        that registered them has stopped polling (it timed out, the agent moved
+        on, or it crashed), so its decision will never be consumed. Without this
+        an abandoned blocking request lingers in "Needs human" until the session
+        ends. Called when a later event proves the agent is past that request."""
+        self._pending = {
+            aid: a
+            for aid, a in self._pending.items()
+            if a.session_key != session_key
+            or not a.blocking
+            or now - a.created_at < max_age_ms
+        }

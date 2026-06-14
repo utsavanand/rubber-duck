@@ -205,7 +205,7 @@ function Dashboard() {
 
       <div className="rd-panels">
         <section className="rd-agents">
-          <div className="rd-panel-head">
+          <div className="rd-panel-head rd-panel-head-stacked">
             <span>Agents</span>
             <div className="rd-filters">
               <div className="rd-segment">
