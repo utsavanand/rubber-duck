@@ -91,6 +91,12 @@ function TreeRow({
   const stateLabel = effState === "waiting" ? "waiting on you" : effState;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(s.notes ?? "");
+  const [collapsed, setCollapsed] = useState(false);
+  const hasChildren = node.children.length > 0;
+  // Branching is possible for any live session on a git repo (worktree fork or
+  // promote) and for any live claude-code session (conversation fork, even with
+  // no branch). The ForkModal picks the right sub-option.
+  const canBranch = live && (Boolean(s.branch) || s.runtime === "claude-code");
 
   async function act(label: string, fn: () => Promise<unknown>) {
     try {
@@ -112,34 +118,49 @@ function TreeRow({
         className={`rd-row${live ? "" : " terminated"}${notesOpen ? " expanded" : ""}`}
         style={{ paddingLeft: 12 + depth * 18 }}
       >
-        <div className="rd-row-main" onClick={() => onOpen(s.key)}>
-          {depth > 0 && <span className="rd-row-twig">⑂</span>}
-          {s.branch && (
+        <div className="rd-row-main">
+          {hasChildren ? (
+            <button
+              className="rd-row-collapse"
+              title={collapsed ? "Show forks" : "Hide forks"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCollapsed((c) => !c);
+              }}
+            >
+              {collapsed ? "▸" : "▾"}
+            </button>
+          ) : (
+            depth > 0 && <span className="rd-row-twig">⑂</span>
+          )}
+          <span className="rd-row-click" onClick={() => onOpen(s.key)}>
+            {s.branch && (
+              <span
+                className="rd-row-git"
+                title={
+                  s.worktreePath
+                    ? `Working in a git worktree on ${s.branch}`
+                    : `On git branch ${s.branch}`
+                }
+              >
+                ⎇
+              </span>
+            )}
+            <span className="rd-row-name">{s.label}</span>
             <span
-              className="rd-row-git"
+              className={`rd-origin ${s.launched ? "launched" : "watched"}`}
               title={
-                s.worktreePath
-                  ? `Working in a git worktree on ${s.branch}`
-                  : `On git branch ${s.branch}`
+                s.launched
+                  ? "Launched by Rubberduck — it owns this tab, so you can type to it and answer prompts here"
+                  : "Watched — you started this agent yourself; Rubberduck observes it but can't drive it"
               }
             >
-              ⎇
+              {s.launched ? "launched" : "watched"}
             </span>
-          )}
-          <span className="rd-row-name">{s.label}</span>
-          <span
-            className={`rd-origin ${s.launched ? "launched" : "watched"}`}
-            title={
-              s.launched
-                ? "Launched by Rubberduck — it owns this tab, so you can type to it and answer prompts here"
-                : "Watched — you started this agent yourself; Rubberduck observes it but can't drive it"
-            }
-          >
-            {s.launched ? "launched" : "watched"}
-          </span>
-          <span className={`rd-state st-${effState}`}>
-            <span className="dot" />
-            {stateLabel}
+            <span className={`rd-state st-${effState}`}>
+              <span className="dot" />
+              {stateLabel}
+            </span>
           </span>
         </div>
         <div className="rd-row-meta" onClick={() => onOpen(s.key)}>
@@ -148,26 +169,16 @@ function TreeRow({
           {s.eventCount} ev
         </div>
         <div className="rd-row-actions">
-          {s.branch && live && (
+          {/* One branching action: the modal offers a git worktree fork (or
+              promotes an in-place session onto a branch) and, for claude-code,
+              a conversation-only fork. */}
+          {canBranch && (
             <button
               className="rd-btn rd-btn-sm rd-btn-ghost"
-              title="Branch the code: new worktree + branch off this one"
+              title="Fork this session — into a git worktree, or fork the conversation"
               onClick={() => onFork(s.key)}
             >
               Fork
-            </button>
-          )}
-          {/* An in-place session (no worktree yet) can be promoted onto a branch
-              when the user decides the work is worth publishing. */}
-          {!s.worktreePath && s.cwd && live && (
-            <button
-              className="rd-btn rd-btn-sm rd-btn-ghost"
-              title="Create a git worktree + branch for this session so you can publish its work"
-              onClick={() =>
-                act("Worktree created", () => api.promote(s.key, {}))
-              }
-            >
-              Create worktree
             </button>
           )}
           <button
@@ -226,18 +237,19 @@ function TreeRow({
           </div>
         )}
       </div>
-      {node.children.map((child) => (
-        <TreeRow
-          key={child.session.key}
-          node={child}
-          depth={depth + 1}
-          now={now}
-          labels={labels}
-          onOpen={onOpen}
-          onFork={onFork}
-          onDelete={onDelete}
-        />
-      ))}
+      {!collapsed &&
+        node.children.map((child) => (
+          <TreeRow
+            key={child.session.key}
+            node={child}
+            depth={depth + 1}
+            now={now}
+            labels={labels}
+            onOpen={onOpen}
+            onFork={onFork}
+            onDelete={onDelete}
+          />
+        ))}
     </>
   );
 }

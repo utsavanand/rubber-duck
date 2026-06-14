@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { RubberduckEvent, sessionKeyOf } from "./types";
 
 // A rolling feed of every agent's latest action, newest at the top. Reads the
@@ -9,6 +10,8 @@ export function Pulse({
   events: RubberduckEvent[];
   labels: Record<string, string>;
 }) {
+  // Which row is expanded to show its full detail inline.
+  const [openId, setOpenId] = useState<string | null>(null);
   // Static window: only the newest ~18, newest pinned at top. Older events drop
   // off the bottom rather than growing a scroll region.
   const shown = events.slice(0, 18);
@@ -39,12 +42,19 @@ export function Pulse({
           {shown.map((e) => {
             const key = sessionKeyOf(e);
             const who = (key && labels[key]) || e.name || e.source_app || "—";
+            const expanded = openId === e._id;
             return (
-              <div className="rd-pulse-row" key={e._id}>
+              <div
+                className={`rd-pulse-row clickable${expanded ? " expanded" : ""}`}
+                key={e._id}
+                onClick={() => setOpenId(expanded ? null : e._id)}
+                title="Click for full detail"
+              >
                 <span className="t">{time(e._ts)}</span>
                 <div className="body">
                   <span className="who">{who}</span>
                   <span className="what">{describe(e)}</span>
+                  {expanded && <PulseDetail event={e} who={who} />}
                 </div>
               </div>
             );
@@ -52,6 +62,50 @@ export function Pulse({
         </div>
       )}
     </aside>
+  );
+}
+
+// The full detail for one pulse event, shown inline when its row is expanded:
+// the complete command/prompt (untruncated) and the tool's full input.
+function PulseDetail({ event, who }: { event: RubberduckEvent; who: string }) {
+  const cmd = (event.tool_input?.command ??
+    event.tool_input?.file_path ??
+    event.tool_input?.path) as string | undefined;
+  return (
+    <div className="rd-pulse-detail" onClick={(e) => e.stopPropagation()}>
+      <div className="row">
+        <span className="k">session</span>
+        <span className="v">{who}</span>
+      </div>
+      <div className="row">
+        <span className="k">event</span>
+        <span className="v">
+          {event.event_type}
+          {event.tool_name ? ` · ${event.tool_name}` : ""}
+        </span>
+      </div>
+      {event.prompt && (
+        <div className="row">
+          <span className="k">prompt</span>
+          <span className="v">{event.prompt}</span>
+        </div>
+      )}
+      {cmd && (
+        <div className="row">
+          <span className="k">command</span>
+          <code className="v">{cmd}</code>
+        </div>
+      )}
+      {event.tool_input && !cmd && (
+        <pre className="rd-pulse-json">
+          {JSON.stringify(event.tool_input, null, 2)}
+        </pre>
+      )}
+      <div className="row">
+        <span className="k">time</span>
+        <span className="v">{new Date(event._ts).toLocaleString()}</span>
+      </div>
+    </div>
   );
 }
 
@@ -64,7 +118,10 @@ function time(ts: number): string {
 }
 
 function describe(e: RubberduckEvent): string {
-  const tool = e.tool_name ? ` ${e.tool_name}` : "";
+  const detail = toolDetail(e);
+  const tool = e.tool_name
+    ? ` ${e.tool_name}${detail ? ` · ${detail}` : ""}`
+    : "";
   switch (e.event_type) {
     case "PreToolUse":
       return `→${tool}`;
@@ -75,7 +132,7 @@ function describe(e: RubberduckEvent): string {
     case "Notification":
       return "⚠ notification";
     case "UserPromptSubmit":
-      return "prompt submitted";
+      return e.prompt ? `prompt · ${truncate(e.prompt)}` : "prompt submitted";
     case "Stop":
       return "turn ended";
     case "SessionStart":
@@ -85,4 +142,20 @@ function describe(e: RubberduckEvent): string {
     default:
       return e.event_type ?? "event";
   }
+}
+
+// The command/argument for a tool call: the Bash command, else the file path
+// (Edit/Write/Read), else a short repr of the first string field in tool_input.
+function toolDetail(e: RubberduckEvent): string {
+  const input = e.tool_input;
+  if (!input) return "";
+  const pick = input.command ?? input.file_path ?? input.path ?? input.pattern;
+  if (typeof pick === "string") return truncate(pick);
+  const firstString = Object.values(input).find((v) => typeof v === "string");
+  return typeof firstString === "string" ? truncate(firstString) : "";
+}
+
+function truncate(s: string, max = 60): string {
+  const oneLine = s.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
 }

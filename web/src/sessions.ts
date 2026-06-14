@@ -80,6 +80,9 @@ export function applyEvent(
     repoName: prev?.repoName ?? repoNameFrom(e.repo_path, e.source_app),
     worktreePath: prev?.worktreePath ?? e.worktree_path,
     parentKey: prev?.parentKey ?? e.parent_session_key,
+    // Sticky: once a session is known launched, stay launched — a later watched
+    // hook event for the same key can't downgrade it.
+    launched: prev?.launched || e.launched === true,
     startedAt: prev?.startedAt ?? e._ts,
     updatedAt: e._ts,
     eventCount: (prev?.eventCount ?? 0) + 1,

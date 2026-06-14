@@ -8,6 +8,8 @@ export interface RubberduckEvent {
   source_app?: string;
   cwd?: string;
   tool_name?: string;
+  tool_input?: Record<string, unknown>;
+  prompt?: string;
   session_name?: string;
   name?: string;
   lifecycle?: string;
@@ -15,6 +17,7 @@ export interface RubberduckEvent {
   repo_path?: string;
   worktree_path?: string;
   parent_session_key?: string;
+  launched?: boolean;
 }
 
 export type SessionState = "idle" | "busy" | "waiting" | "terminated";
@@ -64,7 +67,8 @@ export interface PersistedSession {
   repo_path?: string | null;
   worktree_path?: string | null;
   parent_session_key?: string | null;
-  heartbeat?: number | null; // 1 if Rubberduck launched it (owns the tab)
+  launched?: number | null; // 1 if Rubberduck launched the session (authoritative)
+  heartbeat?: number | null; // 1 if a launched tab is heartbeat-tracked (legacy)
   name?: string | null;
   notes?: string | null;
 }
@@ -104,7 +108,9 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     branch: s.branch ?? undefined,
     repoName: repoNameFrom(s.repo_path, s.source_app),
     worktreePath: s.worktree_path ?? undefined,
-    launched: s.heartbeat === 1,
+    // The `launched` column is authoritative; fall back to the legacy heartbeat
+    // flag for rows created before the column existed.
+    launched: s.launched === 1 || s.heartbeat === 1,
     parentKey: s.parent_session_key ?? undefined,
     notes: s.notes ?? undefined,
   };

@@ -152,6 +152,26 @@ code,
   color: var(--muted);
   font-size: 12px;
 }
+.rd-row-collapse {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.rd-row-collapse:hover {
+  color: var(--text);
+}
+.rd-row-click {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
 /* Git branch glyph: marks agents actually working on a repo. */
 .rd-row-git {
   color: var(--orange, #f5821f);
@@ -246,6 +266,30 @@ code,
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 12px;
+}
+
+/* agent picker in the New session modal */
+.rd-agent-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rd-pill {
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rd-pill:hover {
+  background: var(--bg-soft);
+}
+.rd-pill.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
 }
 
 /* watched vs launched origin badge on an agent row */
@@ -364,8 +408,47 @@ code,
   padding: 6px 16px;
   font-size: 12.5px;
 }
-.rd-pulse-row:hover {
+.rd-pulse-row.clickable {
+  cursor: pointer;
+}
+.rd-pulse-row.clickable:hover {
   background: var(--bg-soft);
+}
+.rd-pulse-row.expanded {
+  background: var(--bg-soft);
+}
+.rd-pulse-detail {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 12px;
+  cursor: default;
+}
+.rd-pulse-detail .row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+.rd-pulse-detail .k {
+  color: var(--muted);
+  min-width: 64px;
+  flex-shrink: 0;
+}
+.rd-pulse-detail .v {
+  color: var(--text);
+  word-break: break-word;
+}
+.rd-pulse-detail code.v {
+  font-family: ui-monospace, Menlo, monospace;
+}
+.rd-pulse-json {
+  margin: 6px 0 0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-soft);
 }
 .rd-pulse-row .t {
   color: var(--muted);

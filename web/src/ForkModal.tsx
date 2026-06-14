@@ -14,7 +14,11 @@ export function ForkModal({
 }) {
   const toast = useToast();
   const canConversationFork = session.runtime === "claude-code";
-  const canWorktreeFork = Boolean(session.branch);
+  // A session already on a branch forks off it; one without a branch but in a
+  // folder gets promoted onto a fresh worktree. Either way, "worktree" is an
+  // option whenever there's a repo to branch (the server rejects non-git).
+  const hasBranch = Boolean(session.branch);
+  const canWorktreeFork = hasBranch || Boolean(session.cwd);
   // Default to whichever the session supports; worktree if both.
   const [mode, setMode] = useState<"worktree" | "conversation">(
     canWorktreeFork ? "worktree" : "conversation",
@@ -50,7 +54,8 @@ export function ForkModal({
         } else {
           toast(`Run it yourself: ${r.command}`, "err");
         }
-      } else {
+      } else if (hasBranch) {
+        // True fork: branch off the parent's branch, open a new agent.
         const r = await api.fork(session.key, {
           command,
           branch: branch || undefined,
@@ -64,6 +69,12 @@ export function ForkModal({
             "err",
           );
         }
+      } else {
+        // No branch yet: promote this in-place session onto a new worktree.
+        const r = await api.promote(session.key, {
+          branch: branch || undefined,
+        });
+        toast(`Worktree created on ${r.branch}`);
       }
       onClose();
     } catch (e) {
@@ -87,10 +98,17 @@ export function ForkModal({
             onChange={() => setMode("worktree")}
           />
           <span>
-            <strong>Git worktree</strong> — branch off{" "}
-            <code className="rd-inline-code">{session.branch ?? "—"}</code> into
-            a new checkout so the fork's code is isolated
-            {!canWorktreeFork && " (this session has no branch)"}
+            <strong>Git worktree</strong> —{" "}
+            {hasBranch ? (
+              <>
+                branch off{" "}
+                <code className="rd-inline-code">{session.branch}</code> into a
+                new checkout so the fork's code is isolated
+              </>
+            ) : (
+              "create a worktree + branch from this session's folder"
+            )}
+            {!canWorktreeFork && " (this session has no folder to branch)"}
           </span>
         </label>
         <label
@@ -121,16 +139,20 @@ export function ForkModal({
               placeholder="feature/login-v2"
             />
           </Field>
-          <Field label="Agent command">
-            <input
-              style={inputStyle}
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-            />
-          </Field>
+          {hasBranch && (
+            <Field label="Agent command">
+              <input
+                style={inputStyle}
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+              />
+            </Field>
+          )}
         </>
       )}
-      {terminals.length > 0 && (
+      {/* The terminal picker only matters when something is opened in one —
+          a true fork or a conversation fork, not a bare promote. */}
+      {terminals.length > 0 && !(mode === "worktree" && !hasBranch) && (
         <Field label="Open in">
           <select
             style={inputStyle}

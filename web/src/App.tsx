@@ -23,7 +23,7 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-type Filter = "active" | "idle" | "all";
+type Filter = "active" | "idle" | "watched" | "launched" | "all";
 
 function Dashboard() {
   const { sessions, connected, recentEvents, removeSessions } =
@@ -78,6 +78,12 @@ function Dashboard() {
     () => Object.fromEntries(sessions.map((s) => [s.key, s.label])),
     [sessions],
   );
+  // Which session keys have a row — Pulse/Approvals rows are clickable only for
+  // these, since the detail drawer reads from the live session list.
+  const knownKeys = useMemo(
+    () => new Set(sessions.map((s) => s.key)),
+    [sessions],
+  );
 
   const isActive = (s: SessionView) => {
     const st = effectiveState(s, now);
@@ -86,12 +92,25 @@ function Dashboard() {
   const isIdle = (s: SessionView) => effectiveState(s, now) === "idle";
   const activeCount = sessions.filter(isActive).length;
   const idleCount = sessions.filter(isIdle).length;
+  const watchedCount = sessions.filter((s) => !s.launched).length;
+  const launchedCount = sessions.filter((s) => s.launched).length;
+  const FILTERS: { key: Filter; label: string; count: number }[] = [
+    { key: "active", label: "Active", count: activeCount },
+    { key: "idle", label: "Idle", count: idleCount },
+    { key: "watched", label: "Watched", count: watchedCount },
+    { key: "launched", label: "Launched", count: launchedCount },
+    { key: "all", label: "All", count: sessions.length },
+  ];
   const shown =
     filter === "active"
       ? sessions.filter(isActive)
       : filter === "idle"
         ? sessions.filter(isIdle)
-        : sessions;
+        : filter === "watched"
+          ? sessions.filter((s) => !s.launched)
+          : filter === "launched"
+            ? sessions.filter((s) => s.launched)
+            : sessions;
   const hasTerminated = sessions.some((s) => s.state === "terminated");
 
   return (
@@ -139,24 +158,15 @@ function Dashboard() {
           <div className="rd-panel-head">
             <span>Agents</span>
             <div className="rd-segment">
-              <button
-                className={filter === "active" ? "active" : ""}
-                onClick={() => setFilter("active")}
-              >
-                Active ({activeCount})
-              </button>
-              <button
-                className={filter === "idle" ? "active" : ""}
-                onClick={() => setFilter("idle")}
-              >
-                Idle ({idleCount})
-              </button>
-              <button
-                className={filter === "all" ? "active" : ""}
-                onClick={() => setFilter("all")}
-              >
-                All ({sessions.length})
-              </button>
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  className={filter === f.key ? "active" : ""}
+                  onClick={() => setFilter(f.key)}
+                >
+                  {f.label} ({f.count})
+                </button>
+              ))}
             </div>
           </div>
           {shown.length === 0 ? (
@@ -198,7 +208,12 @@ function Dashboard() {
             <span>Needs human</span>
           </div>
           <div className="rd-attention-body">
-            <Approvals labels={labels} pollKey={sessions.length} />
+            <Approvals
+              labels={labels}
+              pollKey={sessions.length}
+              onOpen={setOpenKey}
+              knownKeys={knownKeys}
+            />
           </div>
         </section>
 

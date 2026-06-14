@@ -151,9 +151,7 @@ export const api = {
       `/snapshots/${snapshotId}/sessions/${key}/restore`,
     ),
   sessionEvents: (key: string) =>
-    get<{ events: RawEvent[] }>("/events").then((d) => ({
-      events: d.events.filter((e) => sessionKeyOf(e) === key),
-    })),
+    get<{ events: RawEvent[] }>(`/sessions/${key}/events`),
 };
 
 interface RawEvent {
@@ -184,7 +182,3 @@ export interface CheckpointRecord {
 }
 
 export type { RawEvent };
-
-function sessionKeyOf(e: RawEvent): string | undefined {
-  return e.session_key ?? e.uvs_session_id ?? e.session_id;
-}

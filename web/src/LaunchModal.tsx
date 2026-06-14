@@ -4,8 +4,19 @@ import { Button, Field, inputStyle, Modal, useToast } from "./ui";
 
 // New session: a command (runtime is inferred from it), a path picked by
 // browsing the filesystem (git-detected), an optional name + prompt.
+// The agents we know how to launch, plus a custom escape hatch. Picking one
+// sets the command to its binary; "custom" reveals a free-text command box for
+// any other CLI agent (bring your own).
+const AGENTS: { id: string; label: string; command: string }[] = [
+  { id: "claude", label: "Claude Code", command: "claude" },
+  { id: "codex", label: "Codex", command: "codex" },
+  { id: "copilot", label: "Copilot", command: "copilot" },
+  { id: "custom", label: "Custom…", command: "" },
+];
+
 export function LaunchModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
+  const [agent, setAgent] = useState("claude");
   const [command, setCommand] = useState("claude");
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -91,14 +102,35 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="New session" onClose={onClose}>
-      <Field label="Command (the agent to run — runtime is detected automatically)">
-        <input
-          style={inputStyle}
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder='claude   ·   codex   ·   claude -p "fix the bug"'
-        />
+      <Field label="Agent">
+        <div className="rd-agent-pick">
+          {AGENTS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`rd-pill${agent === a.id ? " active" : ""}`}
+              onClick={() => {
+                setAgent(a.id);
+                if (a.id !== "custom") setCommand(a.command);
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       </Field>
+
+      {agent === "custom" && (
+        <Field label="Command (any CLI agent — runtime is detected from it)">
+          <input
+            style={inputStyle}
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder='e.g. aider   ·   claude -p "fix the bug"'
+            autoFocus
+          />
+        </Field>
+      )}
 
       <Field label="Folder to work in">
         {path ? (

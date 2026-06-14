@@ -15,9 +15,13 @@ interface Approval {
 export function Approvals({
   labels,
   pollKey,
+  onOpen,
+  knownKeys,
 }: {
   labels: Record<string, string>;
   pollKey: number;
+  onOpen: (key: string) => void;
+  knownKeys: Set<string>;
 }) {
   const toast = useToast();
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -68,23 +72,26 @@ export function Approvals({
       </h2>
       {approvals.map((a) => (
         <div className="rd-approval" key={a.id}>
-          <div style={{ flex: 1 }}>
-            <div className="who">
-              {labels[a.session_key] ?? a.session_key.slice(0, 8)} ·{" "}
-              {a.tool_name}
-            </div>
-            {a.detail && (
-              <div className="what">
-                <code>{a.detail}</code>
+          {(() => {
+            const openable = knownKeys.has(a.session_key);
+            return (
+              <div
+                style={{ flex: 1, cursor: openable ? "pointer" : "default" }}
+                onClick={openable ? () => onOpen(a.session_key) : undefined}
+                title={openable ? "Open session details" : undefined}
+              >
+                <div className="who">
+                  {labels[a.session_key] ?? a.session_key.slice(0, 8)} ·{" "}
+                  {a.tool_name}
+                </div>
+                {a.detail && (
+                  <div className="what">
+                    <code>{a.detail}</code>
+                  </div>
+                )}
               </div>
-            )}
-            {!a.reachable && (
-              <div className="what" style={{ opacity: 0.8 }}>
-                Answer in its own terminal — Rubberduck can only answer sessions
-                it launched.
-              </div>
-            )}
-          </div>
+            );
+          })()}
           {a.reachable ? (
             <>
               <button
@@ -101,15 +108,14 @@ export function Approvals({
               </button>
             </>
           ) : (
-            <button
-              className="rd-btn rd-btn-sm rd-btn-ghost"
-              title="Stop showing this request"
-              onClick={() =>
-                setApprovals((list) => list.filter((x) => x.id !== a.id))
-              }
+            // Watched session: Rubberduck doesn't own its terminal, so it can't
+            // answer. Just say "watched"; the tooltip explains where to answer.
+            <span
+              className="rd-origin watched"
+              title="Watched session — answer this in its own terminal; Rubberduck can only answer sessions it launched."
             >
-              Dismiss
-            </button>
+              watched
+            </span>
           )}
         </div>
       ))}
