@@ -54,33 +54,45 @@ def test_non_permission_events_are_ignored() -> None:
     assert reg.pending() == []
 
 
-def test_approve_injects_the_yes_key() -> None:
+def test_observe_only_decision_injects_the_keystroke() -> None:
+    # An observe-only row (from a PermissionRequest event) still tries the
+    # keystroke fallback so it lands in an agent we own the PTY for.
     sent: list[tuple[str, str]] = []
     reg = ApprovalRegistry(inject=lambda key, k: sent.append((key, k)) or True)
-    approval = reg.from_event(perm_event("s1"))
-    assert approval is not None
-
-    assert reg.decide(approval.id, "approve") is True
+    a = reg.from_event(perm_event("s1"))
+    assert a is not None and not a.blocking
+    assert reg.set_decision(a.id, "approve") is True
     assert sent == [("s1", "1")]  # '1' answers the numbered permission menu
-    # Resolved approvals leave the pending list.
-    assert reg.pending() == []
+    assert reg.decision_of(a.id) == "approve"
+    assert reg.pending() == []  # decided -> leaves pending
 
 
-def test_deny_injects_escape() -> None:
+def test_blocking_decision_does_not_inject() -> None:
+    # A blocking request is answered by the polling hook, not a keystroke.
     sent: list[tuple[str, str]] = []
     reg = ApprovalRegistry(inject=lambda key, k: sent.append((key, k)) or True)
-    approval = reg.from_event(perm_event("s1"))
-    assert approval is not None
-    reg.decide(approval.id, "deny")
-    assert sent == [("s1", "Escape")]
+    a = reg.register("s1", "Bash", {"command": "ls"}, 1, blocking=True)
+    assert reg.set_decision(a.id, "deny") is True
+    assert sent == []  # no keystroke for blocking requests
+    assert reg.decision_of(a.id) == "deny"
 
 
-def test_decide_fails_when_injection_does_not_land() -> None:
-    reg = ApprovalRegistry(inject=lambda _k, _key: False)
-    approval = reg.from_event(perm_event("s1"))
-    assert approval is not None
-    # Injection failed (e.g. session not live) -> approval stays pending.
-    assert reg.decide(approval.id, "approve") is False
+def test_decision_of_is_none_while_pending_and_forget_removes() -> None:
+    reg = ApprovalRegistry(inject=lambda _k, _key: True)
+    a = reg.register("s1", "Bash", {"command": "ls"}, 1, blocking=True)
+    assert reg.decision_of(a.id) is None
+    reg.set_decision(a.id, "approve")
+    assert reg.decision_of(a.id) == "approve"
+    reg.forget(a.id)
+    assert reg.get(a.id) is None
+
+
+def test_event_skipped_when_a_blocking_request_exists() -> None:
+    # The blocking hook registered the authoritative request; the same session's
+    # PermissionRequest event must not add a duplicate observe-only row.
+    reg = ApprovalRegistry(inject=lambda _k, _key: True)
+    reg.register("s1", "Bash", {"command": "ls"}, 1, blocking=True)
+    assert reg.from_event(perm_event("s1")) is None
     assert len(reg.pending()) == 1
 
 
@@ -104,12 +116,10 @@ def test_drop_session_before_keeps_a_same_tick_request() -> None:
     assert reg.pending() == []
 
 
-def test_resolve_marks_decided_without_injection() -> None:
-    # The tty-answered path: PTY injection didn't land, the server sent the key
-    # to the terminal tab instead, then resolves the approval out of pending.
-    reg = ApprovalRegistry(inject=lambda _k, _key: False)
-    approval = reg.from_event(perm_event("s1"))
-    assert approval is not None
-    assert reg.decide(approval.id, "approve") is False  # no PTY to inject into
-    reg.resolve(approval.id, "approve")
-    assert reg.pending() == []
+def test_blocking_request_survives_the_resolve_sweep() -> None:
+    # A blocking request must NOT be cleared by drop_session_before — the hook
+    # owns its lifecycle (resolves it via the decision), not the activity sweep.
+    reg = ApprovalRegistry(inject=lambda _k, _key: True)
+    a = reg.register("s1", "Bash", {"command": "ls"}, 1000, blocking=True)
+    reg.drop_session_before("s1", 5000)  # later activity
+    assert reg.get(a.id) is not None  # still pending

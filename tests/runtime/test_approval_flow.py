@@ -69,7 +69,38 @@ def test_permission_request_surfaces_as_approval(tmp_path: Path) -> None:
     assert len(approvals) == 1
     assert approvals[0]["tool_name"] == "Bash"  # type: ignore[index]
     assert approvals[0]["detail"] == "git push --force"  # type: ignore[index]
-    assert status == 409  # injection couldn't land (session not Rubberduck-launched)
+    # Deciding records the decision (200); the keystroke fallback is best-effort.
+    assert status == 200
+
+
+def test_blocking_approval_round_trip(tmp_path: Path) -> None:
+    """The real path: a hook registers a request, the dashboard decides it, and
+    the hook reads the decision back (then it's forgotten)."""
+
+    async def scenario() -> tuple[str, str, str]:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            _, reg = await asyncio.to_thread(
+                _post,
+                port,
+                "/approvals",
+                {"session_key": "s1", "tool_name": "WebFetch", "tool_input": {"url": "http://x"}},
+            )
+            rid = reg["id"]  # type: ignore[index]
+            before = await asyncio.to_thread(_get, port, f"/approvals/{rid}/decision")
+            await asyncio.to_thread(
+                _post, port, f"/approvals/{rid}/decide", {"decision": "approve"}
+            )
+            after = await asyncio.to_thread(_get, port, f"/approvals/{rid}/decision")
+            gone = await asyncio.to_thread(_get, port, f"/approvals/{rid}/decision")
+        return before["status"], after["status"], gone["status"]  # type: ignore[index]
+
+    before, after, gone = asyncio.run(scenario())
+    assert before == "pending"
+    assert after == "approve"
+    assert gone == "gone"  # forgotten after the hook consumed it
 
 
 def test_bad_decision_rejected(tmp_path: Path) -> None:

@@ -72,9 +72,63 @@ fi
 TOKEN_FILE="${RUBBERDUCK_HOME:-$HOME/.rubberduck}/token"
 TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null)
 
+# Record the event in the timeline (fire-and-forget) regardless of type.
 curl -s -X POST "$URL/events" \
   -H 'Content-Type: application/json' \
   -H "X-Rubberduck-Token: $TOKEN" \
   -d "$PAYLOAD" >/dev/null 2>&1 &
 
-exit 0
+# ── Blocking approval ────────────────────────────────────────────────────────
+# For a pre-exec permission event on a harness that can route approval (Claude's
+# PermissionRequest, Copilot's preToolUse), register the request and block until
+# the dashboard answers — then emit the harness's decision JSON. This makes the
+# dashboard the approval authority. Fail OPEN: on any error/timeout we print
+# nothing (the agent falls through to its own inline prompt), so a missing or
+# slow Rubberduck never wedges the agent.
+case "$EVENT_TYPE" in
+  PermissionRequest|preToolUse) ;;
+  *) exit 0 ;;
+esac
+[ -z "$TOKEN" ] && exit 0  # no server/token -> fall through to the agent's prompt
+
+# Register the request; get an id to poll. (jq required for the blocking path;
+# without it we just fall through.)
+command -v jq >/dev/null 2>&1 || exit 0
+RID=$(printf '%s' "$PAYLOAD" | curl -s -m 5 -X POST "$URL/approvals" \
+  -H 'Content-Type: application/json' -H "X-Rubberduck-Token: $TOKEN" \
+  -d @- 2>/dev/null | jq -r '.id // empty')
+[ -z "$RID" ] && exit 0
+
+# Long-poll for the decision. Cap total wait so the agent isn't blocked forever
+# if you never answer (then fall through to its own prompt). ~3 minutes.
+DEADLINE=$(( $(date +%s) + 180 ))
+while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+  STATUS=$(curl -s -m 5 "$URL/approvals/$RID/decision" \
+    -H "X-Rubberduck-Token: $TOKEN" 2>/dev/null | jq -r '.status // "gone"')
+  case "$STATUS" in
+    approve)
+      # Per-harness allow shape.
+      if [ "$RUNTIME" = "copilot" ]; then
+        printf '{"permissionDecision":"allow"}'
+      else
+        printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
+      fi
+      exit 0
+      ;;
+    deny)
+      if [ "$RUNTIME" = "copilot" ]; then
+        printf '{"permissionDecision":"deny"}'
+      else
+        printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}'
+      fi
+      exit 0
+      ;;
+    gone)
+      exit 0  # request cleared -> fall through to the agent's own prompt
+      ;;
+    *)
+      sleep 1  # pending
+      ;;
+  esac
+done
+exit 0  # timed out -> fall through to the agent's own prompt

@@ -163,6 +163,8 @@ _ROUTES: list[Route] = [
     Route("GET", "", lambda s, r, w, h, b, seg: s._browse(w, seg), prefix="/browse"),
     Route("GET", "", lambda s, r, w, h, b, seg: s._branches(w, seg), prefix="/branches"),
     Route("GET", "/approvals", lambda s, r, w, h, b, seg: s._list_approvals(w)),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._approval_decision(w, seg),
+          **_mid("/approvals/", "/decision")),
     Route("GET", "/terminals", lambda s, r, w, h, b, seg: s._terminals(w)),
     Route("GET", "/snapshots", lambda s, r, w, h, b, seg: s._list_snapshots(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._diff(w, seg), **_mid("/sessions/", "/diff")),
@@ -201,6 +203,7 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/spotlight")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._input(w, seg, b),
           **_mid("/sessions/", "/input")),
+    Route("POST", "/approvals", lambda s, r, w, h, b, seg: s._register_approval(w, b)),
     Route("POST", "", lambda s, r, w, h, b, seg: s._decide_approval(w, seg, b),
           **_mid("/approvals/", "/decide")),
     Route("POST", "/snapshots", lambda s, r, w, h, b, seg: s._create_snapshot(w)),
@@ -996,6 +999,45 @@ class Server:
             or self._answer_tty(session_key) is not None
         )
 
+    async def _register_approval(self, writer: asyncio.StreamWriter, body: bytes) -> None:
+        """A blocking pre-exec hook registers a permission request and gets an id
+        to poll. The dashboard answers it via /decide; the hook reads the answer
+        from /decision and returns it to the agent — so the dashboard is the
+        approval authority (no keystroke injection)."""
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        key = req.get("session_key") or req.get("session_id")
+        if not key:
+            await _write_json(writer, 400, {"error": "session_key required"})
+            return
+        approval = self.approvals.register(
+            str(key),
+            str(req.get("tool_name") or "unknown"),
+            req.get("tool_input") or {},
+            int(time.time() * 1000),
+            blocking=True,
+        )
+        await _write_json(writer, 200, {"id": approval.id})
+
+    async def _approval_decision(self, writer: asyncio.StreamWriter, approval_id: str) -> None:
+        """The blocking hook polls this for the user's decision. `pending` while
+        unanswered; `approve`/`deny` once decided; `gone` if the request was
+        cleared (the hook should then fall through to the agent's own prompt)."""
+        a = self.approvals.get(approval_id)
+        if a is None:
+            await _write_json(writer, 200, {"status": "gone"})
+            return
+        if a.decided is None:
+            await _write_json(writer, 200, {"status": "pending"})
+            return
+        # Decided: report it, then forget so the registry doesn't accumulate.
+        decision = a.decided
+        self.approvals.forget(approval_id)
+        await _write_json(writer, 200, {"status": decision})
+
     async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
         pending = [
             {
@@ -1004,10 +1046,10 @@ class Server:
                 "tool_name": a.tool_name,
                 "detail": a.detail,
                 "created_at": a.created_at,
-                # Answerable from the dashboard if Rubberduck owns the PTY or
-                # launched the tab (we have its tty). A purely watched session
-                # in your own terminal can't be answered here.
-                "reachable": self._can_answer(a.session_key),
+                # A blocking request is always answerable here (the dashboard is
+                # the authority). An observe-only row is answerable only if we own
+                # the PTY or launched the tab; otherwise you answer in its terminal.
+                "reachable": a.blocking or self._can_answer(a.session_key),
             }
             for a in self.approvals.pending()
         ]
@@ -1020,23 +1062,20 @@ class Server:
         if decision not in ("approve", "deny"):
             await _write_json(writer, 400, {"error": "decision must be approve or deny"})
             return
-        # First try injecting into a PTY we own; if there's no supervisor, fall
-        # back to sending the keystroke to the launched terminal tab by its tty.
-        landed = self.approvals.decide(approval_id, decision)
-        if not landed:
-            key = self._approval_session_key(approval_id)
-            tty = self._answer_tty(key) if key else None
-            if tty and answer_prompt_by_tty(tty, decision):
-                self.approvals.resolve(approval_id, decision)
-                landed = True
-        status = 200 if landed else 409
-        await _write_json(writer, status, {"decided": landed, "decision": decision})
-
-    def _approval_session_key(self, approval_id: str) -> str | None:
-        for a in self.approvals.pending():
-            if a.id == approval_id:
-                return a.session_key
-        return None
+        a = self.approvals.get(approval_id)
+        if a is None:
+            await _write_json(writer, 409, {"decided": False, "decision": decision})
+            return
+        # Record the decision. A blocking hook polling /decision picks it up and
+        # returns it to the agent. An observe-only request also tries the
+        # keystroke/tty fallback so it lands when there's no blocking hook.
+        decided = self.approvals.set_decision(approval_id, decision)
+        if decided and not a.blocking:
+            tty = self._answer_tty(a.session_key)
+            if tty:
+                answer_prompt_by_tty(tty, decision)
+        status = 200 if decided else 409
+        await _write_json(writer, status, {"decided": decided, "decision": decision})
 
     def _worktree_of(self, session_key: str) -> str | None:
         row = self.history.session(session_key)

@@ -40,6 +40,13 @@ _EVENTS = [
 
 _MARKER = "rubberduck"  # present in our command string so we can find/remove it
 
+# The pre-exec permission event must BLOCK so the hook can long-poll Rubberduck
+# for the user's decision and return it to the agent (the dashboard becomes the
+# approval authority). All other events stay fire-and-forget. Timeout must exceed
+# the hook's poll cap (~180s) so the agent waits for a real answer.
+_BLOCKING_EVENT = "PermissionRequest"
+_BLOCKING_TIMEOUT = 200
+
 
 def hook_script_path() -> Path:
     """Absolute path to the shipped hook script (works from an installed wheel)."""
@@ -58,6 +65,7 @@ def claude_style_build(config: dict[str, Any], script: str, runtime: str) -> dic
     for event in _EVENTS:
         entries = hooks.setdefault(event, [])
         entries[:] = [e for e in entries if not _claude_entry_is_ours(e)]
+        blocking = event == _BLOCKING_EVENT
         entries.append(
             {
                 "matcher": "*",
@@ -65,8 +73,10 @@ def claude_style_build(config: dict[str, Any], script: str, runtime: str) -> dic
                     {
                         "type": "command",
                         "command": f'"{script}" {event} {runtime}',
-                        "timeout": 5,
-                        "async": True,
+                        # The permission event blocks (waits for the dashboard's
+                        # decision); everything else is fire-and-forget.
+                        "timeout": _BLOCKING_TIMEOUT if blocking else 5,
+                        "async": not blocking,
                     }
                 ],
             }
