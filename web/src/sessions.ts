@@ -72,13 +72,15 @@ export function applyEvent(
     // only overwrite what this event actually carries.
     ...prev,
     key,
-    // A user-set name always wins; otherwise keep the seeded label, else derive.
+    // A user-set name always wins; then keep the established label. We do NOT
+    // re-derive from e.source_app on later events: source_app is the cwd's
+    // basename, so an agent that cd's into a subdir (e.g. `web/`) would rename
+    // the session to "web". Only the first event (no prev) derives from it.
     label:
       e.name ||
       prev?.label ||
       e.session_name ||
-      e.source_app ||
-      key.slice(0, 8),
+      (prev ? key.slice(0, 8) : e.source_app || key.slice(0, 8)),
     state: deriveState(e, prev?.state),
     // Stamp when the agent stopped; clear it on any new activity. effectiveState
     // uses this to settle to idle only after a quiet grace period.
