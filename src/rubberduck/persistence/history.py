@@ -185,11 +185,14 @@ class HistoryStore:
                 self._bump_metric(key, kind)
         self._conn.commit()
 
-    def _is_tombstoned(self, key: str) -> bool:
+    def is_tombstoned(self, key: str) -> bool:
+        """Whether a session was deleted and not yet revived by a SessionStart."""
         row = self._conn.execute(
             "SELECT 1 FROM tombstones WHERE session_key = ?", (key,)
         ).fetchone()
         return row is not None
+
+    _is_tombstoned = is_tombstoned  # internal alias (kept for existing callers)
 
     def _lift_tombstone(self, key: str) -> None:
         self._conn.execute("DELETE FROM tombstones WHERE session_key = ?", (key,))

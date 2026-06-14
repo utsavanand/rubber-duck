@@ -332,6 +332,19 @@ class Server:
         if not isinstance(raw, dict):
             await _write_json(writer, 400, {"error": "event must be a JSON object"})
             return
+        # A deleted (tombstoned) session whose hooks keep firing must not stream
+        # phantom events — they'd rebuild a ghost row in the dashboard that the
+        # backend has no record of (so checkpoint/stop/etc. 404). Drop them here,
+        # before the ring buffer / SSE / sink. A SessionStart legitimately revives
+        # the key, so let that through (history.record lifts the tombstone).
+        key = raw.get("session_key") or raw.get("session_id")
+        if (
+            key
+            and raw.get("event_type") != "SessionStart"
+            and self.history.is_tombstoned(str(key))
+        ):
+            await _write_json(writer, 200, {"dropped": "session deleted"})
+            return
         event = self.bus.publish(raw)
         await _write_json(writer, 200, event)
 

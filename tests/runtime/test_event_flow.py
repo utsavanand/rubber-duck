@@ -5,6 +5,7 @@ import asyncio
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -56,6 +57,40 @@ def test_recent_endpoint_returns_posted_events() -> None:
 
     events = asyncio.run(scenario())
     assert [e["event_type"] for e in events] == ["SessionStart", "Stop"]
+
+
+def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
+    """A deleted session whose hooks keep firing must not stream phantom events
+    that rebuild a ghost row in the dashboard."""
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.delete_session("ghost")  # tombstone it (no prior row needed)
+
+    async def scenario() -> list[dict[str, object]]:
+        server = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            # A live session's events get through.
+            await asyncio.to_thread(
+                _post_event, port, {"event_type": "PreToolUse", "session_key": "live"}
+            )
+            # The tombstoned session's events are dropped...
+            await asyncio.to_thread(
+                _post_event, port, {"event_type": "PreToolUse", "session_key": "ghost"}
+            )
+            # ...but a SessionStart revives it.
+            await asyncio.to_thread(
+                _post_event, port, {"event_type": "SessionStart", "session_key": "ghost"}
+            )
+            body = await asyncio.to_thread(_get, port, "/events")
+        return list(json.loads(body)["events"])
+
+    events = asyncio.run(scenario())
+    keys_types = [(e.get("session_key"), e["event_type"]) for e in events]
+    assert ("live", "PreToolUse") in keys_types
+    assert ("ghost", "PreToolUse") not in keys_types  # dropped
+    assert ("ghost", "SessionStart") in keys_types  # revived
 
 
 def test_root_carries_self_probe_header() -> None:
