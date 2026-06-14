@@ -944,3 +944,127 @@ footer {
 footer .brand {
   font-size: 15px;
 }
+
+/* ── mobile (phones) ───────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .container {
+    padding: 0 18px;
+  }
+
+  /* nav: keep brand + GitHub, drop the in-page anchor links */
+  .nav {
+    height: 58px;
+  }
+  .nav-links a:not(.btn) {
+    display: none;
+  }
+
+  /* hero */
+  .hero {
+    padding: 56px 0 36px;
+  }
+  .hero h1 {
+    font-size: 38px;
+    letter-spacing: -0.02em;
+  }
+  .hero p.sub {
+    font-size: 17px;
+  }
+  .hero-cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hero-cta .btn {
+    width: 100%;
+  }
+
+  /* sections: tighter vertical rhythm, smaller headings */
+  section {
+    padding: 48px 0;
+  }
+  .section-head {
+    margin-bottom: 32px;
+  }
+  .section-title,
+  .core-idea h2,
+  .cta h2 {
+    font-size: 27px;
+  }
+  .section-sub,
+  .core-idea p {
+    font-size: 16px;
+  }
+  .hero-feature-section {
+    padding-bottom: 40px;
+  }
+
+  /* dashboard mock: stack the three panels, shrink everything to fit */
+  .dash {
+    font-size: 12px;
+  }
+  .dash-top {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .dash-actions {
+    width: 100%;
+  }
+  .dbtn {
+    flex: 1;
+    text-align: center;
+  }
+  .dash-grid {
+    grid-template-columns: 1fr;
+  }
+  .dash-col {
+    border-right: none;
+    border-bottom: 1px solid var(--d-border);
+    padding: 14px;
+  }
+  .dash-col:last-child {
+    border-bottom: none;
+  }
+  .tabs {
+    gap: 5px;
+  }
+  /* pulse lines can be long — let them wrap instead of forcing width */
+  .pline,
+  .arow-meta {
+    overflow-wrap: anywhere;
+  }
+
+  /* features: single column */
+  .features {
+    grid-template-columns: 1fr;
+  }
+
+  /* walkthrough modal: fluid width, sits inside the phone viewport */
+  .walk-modal {
+    width: auto;
+    left: 12px;
+    right: 12px;
+    padding: 18px;
+  }
+  .walk-overlay {
+    padding: 0 12px;
+  }
+  .walk-toast {
+    left: 10px;
+    right: 10px;
+    font-size: 12px;
+  }
+
+  /* get-started + cta */
+  .cta {
+    padding: 56px 0;
+  }
+  .cta p {
+    font-size: 16px;
+  }
+  footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
