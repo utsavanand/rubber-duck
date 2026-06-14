@@ -2,9 +2,9 @@ import Link from "next/link";
 import { Duck } from "../Duck";
 
 export const metadata = {
-  title: "Approval protocol — RubberDuckHQ",
+  title: "Harness protocol — onboard an agent to RubberDuckHQ",
   description:
-    "How RubberDuckHQ routes an agent's permission prompts to the dashboard: a blocking pre-exec hook that long-polls for your decision and returns it to the agent. Per-harness support for Claude Code, Copilot, and Codex.",
+    "The integration interface for adding any CLI coding agent to RubberDuckHQ: one Harness adapter (drive + observe), the hook event contract, the registry entry, and graceful levels of support.",
 };
 
 export default function Protocol() {
@@ -31,123 +31,184 @@ export default function Protocol() {
 
       <div className="container">
         <article className="doc">
-          <div className="section-kicker">How it works</div>
-          <h1 className="doc-title">The approval protocol</h1>
+          <div className="section-kicker">Integration interface</div>
+          <h1 className="doc-title">Onboard a harness</h1>
           <p className="doc-lede">
-            When an agent wants to run a tool — a shell command, a web fetch, a
-            file edit — it can pause and ask permission. RubberDuckHQ routes
-            that question to your dashboard and sends your answer back to the
-            agent, so you approve or deny without switching to its terminal. The
-            dashboard is the decision-maker, not a remote control faking
-            keystrokes.
+            A <em>harness</em> is any CLI coding agent — Claude Code, Codex,
+            Copilot, or your own. RubberDuckHQ talks to all of them through one
+            adapter contract. Onboarding a new agent is: implement that contract
+            once, add one line to the registry. The core never imports a
+            specific agent — it loads whichever the session declares.
           </p>
 
-          <h2>The flow</h2>
+          <h2>Two halves: drive and observe</h2>
           <p>
-            Each agent runs a small hook script that RubberDuckHQ installs. For
-            a permission event, the hook <strong>blocks</strong> — it
-            doesn&apos;t return until it has an answer:
+            Every harness owns two responsibilities. You can implement just the
+            first (driven-only) and still get a working integration; the second
+            unlocks watching sessions you start yourself.
           </p>
-          <ol className="doc-steps">
+          <ul className="doc-bullets">
             <li>
-              <strong>Register.</strong> The hook <code>POST /approvals</code>{" "}
-              with the tool name and its input (the command, the URL, the file).
-              It gets back an approval id.
+              <strong>Drive</strong> — launch / resume the agent, classify its
+              state from output, and read its transcript. Always required.
             </li>
             <li>
-              <strong>Surface.</strong> The request appears in the
-              dashboard&apos;s <em>Needs human</em> panel — what tool, what it
-              wants to do, which session.
+              <strong>Observe</strong> — declare where the agent&apos;s hook
+              config lives and how to merge/strip RubberDuckHQ&apos;s entries,
+              so a session you started in your own terminal streams into the
+              dashboard. Optional (a <code>hook_spec</code> of <code>None</code>{" "}
+              means driven-only).
             </li>
-            <li>
-              <strong>Wait.</strong> The hook long-polls{" "}
-              <code>GET /approvals/:id/decision</code> — <code>pending</code>{" "}
-              until you answer.
-            </li>
-            <li>
-              <strong>Decide.</strong> You click Approve or Deny. The dashboard{" "}
-              <code>POST /approvals/:id/decide</code> records it.
-            </li>
-            <li>
-              <strong>Return.</strong> The hook&apos;s next poll reads{" "}
-              <code>approve</code> / <code>deny</code> and prints the
-              harness-specific decision JSON to the agent — which then proceeds
-              or cancels the tool call.
-            </li>
-          </ol>
+          </ul>
 
-          <h2>Fail-open by design</h2>
+          <h2>The contract</h2>
           <p>
-            The hook never wedges an agent. If RubberDuckHQ isn&apos;t running,
-            the token is missing, or you don&apos;t answer within a few minutes,
-            the hook prints nothing and the agent falls through to its own
-            inline prompt — exactly as if RubberDuckHQ weren&apos;t there.
-            Denial is the only fail-closed case, and only when you explicitly
-            deny.
+            A harness is a class implementing this interface (Python today; the
+            shape is what matters). Each method is small and single-purpose:
+          </p>
+          <pre className="doc-code">
+            {`class Harness:
+    name: str                       # registry key, e.g. "codex"
+    hook_spec: HookSpec | None      # observe half; None = driven-only
+
+    def __init__(self, command: str): ...
+
+    # ── drive ──
+    def launch_command(self, *, cwd, session_key, initial_prompt) -> list[str]
+        # the argv to start the agent
+
+    def restore_command(self, *, cwd, session_key) -> list[str]
+        # the argv to resume an existing session
+
+    def detect_state(self, recent_output: str) -> SessionState
+        # idle | busy | waiting | terminated  (from terminal output,
+        # for agents without hooks driving state)
+
+    def tool_in(self, recent_output: str) -> str | None
+        # which tool is running, if detectable from output
+
+    def locate_transcript(self, *, cwd, session_id) -> Path | None
+    def read_transcript(self, *, cwd, session_id) -> list[{role, text}]
+        # the conversation as uniform {role, text} records, newest-last
+        # (each agent reads its own native format: JSONL, SQLite, …)`}
+          </pre>
+
+          <h2>The observe half: HookSpec</h2>
+          <p>
+            If the agent has a hook system, declare a <code>HookSpec</code>: the
+            config file location (global + repo-local) and two pure functions
+            that <strong>build</strong> (merge our hook entries in) and{" "}
+            <strong>strip</strong> (remove them) on the parsed config — so
+            install and uninstall stay symmetric and idempotent.
+          </p>
+          <pre className="doc-code">
+            {`hook_spec = HookSpec(
+    global_rel = Path(".codex") / "hooks.json",   # ~/.codex/hooks.json
+    repo_rel   = Path(".codex") / "hooks.json",   # <repo>/.codex/hooks.json
+    build = claude_style_build,   # add our entries to the agent's config
+    strip = claude_style_strip,   # remove them again
+)`}
+          </pre>
+          <p className="doc-note">
+            Agents whose config is shaped like Claude&apos;s reuse the shared{" "}
+            <code>build</code>/<code>strip</code> helpers — Codex does exactly
+            this. A differently-shaped config (e.g. Copilot&apos;s) supplies its
+            own pair.
           </p>
 
-          <h2>Per-harness support</h2>
+          <h2>The event contract</h2>
           <p>
-            The protocol depends on the agent having a pre-execution hook that
-            can <em>block and return a decision</em>. Not every CLI does — so
-            support differs:
+            The installed hook posts the agent&apos;s lifecycle events to{" "}
+            <code>POST /events</code> as one normalized JSON shape, whatever the
+            agent&apos;s native field names. RubberDuckHQ accepts snake_case or
+            camelCase and maps to:
+          </p>
+          <pre className="doc-code">
+            {`{
+  "event_type":  "SessionStart | UserPromptSubmit | PreToolUse |
+                  PostToolUse | PermissionRequest | Notification |
+                  Stop | SessionEnd",
+  "session_id":  "<agent's own session id>",
+  "session_key": "<set by Rubberduck on launch, else null>",
+  "cwd":         "/path/the/agent/runs/in",
+  "tool_name":   "Bash | Edit | WebFetch | …",
+  "tool_input":  { … },          # the command, url, file, etc.
+  "prompt":      "<user prompt text>",
+  "runtime":     "claude-code | codex | copilot",
+  "agent_pid":   12345           # so a watched session's death is detected
+}`}
+          </pre>
+          <p>
+            From these, the dashboard derives session state, the Pulse feed, the
+            Needs-human panel, and durable history — uniformly across agents.
+          </p>
+
+          <h2>Register it</h2>
+          <p>
+            One entry wires the agent into everything: the <code>--agent</code>{" "}
+            choices, the New-session picker, runtime construction, hook install,
+            and transcript reading for checkpoints.
+          </p>
+          <pre className="doc-code">
+            {`REGISTRY = {
+    "claude-code": ClaudeCodeRuntime,
+    "codex":       CodexRuntime,
+    "copilot":     CopilotRuntime,
+    "your-agent":  YourRuntime,   # <- onboard here
+    "generic":     GenericRuntime,
+}`}
+          </pre>
+
+          <h2>Levels of support (degrade gracefully)</h2>
+          <p>
+            A harness gets exactly the support its capabilities allow — nothing
+            is all-or-nothing:
           </p>
           <div className="proto-table">
             <div className="proto-row proto-head">
-              <span>Harness</span>
-              <span>Blocking hook</span>
-              <span>Decide from dashboard</span>
+              <span>Capability</span>
+              <span>What it unlocks</span>
             </div>
             <div className="proto-row">
-              <span>Claude Code</span>
+              <span>Drive only (no hooks)</span>
               <span>
-                <code>PermissionRequest</code>
+                Launch / resume from the dashboard; coarse state from output.
+                The fallback for any CLI (the <code>generic</code> runtime).
               </span>
-              <span className="yes">Yes</span>
             </div>
             <div className="proto-row">
-              <span>GitHub Copilot CLI</span>
+              <span>+ HookSpec</span>
               <span>
-                <code>preToolUse</code>
+                Watch sessions you start yourself; precise state, the Pulse
+                feed, Needs-human, durable history.
               </span>
-              <span className="yes">Yes (local mode)</span>
             </div>
             <div className="proto-row">
-              <span>OpenAI Codex CLI</span>
-              <span>interactive only</span>
-              <span className="no">Observe + jump to terminal</span>
+              <span>+ Transcript reader</span>
+              <span>
+                High-quality checkpoints &amp; handoff summaries from the
+                agent&apos;s own messages.
+              </span>
+            </div>
+            <div className="proto-row">
+              <span>+ Blocking approval hook</span>
+              <span>
+                Approve / Deny permission prompts straight from the dashboard.
+                (Claude Code, Copilot.)
+              </span>
             </div>
           </div>
-          <p className="doc-note">
-            Claude Code and Copilot return a decision the agent honors, so you
-            answer from the dashboard. Codex&apos;s approval flow is
-            interactive-only, so for those (and for watched sessions started in
-            your own terminal) RubberDuckHQ shows the request and a one-click
-            jump to that session&apos;s terminal tab to answer there.
-          </p>
 
-          <h2>The decision the agent gets</h2>
+          <h2>Approvals, specifically</h2>
           <p>
-            The hook emits the JSON each harness expects. The request and
-            polling are identical across harnesses; only this last shape
-            differs:
-          </p>
-          <pre className="doc-code">
-            {`# Claude Code
-{"hookSpecificOutput":{"hookEventName":"PermissionRequest",
-  "decision":{"behavior":"allow"}}}
-
-# Copilot
-{"permissionDecision":"allow"}`}
-          </pre>
-
-          <h2>One interface, many agents</h2>
-          <p>
-            RubberDuckHQ models every agent behind one Harness contract — where
-            its hook config lives, how it reports activity, and whether it can
-            route approval externally. New agents plug in by declaring those
-            capabilities; the server side (register, poll, decide) is the same
-            for all of them.
+            If the agent has a pre-exec hook that can block and return a
+            decision, its permission prompts route to the dashboard: the hook
+            registers the request (<code>POST /approvals</code>), long-polls{" "}
+            <code>GET /approvals/:id/decision</code>, and returns the
+            agent&apos;s allow/deny once you click — no keystroke faking,
+            fail-open if RubberDuckHQ is down. Agents without such a hook
+            (Codex) still surface the request and offer a one-click jump to
+            their terminal to answer there.
           </p>
 
           <p className="doc-back">

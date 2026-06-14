@@ -1201,3 +1201,14 @@ footer .brand {
     display: none;
   }
 }
+
+.doc-bullets {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+.doc-bullets li {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-soft);
+  margin-bottom: 10px;
+}

@@ -13,7 +13,7 @@ export default function Home() {
           </div>
           <div className="nav-links">
             <a href="#features">Features</a>
-            <a href="/protocol">Protocol</a>
+            <a href="/protocol">Onboard a harness</a>
             <a href="#get-started">Get started</a>
             <a
               href="https://github.com/utsavanand/rubber-duck"
