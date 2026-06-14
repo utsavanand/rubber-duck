@@ -223,6 +223,9 @@ function Dashboard() {
               pollKey={sessions.length}
               onOpen={setOpenKey}
               knownKeys={knownKeys}
+              waiting={sessions.filter(
+                (s) => effectiveState(s, now) === "waiting",
+              )}
             />
           </div>
         </section>
