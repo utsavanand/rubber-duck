@@ -28,6 +28,16 @@ async function api(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+// Authenticated POST (sends the install token the real dashboard sends), for
+// cross-checking what a control endpoint returns. Returns status + parsed body.
+export async function apiPost(
+  path: string,
+  body: Record<string, unknown> = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await api(path, { method: "POST", body: JSON.stringify(body) });
+  return { status: res.status, body: await res.json().catch(() => ({})) };
+}
+
 export interface SessionRow {
   session_key: string;
   name?: string | null;
@@ -47,21 +57,24 @@ export async function findSession(
   return (await sessions()).find(predicate);
 }
 
+// Post a raw event for a session (e.g. UserPromptSubmit, PreToolUse) so a
+// checkpoint has real prompts/commands to capture.
+export async function postEvent(event: Record<string, unknown>): Promise<void> {
+  await api("/events", { method: "POST", body: JSON.stringify(event) });
+}
+
 // Seed a watched session straight through the events API (no terminal/agent) so
 // fork/stop/delete have a real row to act on. Returns the key.
 export async function seedSession(
   key: string,
   fields: Record<string, unknown> = {},
 ): Promise<string> {
-  await api("/events", {
-    method: "POST",
-    body: JSON.stringify({
-      event_type: "SessionStart",
-      session_key: key,
-      cwd: "/tmp/e2e",
-      runtime: "claude-code",
-      ...fields,
-    }),
+  await postEvent({
+    event_type: "SessionStart",
+    session_key: key,
+    cwd: "/tmp/e2e",
+    runtime: "claude-code",
+    ...fields,
   });
   // SessionStart doesn't set the display name; PATCH it like the dashboard does.
   if (fields.name) {
@@ -71,4 +84,26 @@ export async function seedSession(
     });
   }
   return key;
+}
+
+export interface Checkpoint {
+  id: string;
+  label: string;
+  summary: string;
+  record: {
+    prompts: string[];
+    commands: string[];
+    tools: { tool: string; count: number }[];
+    event_count: number;
+  };
+}
+
+export async function checkpoints(key: string): Promise<Checkpoint[]> {
+  const res = await fetch(`${base()}/sessions/${key}/checkpoints`);
+  return (await res.json()).checkpoints;
+}
+
+export async function snapshotIds(): Promise<string[]> {
+  const res = await fetch(`${base()}/snapshots`);
+  return (await res.json()).snapshots.map((s: { id: string }) => s.id);
 }
