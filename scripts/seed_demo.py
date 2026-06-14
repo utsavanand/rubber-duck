@@ -56,9 +56,33 @@ def k(name):
 
 # (key-stem, display name, parent-stem, cwd, branch, runtime, launched)
 SESSIONS = [
-    ("checkout-refactor", "checkout-refactor", None, CODE, "checkout-refactor", "claude-code", True),
-    ("checkout-idem", "checkout-refactor · idempotency", "checkout-refactor", CODE, "checkout-idempotency", "claude-code", True),
-    ("checkout-retry", "checkout-refactor · retry-path", "checkout-refactor", CODE, "checkout-retry", "claude-code", True),
+    (
+        "checkout-refactor",
+        "checkout-refactor",
+        None,
+        CODE,
+        "checkout-refactor",
+        "claude-code",
+        True,
+    ),
+    (
+        "checkout-idem",
+        "checkout-refactor · idempotency",
+        "checkout-refactor",
+        CODE,
+        "checkout-idempotency",
+        "claude-code",
+        True,
+    ),
+    (
+        "checkout-retry",
+        "checkout-refactor · retry-path",
+        "checkout-refactor",
+        CODE,
+        "checkout-retry",
+        "claude-code",
+        True,
+    ),
     ("payments-audit", "payments-audit", None, CODE, "payments-audit", "codex", False),
     ("release-notes", "release-notes", None, DOCS, None, "claude-code", False),
     ("dep-upgrade", "dep-upgrade", None, CODE, "dep-upgrade", "copilot", True),
@@ -97,7 +121,13 @@ ACTIVITY = [
     ("dep-upgrade", "Bash", {"command": "npm install && npm test"}),
 ]
 for stem, tool, tool_input in ACTIVITY:
-    emit(event_type="PreToolUse", session_key=k(stem), tool_name=tool, tool_input=tool_input, cwd=CODE)
+    emit(
+        event_type="PreToolUse",
+        session_key=k(stem),
+        tool_name=tool,
+        tool_input=tool_input,
+        cwd=CODE,
+    )
     time.sleep(0.1)
 
 # A launched session needs you (reachable -> Approve/Deny) and a watched one

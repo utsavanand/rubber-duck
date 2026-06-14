@@ -39,6 +39,9 @@ export default function Home() {
             doing, and surfaces the one that needs you. On your machine, your
             code never leaves it.
           </p>
+          <p className="hero-no">
+            No new IDE. No new terminal. Keep the tools you already use.
+          </p>
           <div className="hero-cta">
             <a href="#get-started" className="btn btn-primary">
               Get started

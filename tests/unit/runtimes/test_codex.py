@@ -42,12 +42,22 @@ def test_parse_codex_transcript_extracts_messages(tmp_path):  # type: ignore[no-
             json.dumps(o)
             for o in [
                 {"type": "session_meta", "payload": {"id": "x"}},
-                {"type": "response_item", "payload": {
-                    "type": "message", "role": "user",
-                    "content": [{"type": "input_text", "text": "fix the bug"}]}},
-                {"type": "response_item", "payload": {
-                    "type": "message", "role": "assistant",
-                    "content": [{"type": "output_text", "text": "Fixed it in store.ts"}]}},
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "fix the bug"}],
+                    },
+                },
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Fixed it in store.ts"}],
+                    },
+                },
                 {"type": "event_msg", "payload": {"type": "user_message"}},
             ]
         )

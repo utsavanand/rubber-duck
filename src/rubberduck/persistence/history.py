@@ -298,7 +298,7 @@ class HistoryStore:
     ) -> tuple[list[dict[str, Any]], int | None]:
         """A page of the global event feed, newest-first, for the Pulse panel.
 
-        Keyset-paginated on rowid (monotonic insert order, robust to ts ties):
+        Keyset-paginated on rowid (monotonic insert order, unaffected by ts ties):
         pass the `next_cursor` from the previous page as `before` to fetch older
         events. Returns (events_newest_first, next_cursor); next_cursor is None
         when the page reaches the start of history."""

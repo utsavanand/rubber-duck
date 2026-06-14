@@ -170,8 +170,9 @@ Organized by type of work. `★` marks the current highest-leverage item.
 - Security: localhost token + same-origin gate (CSRF/injection hardening).
 - Multi-agent hooks: `install-hooks --agent {claude-code,codex,copilot}`, with
   the Codex `/hooks` trust step surfaced.
-- Watched vs launched sessions, with a robust sticky `launched` flag + badge;
-  deleted sessions can't be resurrected by their own streaming events.
+- Watched vs launched sessions, with a sticky `launched` flag + badge (set once
+  at creation, never flipped by later events); deleted sessions can't be
+  resurrected by their own streaming events.
 - Git is opt-in: run-in-place vs worktree, base-branch picker, promote later.
 - Fork merged into one action (worktree / promote / conversation).
 - New-session agent picker; pulse shows the command + click-to-expand.

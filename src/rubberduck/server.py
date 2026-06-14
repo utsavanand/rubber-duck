@@ -655,9 +655,7 @@ class Server:
             },
         )
 
-    async def _promote(
-        self, writer: asyncio.StreamWriter, session_key: str, body: bytes
-    ) -> None:
+    async def _promote(self, writer: asyncio.StreamWriter, session_key: str, body: bytes) -> None:
         """Create a git worktree + branch for a session that's been running in
         place (no worktree yet) — for when the user decides the work is worth
         isolating onto a branch they can publish. The repo is the session's cwd;
@@ -929,9 +927,7 @@ class Server:
             await _write_json(writer, 404, {"unarchived": False, "session_key": session_key})
             return
         self._set_lifecycle(session_key, "stopped")
-        await _write_json(
-            writer, 200, {"unarchived": True, "session_key": session_key}
-        )
+        await _write_json(writer, 200, {"unarchived": True, "session_key": session_key})
 
     async def _focus_terminal(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         """Bring this session's terminal tab to the front. Only works for a
@@ -940,9 +936,7 @@ class Server:
         row = self.history.session(session_key)
         tty = row.get("tty") if row else None
         if not tty:
-            await _write_json(
-                writer, 404, {"focused": False, "error": "no terminal tab recorded"}
-            )
+            await _write_json(writer, 404, {"focused": False, "error": "no terminal tab recorded"})
             return
         focused = focus_terminal_by_tty(str(tty))
         await _write_json(writer, 200 if focused else 404, {"focused": focused})
@@ -1067,9 +1061,7 @@ class Server:
             await _write_json(writer, 400, {"error": "path required"})
             return
         try:
-            names = await asyncio.to_thread(
-                self.orchestrator.worktrees.branches, Path(path)
-            )
+            names = await asyncio.to_thread(self.orchestrator.worktrees.branches, Path(path))
         except GitError as e:
             await _write_json(writer, 400, {"error": str(e)})
             return
@@ -1228,9 +1220,7 @@ class Server:
         )
         await _write_json(writer, 200, {"id": cp.id, "label": cp.label, "summary": cp.summary})
 
-    def _read_transcript(
-        self, session_key: str, row: dict[str, Any]
-    ) -> list[dict[str, str]]:
+    def _read_transcript(self, session_key: str, row: dict[str, Any]) -> list[dict[str, str]]:
         """The agent's own conversation for a session (role/text incl. its
         responses), read from its native transcript. Empty when we can't (no
         runtime/session_id, or the agent keeps no readable transcript)."""
@@ -1275,9 +1265,7 @@ class Server:
         # A nonzero exit means the diff failed (bad repo, detached state). Don't
         # report it as an empty diff — that reads as "no changes" in the UI.
         if result.returncode != 0:
-            await _write_json(
-                writer, 500, {"error": result.stderr.strip() or "git diff failed"}
-            )
+            await _write_json(writer, 500, {"error": result.stderr.strip() or "git diff failed"})
             return
         await _write_json(writer, 200, {"diff": result.stdout})
 
@@ -1540,4 +1528,3 @@ def _branch_name(name: str | None) -> str:
     under rubberduck/. Falls back to a timestamp when there's no name."""
     slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
     return f"rubberduck/{slug}" if slug else f"rubberduck/{int(time.time())}"
-

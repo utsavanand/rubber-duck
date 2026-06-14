@@ -53,14 +53,30 @@ def claude_hook_events() -> list[dict]:
     PostToolUse both fire, with the command under tool_input.command."""
     return [
         {"event_type": "UserPromptSubmit", "prompt": "run the tests", "_ts": 1},
-        {"event_type": "PreToolUse", "tool_name": "Bash",
-         "tool_input": {"command": "pytest -q"}, "_ts": 2},
-        {"event_type": "PostToolUse", "tool_name": "Bash",
-         "tool_input": {"command": "pytest -q"}, "_ts": 3},
-        {"event_type": "PreToolUse", "tool_name": "Bash",
-         "tool_input": {"command": "git status"}, "_ts": 4},
-        {"event_type": "PostToolUse", "tool_name": "Bash",
-         "tool_input": {"command": "git status"}, "_ts": 5},
+        {
+            "event_type": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pytest -q"},
+            "_ts": 2,
+        },
+        {
+            "event_type": "PostToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pytest -q"},
+            "_ts": 3,
+        },
+        {
+            "event_type": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "git status"},
+            "_ts": 4,
+        },
+        {
+            "event_type": "PostToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "git status"},
+            "_ts": 5,
+        },
     ]
 
 

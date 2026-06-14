@@ -342,8 +342,7 @@ class Orchestrator:
                 # ignores task.exception() would let it vanish silently.
                 if not task.cancelled() and task.exception() is not None:
                     print(
-                        f"[rubberduck] session {k} task ended with error: "
-                        f"{task.exception()}",
+                        f"[rubberduck] session {k} task ended with error: " f"{task.exception()}",
                         file=sys.stderr,
                     )
                 try:

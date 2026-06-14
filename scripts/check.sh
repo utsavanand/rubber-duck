@@ -15,20 +15,28 @@ RUN_UI=1
 # Use the repo venv if present so this works without an activated shell.
 PY=python
 [[ -x .venv/bin/python ]] && PY=.venv/bin/python
-RUFF=ruff; MYPY=mypy
+RUFF=ruff; MYPY=mypy; BLACK=black
 [[ -x .venv/bin/ruff ]] && RUFF=.venv/bin/ruff
 [[ -x .venv/bin/mypy ]] && MYPY=.venv/bin/mypy
+[[ -x .venv/bin/black ]] && BLACK=.venv/bin/black
 
 step() { printf "\n\033[1m==> %s\033[0m\n" "$1"; }
 
 step "ruff (lint)"
 $RUFF check src tests
 
+# Same checks CI runs, so a green local gate means a green CI.
+step "black (format)"
+$BLACK --check src tests scripts
+
 step "mypy (types)"
 $MYPY
 
 step "Python tests (unit + API/runtime)"
 $PY -m pytest -p no:cacheprovider
+
+step "slop check (docs/tests heuristics)"
+$PY scripts/slop_check.py
 
 if [[ $RUN_UI == 1 ]]; then
   step "UI tests (Playwright) — builds + serves the real dashboard"

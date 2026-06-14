@@ -67,9 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
     sub.add_parser("dashboard", help="build (if needed) and open the dashboard in a browser")
-    sub.add_parser(
-        "purge-test", help="delete all test/seed sessions and their data (test=1)"
-    )
+    sub.add_parser("purge-test", help="delete all test/seed sessions and their data (test=1)")
 
     inst = sub.add_parser(
         "install-hooks", help="wire an agent so its sessions stream into Rubberduck"

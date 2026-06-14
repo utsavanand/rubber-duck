@@ -10,6 +10,9 @@ def test_source_mtimes_includes_the_package_modules() -> None:
 def test_changed_path_none_when_unchanged() -> None:
     snap = {"a.py": 1.0, "b.py": 2.0}
     assert changed_path(snap, dict(snap)) is None
+    # An empty snapshot is also "no change" — guards against treating the first
+    # poll (nothing seen yet) as a reload trigger.
+    assert changed_path({}, {}) is None
 
 
 def test_changed_path_detects_a_modified_file() -> None:

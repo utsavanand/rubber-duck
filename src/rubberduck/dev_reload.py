@@ -21,9 +21,7 @@ def _source_mtimes() -> dict[str, float]:
     return {str(p): p.stat().st_mtime for p in root.rglob("*.py")}
 
 
-def changed_path(
-    before: dict[str, float], after: dict[str, float]
-) -> str | None:
+def changed_path(before: dict[str, float], after: dict[str, float]) -> str | None:
     """The first source file whose mtime changed (or that was added/removed)
     between two scans, or None if nothing changed. Pure, so it's testable."""
     for path, mtime in after.items():

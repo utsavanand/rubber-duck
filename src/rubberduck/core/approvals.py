@@ -175,7 +175,5 @@ class ApprovalRegistry:
         self._pending = {
             aid: a
             for aid, a in self._pending.items()
-            if a.session_key != session_key
-            or not a.blocking
-            or now - a.created_at < max_age_ms
+            if a.session_key != session_key or not a.blocking or now - a.created_at < max_age_ms
         }

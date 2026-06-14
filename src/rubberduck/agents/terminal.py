@@ -157,7 +157,7 @@ def _answer_terminal_by_tty(tty: str, decision: str) -> str:
         "        set index of w to 1\n"
         "        activate\n"
         "        delay 0.15\n"
-        f"        tell application \"System Events\" to {keystroke}\n"
+        f'        tell application "System Events" to {keystroke}\n'
         "        return\n"
         "      end if\n"
         "    end repeat\n"
@@ -282,16 +282,14 @@ def _open_terminal(command: str, title: str | None = None) -> bool:
     esc = _esc(command)
     # `custom title` sticks regardless of what the agent prints, so the tab keeps
     # the session name. `set tt` captures the tab `do script` returns.
-    set_title = (
-        f'    set custom title of tt to "{_esc(title)}"\n' if title else ""
-    )
+    set_title = f'    set custom title of tt to "{_esc(title)}"\n' if title else ""
     script = (
         'tell application "Terminal"\n'
         "  activate\n"
         "  if (count of windows) > 0 then\n"
         '    tell application "System Events" to keystroke "t" using command down\n'
         "    delay 0.2\n"
-        f"    set tt to do script \"{esc}\" in front window\n"
+        f'    set tt to do script "{esc}" in front window\n'
         "  else\n"
         f'    set tt to do script "{esc}"\n'
         "  end if\n"
@@ -306,9 +304,7 @@ def _open_iterm(command: str, title: str | None = None) -> bool:
     esc = _esc(command)
     # Setting the session name (and locking it off auto-naming) keeps the tab
     # titled with the session name even as the agent redraws.
-    set_title = (
-        f'    set name to "{_esc(title)}"\n' if title else ""
-    )
+    set_title = f'    set name to "{_esc(title)}"\n' if title else ""
     script = (
         'tell application "iTerm"\n'
         "  activate\n"

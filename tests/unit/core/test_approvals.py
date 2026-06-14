@@ -122,7 +122,7 @@ def test_blocking_request_survives_the_resolve_sweep() -> None:
     reg = ApprovalRegistry(inject=lambda _k, _key: True)
     a = reg.register("s1", "Bash", {"command": "ls"}, 1000, blocking=True)
     reg.drop_session_before("s1", 5000)  # later activity
-    assert reg.get(a.id) is not None  # still pending
+    assert [p.id for p in reg.pending()] == [a.id]  # survives, still pending
 
 
 def test_abandoned_blocking_request_is_swept_after_the_poll_deadline() -> None:
