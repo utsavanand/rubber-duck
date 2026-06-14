@@ -93,6 +93,12 @@ function TreeRow({
   const live = effState !== "terminated" && effState !== "stopped" && !archived;
   const resumable =
     (effState === "stopped" || effState === "terminated") && s.launched;
+  // Stop and Archive only make sense for sessions Rubberduck owns. A watched
+  // session runs in a terminal we don't control, so Stop can't end it and
+  // Archive would only hide a row whose agent keeps running — and unarchiving it
+  // would offer a Resume that can't fire. Keep watched sessions observe-only.
+  const canStop = live && s.launched;
+  const canArchive = !archived && s.launched;
   const stateLabel = effState === "waiting" ? "waiting on you" : effState;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(s.notes ?? "");
@@ -354,7 +360,7 @@ function TreeRow({
               )}
             </button>
           )}
-          {live && (
+          {canStop && (
             <button
               className="rd-btn rd-btn-sm rd-btn-danger"
               disabled={ending}
@@ -370,7 +376,7 @@ function TreeRow({
               )}
             </button>
           )}
-          {!archived && (
+          {canArchive && (
             <button
               className="rd-btn rd-btn-sm rd-btn-ghost"
               title="Put this session away — keeps its history, hides it under Archived"

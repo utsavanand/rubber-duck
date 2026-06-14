@@ -1,21 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { apiPost, seedSession } from "./helpers";
 
-// Stop a seeded (watched) session from the UI. Rubberduck doesn't own a watched
-// session's process, so the /stop endpoint returns {stopped:false} with HTTP
-// 404 — api.stop() throws on the non-2xx, and stopSession() surfaces that as an
-// error toast and re-enables the button. This is the REAL behavior for a
-// non-launched session (verified against the live endpoint), so that's exactly
-// what we assert: the click reaches the backend, and the UI honestly reports it
-// couldn't stop.
-test("stop on a watched session reports it can't be stopped", async ({
+// A watched session is one Rubberduck doesn't own (you ran the agent yourself).
+// Its row is observe-only: no Stop and no Archive, since neither can deliver on
+// what it implies (we can't end a process we didn't launch, and archiving would
+// only hide a row whose agent keeps running). The backend still refuses /stop
+// directly (404, stopped:false), which is why the UI hides the button.
+test("watched session is observe-only: no Stop or Archive button", async ({
   page,
 }) => {
   const key = `e2e-stop-${Date.now()}`;
   await seedSession(key, { name: key });
 
-  // Cross-check the backend directly: stopping a session Rubberduck doesn't own
-  // is a no-op (stopped:false), which is the behavior the UI must reflect.
+  // Backend cross-check: stopping a session Rubberduck doesn't own is a no-op.
   const res = await apiPost(`/sessions/${key}/stop`);
   expect(res.status).toBe(404);
   expect(res.body).toMatchObject({ stopped: false, session_key: key });
@@ -26,14 +23,12 @@ test("stop on a watched session reports it can't be stopped", async ({
   const row = page.locator(".rd-row", { hasText: key });
   await expect(row).toBeVisible();
 
-  // Actions are hover-revealed; hover, then click Stop. (Exact name avoids
-  // matching the transient "Stopping…" label while the request is in flight.)
+  // Actions are hover-revealed. Stop and Archive must not be among them.
   await row.hover();
-  await row.getByRole("button", { name: "Stop", exact: true }).click();
-
-  // UI: an error toast appears (api.stop throws on the 404). The session stays
-  // — Rubberduck can't terminate a process it didn't launch — and the button
-  // re-enables so the user can retry.
-  await expect(page.getByText(/Stop failed/)).toBeVisible();
-  await expect(row).toBeVisible();
+  await expect(
+    row.getByRole("button", { name: "Stop", exact: true }),
+  ).toHaveCount(0);
+  await expect(row.getByRole("button", { name: "Archive" })).toHaveCount(0);
+  // Fork stays — branching a watched session is fine.
+  await expect(row.getByRole("button", { name: "Fork" })).toBeVisible();
 });

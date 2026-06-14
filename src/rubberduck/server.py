@@ -898,6 +898,14 @@ class Server:
         if row is None:
             await _write_json(writer, 404, {"error": f"no session {session_key}"})
             return
+        # Only sessions Rubberduck owns can be archived. Archiving a watched
+        # session would hide a row whose agent keeps running in a terminal we
+        # don't control, and unarchiving would offer a Resume that can't fire.
+        if not row.get("launched"):
+            await _write_json(
+                writer, 400, {"error": "only Rubberduck-launched sessions can be archived"}
+            )
+            return
         await self.orchestrator.stop(session_key)
         if row.get("heartbeat") and row.get("tty"):
             close_terminal_by_tty(str(row["tty"]))

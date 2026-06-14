@@ -7,8 +7,9 @@ import { findSession, seedSession } from "./helpers";
 test("archive moves a session to the Archived filter, unarchive brings it back", async ({
   page,
 }) => {
+  // Archive is launched-only — a watched session can't be archived.
   const key = `e2e-archive-${Date.now()}`;
-  await seedSession(key, { name: key });
+  await seedSession(key, { name: key, launched: true });
 
   await page.goto("/");
   await page.getByRole("button", { name: /^All \(/ }).click();

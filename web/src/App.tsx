@@ -23,7 +23,11 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-type Filter = "active" | "idle" | "watched" | "launched" | "archived" | "all";
+// Two orthogonal axes: lifecycle (where a session is in its life) and origin
+// (whether Rubberduck launched it or is just watching). They combine — e.g.
+// "active" + "watched" shows active sessions you started yourself.
+type Lifecycle = "active" | "idle" | "archived" | "all";
+type Origin = "all" | "watched" | "launched";
 
 function Dashboard() {
   const { sessions, connected, recentEvents, removeSessions } =
@@ -78,7 +82,8 @@ function Dashboard() {
     }
   }
 
-  const [filter, setFilter] = useState<Filter>("active");
+  const [lifecycle, setLifecycle] = useState<Lifecycle>("active");
+  const [origin, setOrigin] = useState<Origin>("all");
   const [modal, setModal] = useState<"launch" | "compare" | "snapshots" | null>(
     null,
   );
@@ -105,34 +110,50 @@ function Dashboard() {
   };
   const isIdle = (s: SessionView) => effectiveState(s, now) === "idle";
   const isArchived = (s: SessionView) => effectiveState(s, now) === "archived";
-  // Archived sessions are put away — they only show under the Archived filter,
-  // never in the active/idle/watched/launched/all views.
-  const visible = sessions.filter((s) => !isArchived(s));
-  const activeCount = visible.filter(isActive).length;
-  const idleCount = visible.filter(isIdle).length;
-  const watchedCount = visible.filter((s) => !s.launched).length;
-  const launchedCount = visible.filter((s) => s.launched).length;
-  const archivedCount = sessions.filter(isArchived).length;
-  const FILTERS: { key: Filter; label: string; count: number }[] = [
-    { key: "active", label: "Active", count: activeCount },
-    { key: "idle", label: "Idle", count: idleCount },
-    { key: "watched", label: "Watched", count: watchedCount },
-    { key: "launched", label: "Launched", count: launchedCount },
-    { key: "archived", label: "Archived", count: archivedCount },
-    { key: "all", label: "All", count: visible.length },
+  // Origin narrows first: it's the dimension that crosses every lifecycle.
+  const matchesOrigin = (s: SessionView) =>
+    origin === "all" || (origin === "launched" ? !!s.launched : !s.launched);
+  const inOrigin = sessions.filter(matchesOrigin);
+  // Archived sessions are put away — they only show under the Archived tab,
+  // never in active/idle/all.
+  const live = inOrigin.filter((s) => !isArchived(s));
+
+  // Lifecycle tab counts reflect the current origin selection, so the numbers
+  // always match what the tab would show.
+  const LIFECYCLES: { key: Lifecycle; label: string; count: number }[] = [
+    { key: "active", label: "Active", count: live.filter(isActive).length },
+    { key: "idle", label: "Idle", count: live.filter(isIdle).length },
+    {
+      key: "archived",
+      label: "Archived",
+      count: inOrigin.filter(isArchived).length,
+    },
+    { key: "all", label: "All", count: live.length },
   ];
+  // Origin counts are over all non-archived sessions, independent of lifecycle.
+  const notArchived = sessions.filter((s) => !isArchived(s));
+  const ORIGINS: { key: Origin; label: string; count: number }[] = [
+    { key: "all", label: "All", count: notArchived.length },
+    {
+      key: "watched",
+      label: "Watched",
+      count: notArchived.filter((s) => !s.launched).length,
+    },
+    {
+      key: "launched",
+      label: "Launched",
+      count: notArchived.filter((s) => !!s.launched).length,
+    },
+  ];
+
   const shown =
-    filter === "active"
-      ? visible.filter(isActive)
-      : filter === "idle"
-        ? visible.filter(isIdle)
-        : filter === "watched"
-          ? visible.filter((s) => !s.launched)
-          : filter === "launched"
-            ? visible.filter((s) => s.launched)
-            : filter === "archived"
-              ? sessions.filter(isArchived)
-              : visible;
+    lifecycle === "active"
+      ? live.filter(isActive)
+      : lifecycle === "idle"
+        ? live.filter(isIdle)
+        : lifecycle === "archived"
+          ? inOrigin.filter(isArchived)
+          : live;
   const hasTerminated = sessions.some((s) => s.state === "terminated");
 
   return (
@@ -141,7 +162,7 @@ function Dashboard() {
         <span className="rd-brand">
           <img
             className="rd-brand-mark"
-            src="/duck.svg"
+            src="/favicon.svg"
             alt=""
             width={22}
             height={22}
@@ -186,16 +207,31 @@ function Dashboard() {
         <section className="rd-agents">
           <div className="rd-panel-head">
             <span>Agents</span>
-            <div className="rd-segment">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  className={filter === f.key ? "active" : ""}
-                  onClick={() => setFilter(f.key)}
+            <div className="rd-filters">
+              <div className="rd-segment">
+                {LIFECYCLES.map((f) => (
+                  <button
+                    key={f.key}
+                    className={lifecycle === f.key ? "active" : ""}
+                    onClick={() => setLifecycle(f.key)}
+                  >
+                    {f.label} ({f.count})
+                  </button>
+                ))}
+              </div>
+              <label className="rd-origin">
+                <span>Origin</span>
+                <select
+                  value={origin}
+                  onChange={(e) => setOrigin(e.target.value as Origin)}
                 >
-                  {f.label} ({f.count})
-                </button>
-              ))}
+                  {ORIGINS.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label} ({o.count})
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
           {shown.length === 0 ? (
@@ -214,7 +250,7 @@ function Dashboard() {
               onDelete={deleteSession}
             />
           )}
-          {hasTerminated && filter === "all" && (
+          {hasTerminated && lifecycle === "all" && (
             <button
               className="rd-btn rd-btn-sm rd-btn-ghost"
               style={{ margin: 12 }}

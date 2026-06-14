@@ -231,7 +231,16 @@ def test_archive_then_unarchive_round_trip(tmp_path: Path) -> None:
     from rubberduck.persistence.history import HistoryStore
 
     store = HistoryStore(tmp_path / "db.sqlite")
-    store.record({"event_type": "SessionStart", "session_key": "keep", "_ts": 1, "_id": "a"})
+    # Archive is launched-only, so seed a launched session.
+    store.record(
+        {
+            "event_type": "SessionStart",
+            "session_key": "keep",
+            "launched": True,
+            "_ts": 1,
+            "_id": "a",
+        }
+    )
 
     async def scenario() -> tuple[str, str]:
         server = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
@@ -247,6 +256,35 @@ def test_archive_then_unarchive_round_trip(tmp_path: Path) -> None:
     assert archived == "archived"
     assert unarchived == "stopped"  # back in view, resumable
     assert store.session("keep") is not None  # history kept
+
+
+def test_watched_session_cannot_be_archived_via_handler(tmp_path: Path) -> None:
+    """The Archive HTTP action is launched-only: a watched session is rejected
+    with 400 and stays in its current state (not hidden)."""
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.record({"event_type": "SessionStart", "session_key": "w", "_ts": 1, "_id": "a"})
+
+    async def scenario() -> int:
+        server = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/sessions/w/archive",
+                data=b"",
+                headers={"X-Rubberduck-Token": _token()},
+                method="POST",
+            )
+            try:
+                return await asyncio.to_thread(
+                    lambda: urllib.request.urlopen(req, timeout=2).status
+                )
+            except urllib.error.HTTPError as e:
+                return e.code
+
+    assert asyncio.run(scenario()) == 400
+    assert store.session("w")["state"] != "archived"
 
 
 def test_watched_session_archived_when_its_agent_pid_dies(
