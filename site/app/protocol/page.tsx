@@ -4,7 +4,7 @@ import { Duck } from "../Duck";
 export const metadata = {
   title: "Harness protocol — onboard an agent to RubberDuckHQ",
   description:
-    "The integration interface for adding any CLI coding agent to RubberDuckHQ: one Harness adapter (drive + observe), the hook event contract, the registry entry, and graceful levels of support.",
+    "The integration interface for adding any CLI coding agent to RubberDuckHQ: one Harness adapter (launched + watched), the hook event contract, the registry entry, and graceful levels of support.",
 };
 
 export default function Protocol() {
@@ -41,23 +41,28 @@ export default function Protocol() {
             specific agent — it loads whichever the session declares.
           </p>
 
-          <h2>Two halves: drive and observe</h2>
+          <h2>Two ways a session runs</h2>
           <p>
-            Every harness owns two responsibilities. You can implement just the
-            first (driven-only) and still get a working integration; the second
-            unlocks watching sessions you start yourself.
+            Every session is one of two kinds — the same{" "}
+            <strong>watched</strong> / <strong>launched</strong> labels you see
+            on the dashboard. A harness can support one or both; supporting more
+            unlocks more.
           </p>
           <ul className="doc-bullets">
             <li>
-              <strong>Drive</strong> — launch / resume the agent, classify its
-              state from output, and read its transcript. Always required.
+              <strong>1. Launched — Rubberduck starts the agent.</strong> You
+              click New session; Rubberduck runs the agent&apos;s command for
+              you, owns the process, and reads its state from the terminal
+              output. Needs only the <em>launch</em> half of the contract, so it
+              works for <em>any</em> CLI agent.
             </li>
             <li>
-              <strong>Observe</strong> — declare where the agent&apos;s hook
-              config lives and how to merge/strip RubberDuckHQ&apos;s entries,
-              so a session you started in your own terminal streams into the
-              dashboard. Optional (a <code>hook_spec</code> of <code>None</code>{" "}
-              means driven-only).
+              <strong>2. Watched — you start the agent yourself.</strong> You
+              run the agent in your own terminal; its hooks stream events back
+              to Rubberduck, which observes it (it doesn&apos;t own the
+              process). Needs the agent to have a hook system you declare (a{" "}
+              <code>HookSpec</code>); this is what gives precise state, the
+              Pulse feed, Needs-human, and history.
             </li>
           </ul>
 
@@ -69,11 +74,11 @@ export default function Protocol() {
           <pre className="doc-code">
             {`class Harness:
     name: str                       # registry key, e.g. "codex"
-    hook_spec: HookSpec | None      # observe half; None = driven-only
+    hook_spec: HookSpec | None      # for WATCHED support; None = launch-only
 
     def __init__(self, command: str): ...
 
-    # ── drive ──
+    # ── needed to LAUNCH the agent ──
     def launch_command(self, *, cwd, session_key, initial_prompt) -> list[str]
         # the argv to start the agent
 
@@ -81,24 +86,26 @@ export default function Protocol() {
         # the argv to resume an existing session
 
     def detect_state(self, recent_output: str) -> SessionState
-        # idle | busy | waiting | terminated  (from terminal output,
-        # for agents without hooks driving state)
+        # idle | busy | waiting | terminated, read from terminal output
+        # (used when there are no hook events driving state)
 
     def tool_in(self, recent_output: str) -> str | None
         # which tool is running, if detectable from output
 
+    # ── richer history (optional) ──
     def locate_transcript(self, *, cwd, session_id) -> Path | None
     def read_transcript(self, *, cwd, session_id) -> list[{role, text}]
         # the conversation as uniform {role, text} records, newest-last
         # (each agent reads its own native format: JSONL, SQLite, …)`}
           </pre>
 
-          <h2>The observe half: HookSpec</h2>
+          <h2>To support WATCHED: HookSpec</h2>
           <p>
-            If the agent has a hook system, declare a <code>HookSpec</code>: the
-            config file location (global + repo-local) and two pure functions
-            that <strong>build</strong> (merge our hook entries in) and{" "}
-            <strong>strip</strong> (remove them) on the parsed config — so
+            To let people watch a session they started themselves, the agent
+            must have a hook system you declare with a <code>HookSpec</code>:
+            the config file location (global + repo-local) and two pure
+            functions that <strong>build</strong> (merge our hook entries in)
+            and <strong>strip</strong> (remove them) on the parsed config — so
             install and uninstall stay symmetric and idempotent.
           </p>
           <pre className="doc-code">
@@ -170,17 +177,18 @@ export default function Protocol() {
               <span>What it unlocks</span>
             </div>
             <div className="proto-row">
-              <span>Drive only (no hooks)</span>
+              <span>Launch only (the contract)</span>
               <span>
-                Launch / resume from the dashboard; coarse state from output.
-                The fallback for any CLI (the <code>generic</code> runtime).
+                Start &amp; resume the agent from the dashboard; coarse state
+                from its output. Works for any CLI (the <code>generic</code>{" "}
+                runtime).
               </span>
             </div>
             <div className="proto-row">
-              <span>+ HookSpec</span>
+              <span>+ HookSpec → Watched</span>
               <span>
-                Watch sessions you start yourself; precise state, the Pulse
-                feed, Needs-human, durable history.
+                Also watch a session you started yourself; precise state, the
+                Pulse feed, Needs-human, durable history.
               </span>
             </div>
             <div className="proto-row">
