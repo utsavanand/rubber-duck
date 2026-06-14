@@ -34,6 +34,7 @@ if command -v jq >/dev/null 2>&1; then
       source_app: ((.cwd // "") | split("/") | last),
       tool_name: (.tool_name // .toolName),
       tool_input: (.tool_input // .toolInput),
+      prompt: .prompt,
       runtime: $rt
     } | with_entries(select(.value != null))' 2>/dev/null)
 fi
@@ -43,12 +44,15 @@ if [ -z "$PAYLOAD" ] || [ "$PAYLOAD" = "null" ]; then
   SID=$(printf '%s' "$INPUT" | grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   CWD=$(printf '%s' "$INPUT" | grep -o '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   TOOL=$(printf '%s' "$INPUT" | grep -o '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+  PROMPT=$(printf '%s' "$INPUT" | grep -o '"prompt"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*:[[:space:]]*"\([^"]*\)"$/\1/')
   APP=$(basename "$CWD" 2>/dev/null)
   SKEY_FIELD=""
   [ -n "$SESSION_KEY" ] && SKEY_FIELD=$(printf '"session_key":"%s",' "$SESSION_KEY")
+  PROMPT_FIELD=""
+  [ -n "$PROMPT" ] && PROMPT_FIELD=$(printf '"prompt":"%s",' "$PROMPT")
   [ -z "$SID" ] && SID=$(printf '%s' "$INPUT" | grep -o '"sessionId"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
-  PAYLOAD=$(printf '{"event_type":"%s",%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"%s"}' \
-    "$EVENT_TYPE" "$SKEY_FIELD" "$SID" "$CWD" "$APP" "$TOOL" "$RUNTIME")
+  PAYLOAD=$(printf '{"event_type":"%s",%s%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"%s"}' \
+    "$EVENT_TYPE" "$SKEY_FIELD" "$PROMPT_FIELD" "$SID" "$CWD" "$APP" "$TOOL" "$RUNTIME")
 fi
 
 # The server writes a per-install secret to this file (0600). We read it and

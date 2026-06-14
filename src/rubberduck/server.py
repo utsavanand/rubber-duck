@@ -161,6 +161,8 @@ _ROUTES: list[Route] = [
     Route("GET", "/terminals", lambda s, r, w, h, b, seg: s._terminals(w)),
     Route("GET", "/snapshots", lambda s, r, w, h, b, seg: s._list_snapshots(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._diff(w, seg), **_mid("/sessions/", "/diff")),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._session_events(w, seg),
+          **_mid("/sessions/", "/events")),
     Route("GET", "", lambda s, r, w, h, b, seg: s._list_checkpoints(w, seg),
           **_mid("/sessions/", "/checkpoints")),
     # ── control ──
@@ -337,6 +339,12 @@ class Server:
     async def _recent(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"events": self.bus.recent()})
 
+    async def _session_events(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        """A session's own events from the durable store, oldest first — for the
+        detail-drawer timeline. (The /events ring buffer only holds the last 100
+        across all sessions, so it can't back a per-session view.)"""
+        await _write_json(writer, 200, {"events": self.history.events_for(session_key)})
+
     async def _heartbeat(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         """A launched tab pings here while alive. Records last_seen so the sweep
         can tell a killed tab from a quiet one."""
@@ -446,6 +454,7 @@ class Server:
                 "worktree_path": worktree_path,
                 "branch": branch,
                 "intention": req.get("prompt", ""),
+                "launched": True,
             }
         )
         if name or req.get("notes"):
@@ -527,6 +536,7 @@ class Server:
                 "branch": worktree.branch,
                 "parent_session_key": parent_key,
                 "intention": f"fork of {parent.get('source_app') or parent_key} ({base})",
+                "launched": True,
             }
         )
         if opened:

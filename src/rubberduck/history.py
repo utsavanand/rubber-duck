@@ -118,6 +118,10 @@ _SESSIONS_COLUMNS = {
     "last_tool": "TEXT",
     "ended_at": "INTEGER",
     "heartbeat": "INTEGER NOT NULL DEFAULT 0",
+    # 1 when Rubberduck launched the session itself (vs a watched/hook session).
+    # Set once at creation from the SessionStart event; never cleared, so the
+    # watched/launched badge is stable regardless of later events or sweeps.
+    "launched": "INTEGER NOT NULL DEFAULT 0",
     "last_seen": "INTEGER",
     "tty": "TEXT",
 }
@@ -364,8 +368,8 @@ class HistoryStore:
                 "(session_key, runtime, repo_path, worktree_path, branch, "
                 " parent_session_key, compare_group, state, source_app, cwd, "
                 " last_event_type, last_tool, event_count, started_at, updated_at, ended_at, "
-                " last_seen) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                " last_seen, launched) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
@@ -383,6 +387,7 @@ class HistoryStore:
                     ts,
                     ended_at,
                     ts,
+                    1 if event.get("launched") else 0,
                 ),
             )
         else:
@@ -403,7 +408,10 @@ class HistoryStore:
                 "event_count = event_count + 1, "
                 "updated_at = ?, "
                 "ended_at = ?, "
-                "last_seen = ? "
+                "last_seen = ?, "
+                # Sticky: only ever flips 0 -> 1, so a later hook event can't
+                # downgrade a launched session to watched.
+                "launched = MAX(launched, ?) "
                 "WHERE session_key = ?",
                 (
                     event.get("runtime"),
@@ -419,6 +427,7 @@ class HistoryStore:
                     ts,
                     ended_at,
                     ts,
+                    1 if event.get("launched") else 0,
                     key,
                 ),
             )

@@ -38,10 +38,14 @@ class Checkpoint:
 
 
 def _extract(events: list[Event]) -> dict[str, Any]:
-    """Pull prompts, changed files, and tool counts from a session's events."""
+    """Pull prompts, commands run, changed files, and tool counts from a
+    session's events."""
     prompts: list[str] = []
+    commands: list[str] = []
     files: Counter[str] = Counter()
     tools: Counter[str] = Counter()
+    # PreToolUse and PostToolUse both fire for one Bash call; count the command
+    # once (on PreToolUse) so a single run isn't recorded twice.
     for e in events:
         etype = e.get("event_type")
         if etype == "UserPromptSubmit":
@@ -52,12 +56,19 @@ def _extract(events: list[Event]) -> dict[str, Any]:
             tool = e.get("tool_name")
             if tool:
                 tools[str(tool)] += 1
-            path = (e.get("tool_input") or {}).get("file_path")
+            tool_input = e.get("tool_input") or {}
+            path = tool_input.get("file_path")
             if path:
                 files[str(path)] += 1
+            if etype == "PreToolUse" and tool == "Bash":
+                cmd = str(tool_input.get("command") or "").strip()
+                if cmd:
+                    commands.append(cmd)
     return {
         # Every human prompt, in order, untruncated — the checkpoint is a record.
         "prompts": prompts,
+        # Every terminal command the agent ran, in order.
+        "commands": commands,
         "files": [{"path": p, "edits": n} for p, n in files.most_common()],
         "tools": [{"tool": t, "count": n} for t, n in tools.most_common()],
         "event_count": len(events),
@@ -106,6 +117,7 @@ def build_checkpoint(
         "since_ms": since_ms,
         "new_since_last": {
             "prompts": new_activity["prompts"],
+            "commands": new_activity["commands"],
             "files": new_activity["files"],
             "tools": new_activity["tools"],
             "event_count": new_activity["event_count"],
@@ -170,6 +182,9 @@ def _write_markdown(
             "### New prompts",
             *bullets([f"- {p}" for p in delta.get("prompts", [])]),
             "",
+            "### New commands",
+            *bullets([f"- `{c}`" for c in delta.get("commands", [])]),
+            "",
         ]
 
     lines = [
@@ -183,6 +198,9 @@ def _write_markdown(
         *since_lines,
         "## All prompts this session",
         *bullets([f"- {p}" for p in record["prompts"]]),
+        "",
+        "## Commands run",
+        *bullets([f"- `{c}`" for c in record["commands"]]),
         "",
         "## Files changed",
         *bullets([f"- {f['path']} ({f['edits']}x)" for f in record["files"]]),

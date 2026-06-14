@@ -148,3 +148,24 @@ def test_sweep_dead_terminates_only_stale_heartbeat_sessions(tmp_path: Path) -> 
     assert store.session("killed")["state"] == "terminated"
     assert store.session("alive")["state"] != "terminated"
     assert store.session("watched")["state"] != "terminated"
+
+
+def test_launched_flag_is_sticky(tmp_path: Path) -> None:
+    """A session launched by Rubberduck stays launched even when later watched
+    hook events (which carry no `launched`) arrive for the same key."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "launched": True})
+    assert store.session("s1")["launched"] == 1
+
+    # A plain hook event (no launched field) must not downgrade it.
+    bus.publish({"event_type": "PreToolUse", "session_key": "s1", "tool_name": "Bash"})
+    assert store.session("s1")["launched"] == 1
+
+
+def test_watched_session_is_not_launched(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "w1"})  # no launched
+    assert store.session("w1")["launched"] == 0

@@ -80,6 +80,8 @@ class SessionSupervisor:
                 "source_app": Path(self.cwd).name or self.session_key,
                 "cwd": self.cwd,
                 "runtime": self.runtime.name,
+                # The orchestrator only ever runs sessions Rubberduck launched.
+                "launched": True,
                 **self._extra,
                 **fields,
             }

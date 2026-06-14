@@ -47,6 +47,43 @@ def test_checkpoint_captures_prompts_files_tools(tmp_path: Path) -> None:
     assert r["event_count"] == 5
 
 
+def claude_hook_events() -> list[dict]:
+    """Mirrors what rubberduck-hook.sh forwards for a watched claude-code
+    session: UserPromptSubmit carries a top-level `prompt`; Bash PreToolUse and
+    PostToolUse both fire, with the command under tool_input.command."""
+    return [
+        {"event_type": "UserPromptSubmit", "prompt": "run the tests", "_ts": 1},
+        {"event_type": "PreToolUse", "tool_name": "Bash",
+         "tool_input": {"command": "pytest -q"}, "_ts": 2},
+        {"event_type": "PostToolUse", "tool_name": "Bash",
+         "tool_input": {"command": "pytest -q"}, "_ts": 3},
+        {"event_type": "PreToolUse", "tool_name": "Bash",
+         "tool_input": {"command": "git status"}, "_ts": 4},
+        {"event_type": "PostToolUse", "tool_name": "Bash",
+         "tool_input": {"command": "git status"}, "_ts": 5},
+    ]
+
+
+def test_checkpoint_captures_commands_and_prompts_from_hook_events(tmp_path: Path) -> None:
+    cp = build_checkpoint(
+        session_key="s1",
+        label="manual",
+        cwd=tmp_path,
+        events=claude_hook_events(),
+        intention="",
+        now_ms=1000,
+    )
+    r = cp.record
+    assert r["prompts"] == ["run the tests"]
+    # Each command recorded once (on PreToolUse), in execution order — the
+    # paired PostToolUse must not double-count it.
+    assert r["commands"] == ["pytest -q", "git status"]
+    md = Path(cp.markdown_path).read_text()
+    assert "## Commands run" in md
+    assert "`pytest -q`" in md
+    assert "run the tests" in md
+
+
 def test_checkpoint_records_git_state(git_repo: Path, tmp_path: Path) -> None:
     cp = build_checkpoint(
         session_key="s1",
