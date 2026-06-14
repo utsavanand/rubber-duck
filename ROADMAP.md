@@ -31,10 +31,13 @@ Organized by type of work. `★` marks the current highest-leverage item.
   authority. Per-harness: Claude Code + Copilot can route approval externally;
   Codex is interactive-only (observe + jump-to-terminal). Behind the unified
   Harness interface (`ApprovalSpec`). Design: `docs/approval-routing-design.md`.
-  - [ ] Server: decision store + `GET /approvals/:id/decision` (hook long-polls)
-    + repoint `/approvals/:id/decide` at it.
+  - [x] Server: decision store + `GET /approvals/:id/decision` (hook long-polls)
+    + `/approvals/:id/decide` repointed at it.
   - [ ] `ApprovalSpec` on `Harness`; Claude + Copilot declare it, Codex = None.
-  - [ ] Hook script: block, long-poll, emit per-runtime decision JSON, fail-open.
+  - [x] Hook script: blocks, long-polls, emits per-runtime decision JSON, fail-open;
+    PermissionRequest installed async:false. Claude + Copilot route externally.
+  - [ ] Optional: lift the per-runtime decision shape into an `ApprovalSpec` on
+    Harness (currently branched in the hook script).
 - [ ] **Session lifecycle: stop / resume / archive / delete.** Stop is a dead
   end today (kills the agent, row drops from Active, no way back). Make Stop
   *pause* a resumable session, add Archive as the declutter middle-ground, and
