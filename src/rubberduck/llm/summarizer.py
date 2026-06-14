@@ -65,6 +65,10 @@ def _auto_command() -> str | None:
 
 
 def _cli_summary(cmd: str, prompt: str) -> Summary:
+    # RUBBERDUCK_INTERNAL marks this as a Rubberduck-spawned agent so its hooks
+    # no-op — otherwise summarizing via `claude -p` would report a phantom
+    # session back into Rubberduck on every checkpoint.
+    env = {**os.environ, "RUBBERDUCK_INTERNAL": "1"}
     try:
         result = subprocess.run(
             cmd,
@@ -73,6 +77,7 @@ def _cli_summary(cmd: str, prompt: str) -> Summary:
             capture_output=True,
             text=True,
             timeout=60,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired):
         return Summary(text="", backend="none")

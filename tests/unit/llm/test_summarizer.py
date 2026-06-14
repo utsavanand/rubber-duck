@@ -42,6 +42,16 @@ def test_cli_backend_failure_falls_back_to_none(clean_env: None) -> None:
     assert result.backend == "none"
 
 
+def test_cli_subprocess_marks_itself_internal(clean_env: None) -> None:
+    # The summarizer runs an agent (`claude -p`) which inherits Rubberduck's
+    # hooks. Without RUBBERDUCK_INTERNAL the subprocess would report a phantom
+    # session back into Rubberduck on every checkpoint. Prove the env reaches it.
+    os.environ["RUBBERDUCK_SUMMARIZER_CMD"] = 'printf "%s" "$RUBBERDUCK_INTERNAL"'
+    result = summarize("x")
+    assert result.backend == "cli"
+    assert result.text == "1"
+
+
 def test_mechanical_summary_states_intent_and_activity() -> None:
     s = mechanical_summary("add login", "5 events; tools used: Edit, Bash.")
     assert "add login" in s

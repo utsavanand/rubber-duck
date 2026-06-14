@@ -10,6 +10,14 @@
 #   rubberduck-hook.sh PostToolUse
 # The event type is passed as $1; Claude's hook JSON arrives on stdin.
 
+# Rubberduck spawns agents itself for internal work (e.g. `claude -p` to write a
+# checkpoint summary). Those subprocesses inherit these hooks and would report a
+# phantom session back into Rubberduck. RUBBERDUCK_INTERNAL=1 marks such a
+# subprocess so its hooks no-op.
+if [ -n "${RUBBERDUCK_INTERNAL:-}" ]; then
+  exit 0
+fi
+
 EVENT_TYPE="${1:-Unknown}"
 # Which agent this hook is for (claude-code | codex | copilot). Defaults to
 # claude-code so older installs that pass only the event type keep working.

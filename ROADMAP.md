@@ -31,6 +31,17 @@ Organized by type of work. `★` marks the current highest-leverage item.
   - [ ] Cross-agent handoff: worktree + new agent seeded with a handoff summary
     from the checkpoint, distilling the agent's *actual responses* (now captured).
 - [ ] **Discoverability**: `serve` startup hint when no agent hooks are installed.
+- [ ] **Per-session token count + compaction warning.** Show tokens used per
+  session and warn as it approaches the model's context limit (so you can fork
+  to a fresh agent before it auto-compacts). Each harness exposes usage
+  differently — Claude's hook payload / transcript carries usage, Codex and
+  Copilot have their own — so this lands behind the unified Harness contract:
+  add a `token_usage()` (or a usage field on the transcript read) per runtime,
+  surface a `(used / limit)` bar + amber/red warning in the agent row.
+- [ ] **Fleet / multi-session "working together" view.** A visual where all your
+  active sessions are shown side by side as a live fleet — a fun, at-a-glance way
+  to watch several agents make progress at once (vs the current flat list).
+  Likely a grid/canvas of session cards animating on each event.
 
 ## 🏗️ Architecture
 
@@ -74,6 +85,9 @@ Organized by type of work. `★` marks the current highest-leverage item.
 - README overhaul; error-handling fixes (fail-closed delete guard).
 - Three dashboard bugs fixed (dashboard_dir path, origin allowlist port, delete
   auth token) — all caught by the new E2E tests.
+- Checkpoint no longer spawns a phantom session: the summarizer's `claude -p`
+  subprocess sets `RUBBERDUCK_INTERNAL=1`, and the hook script no-ops when it
+  sees that, so internal agent calls don't report themselves back.
 
 ## Shipped (released)
 - 0.2.0 and earlier: core orchestrator, watched/launched sessions, worktrees,
