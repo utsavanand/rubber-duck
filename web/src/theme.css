@@ -777,9 +777,9 @@ code,
 .rd-origin select {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: var(--card);
+  background-color: var(--card);
   color: var(--text-soft);
-  padding: 5px 8px;
+  padding: 5px 26px 5px 8px;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: normal;
@@ -959,4 +959,16 @@ code,
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Drop the native <select> chrome — WebKit (WKWebView in the Mac app) draws
+   macOS's glossy aqua dropdown with its own bezel + arrows over our styling.
+   Reset appearance and paint a single custom chevron; the per-control rules
+   (inputStyle, .rd-origin select) supply colors/border/padding. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%238a8f98' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
 }
