@@ -84,7 +84,9 @@ def git_repo(tmp_path: Path) -> Path:
     def git(*args: str) -> None:
         subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
 
-    git("init", "-q")
+    # Pin the default branch — runners vary (master vs main) and tests that fork
+    # off a named branch must not depend on the host's init.defaultBranch.
+    git("init", "-q", "-b", "main")
     git("config", "user.email", "test@rubberduck.local")
     git("config", "user.name", "Rubberduck Test")
     (repo / "README.md").write_text("base\n")
