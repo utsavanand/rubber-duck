@@ -374,6 +374,88 @@ def test_invalid_json_rejected() -> None:
     assert asyncio.run(scenario()) == 400
 
 
+def _launch_capturing_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]
+) -> list[str]:
+    """Run a terminal launch with open_in_terminal stubbed, return the argv it
+    would have run in the terminal."""
+    import rubberduck.server as server_mod
+    from rubberduck.persistence.history import HistoryStore
+
+    captured: dict[str, list[str]] = {}
+    monkeypatch.setattr(
+        server_mod,
+        "open_in_terminal",
+        lambda cwd, argv, **kw: captured.update(argv=argv) or True,
+    )
+
+    async def scenario() -> None:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/sessions/launch",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", "X-Rubberduck-Token": _token()},
+                method="POST",
+            )
+            await asyncio.to_thread(lambda: urllib.request.urlopen(req, timeout=2).read())
+
+    asyncio.run(scenario())
+    return captured["argv"]
+
+
+def test_terminal_launch_passes_prompt_to_the_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A New-session terminal launch must hand the prompt to the agent, not just
+    record it as `intention`. claude appends it as a positional arg."""
+    argv = _launch_capturing_argv(
+        tmp_path,
+        monkeypatch,
+        {
+            "command": "claude",
+            "runtime": "claude-code",
+            "cwd": str(tmp_path),
+            "prompt": "add a healthcheck endpoint",
+            "session_key": "p",
+        },
+    )
+    assert argv == ["claude", "add a healthcheck endpoint"]
+
+
+def test_terminal_launch_uses_copilot_prompt_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Copilot takes the prompt via `-p`, not positionally — proving the launch
+    routes through the runtime adapter, not a hardcoded append."""
+    argv = _launch_capturing_argv(
+        tmp_path,
+        monkeypatch,
+        {
+            "command": "copilot",
+            "runtime": "copilot",
+            "cwd": str(tmp_path),
+            "prompt": "fix the bug",
+            "session_key": "p",
+        },
+    )
+    assert argv == ["copilot", "-p", "fix the bug"]
+
+
+def test_terminal_launch_without_prompt_runs_bare_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No prompt → the agent opens with just its command (no empty trailing arg)."""
+    argv = _launch_capturing_argv(
+        tmp_path,
+        monkeypatch,
+        {"command": "claude", "runtime": "claude-code", "cwd": str(tmp_path), "session_key": "p"},
+    )
+    assert argv == ["claude"]
+
+
 def _token() -> str:
     from rubberduck.helpers import security
 

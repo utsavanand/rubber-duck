@@ -518,9 +518,17 @@ class Server:
         if not security.valid_session_key(key):
             await _write_json(writer, 400, {"error": "invalid session_key"})
             return
+        # Inject the prompt into the agent command the same way the headless path
+        # does — each runtime appends it in its own form (claude/codex positional,
+        # copilot `-p`). Without this the terminal launch dropped the prompt and
+        # only kept it as `intention`, so the agent opened with an empty session.
+        runtime = _build_runtime(req.get("runtime"), command)
+        argv = runtime.launch_command(
+            cwd=Path(run_cwd), session_key=key, initial_prompt=req.get("prompt", "")
+        )
         opened = open_in_terminal(
             str(run_cwd),
-            shlex.split(command),
+            argv,
             app=req.get("terminal"),
             env={"RUBBERDUCK_SESSION_KEY": key},
             heartbeat=(_heartbeat_url(), key),
