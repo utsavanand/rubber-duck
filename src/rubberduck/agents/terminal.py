@@ -86,6 +86,57 @@ def close_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
     return _spawn(["osascript", "-e", _close_terminal_by_tty(tty)])
 
 
+def focus_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
+    """Bring the terminal tab whose tty matches to the front and select it, so a
+    dashboard "jump to terminal" action lands you in the right tab. Matches by
+    tty (stable, agent-can't-clobber), same as close. macOS only."""
+    if platform.system() != "Darwin" or not tty:
+        return False
+    choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
+    if choice == "iterm" and _iterm_installed():
+        return _spawn(["osascript", "-e", _focus_iterm_by_tty(tty)])
+    return _spawn(["osascript", "-e", _focus_terminal_by_tty(tty)])
+
+
+def _focus_terminal_by_tty(tty: str) -> str:
+    esc = _esc(tty)
+    return (
+        'tell application "Terminal"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        f'      if (tty of t as string) is "{esc}" then\n'
+        "        set selected of t to true\n"
+        "        set index of w to 1\n"
+        "        activate\n"
+        "        return\n"
+        "      end if\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell"
+    )
+
+
+def _focus_iterm_by_tty(tty: str) -> str:
+    esc = _esc(tty)
+    return (
+        'tell application "iTerm"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        "      repeat with s in sessions of t\n"
+        f'        if (tty of s as string) is "{esc}" then\n'
+        "          select t\n"
+        "          select s\n"
+        "          tell w to select\n"
+        "          activate\n"
+        "          return\n"
+        "        end if\n"
+        "      end repeat\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell"
+    )
+
+
 def _close_terminal_by_tty(tty: str) -> str:
     esc = _esc(tty)
     return (

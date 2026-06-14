@@ -44,7 +44,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from rubberduck.agents.terminal import available_terminals, close_terminal_by_tty, open_in_terminal
+from rubberduck.agents.terminal import (
+    available_terminals,
+    close_terminal_by_tty,
+    focus_terminal_by_tty,
+    open_in_terminal,
+)
 from rubberduck.core.approvals import ApprovalRegistry
 from rubberduck.core.eventbus import EventBus
 from rubberduck.core.orchestrator import Orchestrator
@@ -181,6 +186,8 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/promote")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._stop(w, seg),
           **_mid("/sessions/", "/stop")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._focus_terminal(w, seg),
+          **_mid("/sessions/", "/focus")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._checkpoint(w, seg, b),
           **_mid("/sessions/", "/checkpoint")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._spotlight(w, seg),
@@ -689,9 +696,32 @@ class Server:
         )
 
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        # An in-process supervised session has a PTY we can terminate directly.
         stopped = await self.orchestrator.stop(session_key)
+        # A session we launched into a real terminal tab has no supervisor — stop
+        # it by closing the tab it reported (the same tty close that delete uses,
+        # launched sessions only). Watched sessions, which we don't own, can't be
+        # stopped: report that rather than a confusing 404.
+        if not stopped:
+            row = self.history.session(session_key)
+            if row is not None and row.get("heartbeat") and row.get("tty"):
+                stopped = close_terminal_by_tty(str(row["tty"]))
         status = 200 if stopped else 404
         await _write_json(writer, status, {"stopped": stopped, "session_key": session_key})
+
+    async def _focus_terminal(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        """Bring this session's terminal tab to the front. Only works for a
+        session Rubberduck launched into a terminal (it recorded the tab's tty);
+        a watched session runs in a terminal we never tracked."""
+        row = self.history.session(session_key)
+        tty = row.get("tty") if row else None
+        if not tty:
+            await _write_json(
+                writer, 404, {"focused": False, "error": "no terminal tab recorded"}
+            )
+            return
+        focused = focus_terminal_by_tty(str(tty))
+        await _write_json(writer, 200 if focused else 404, {"focused": focused})
 
     async def _delete_session(
         self, writer: asyncio.StreamWriter, session_key: str, body: bytes

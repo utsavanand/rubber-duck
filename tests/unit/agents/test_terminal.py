@@ -4,8 +4,32 @@ from rubberduck.agents.terminal import (
     _close_terminal_by_tty,
     _with_heartbeat,
     close_terminal_by_tty,
+    focus_terminal_by_tty,
     open_in_terminal,
 )
+
+
+def test_focus_by_tty_runs_osascript_selecting_the_tab(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(terminal, "_iterm_installed", lambda: False)
+    spawned: dict = {}
+
+    def fake_spawn(argv: list[str]) -> bool:
+        spawned["argv"] = argv
+        return True
+
+    monkeypatch.setattr(terminal, "_spawn", fake_spawn)
+
+    assert focus_terminal_by_tty("/dev/ttys009", app="terminal") is True
+    script = spawned["argv"][-1]
+    assert "/dev/ttys009" in script
+    assert "selected of t to true" in script  # selects the tab, not close
+    assert "activate" in script
+
+
+def test_focus_by_tty_is_noop_without_a_tty(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+    assert focus_terminal_by_tty("") is False
 
 
 def test_no_terminal_env_skips_opening_a_window(monkeypatch) -> None:  # type: ignore[no-untyped-def]

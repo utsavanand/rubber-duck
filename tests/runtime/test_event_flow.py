@@ -93,6 +93,39 @@ def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
     assert ("ghost", "SessionStart") in keys_types  # revived
 
 
+def test_stop_closes_the_terminal_tab_for_a_launched_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session Rubberduck launched into a terminal tab has no PTY supervisor,
+    so stop must fall back to closing the tab by its recorded tty (not 404)."""
+    import rubberduck.server as server_mod
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.record({"event_type": "SessionStart", "session_key": "tabbed", "_ts": 1, "_id": "a"})
+    store.mark_heartbeat("tabbed")
+    store.touch("tabbed", 2, tty="/dev/ttys042")
+
+    closed: dict = {}
+
+    def fake_close(tty: str) -> bool:
+        closed["tty"] = tty
+        return True
+
+    monkeypatch.setattr(server_mod, "close_terminal_by_tty", fake_close)
+
+    async def scenario() -> dict[str, object]:
+        server = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            body = await asyncio.to_thread(_post, port, "/sessions/tabbed/stop")
+        return dict(json.loads(body))
+
+    result = asyncio.run(scenario())
+    assert result["stopped"] is True
+    assert closed["tty"] == "/dev/ttys042"  # closed the right tab
+
+
 def test_stream_init_omits_deleted_session(tmp_path: Path) -> None:
     """A session's SessionStart can sit in the ring buffer when the session is
     later deleted. The /stream init replay must not include it — otherwise a
@@ -189,6 +222,16 @@ def _post_raw_status(port: int, body: bytes) -> int:
 
 def _get(port: int, path: str) -> str:
     return urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=2).read().decode()
+
+
+def _post(port: int, path: str) -> str:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=b"",
+        headers={"X-Rubberduck-Token": _token()},
+        method="POST",
+    )
+    return urllib.request.urlopen(req, timeout=2).read().decode()
 
 
 if __name__ == "__main__":
