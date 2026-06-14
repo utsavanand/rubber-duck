@@ -26,6 +26,9 @@ swiftc -O \
   -o "$MACOS/Rubberduck" \
   Sources/Rubberduck/*.swift
 
+echo "==> bundling app icon"
+cp Resources/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
+
 echo "==> writing Info.plist"
 cat > "$CONTENTS/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -38,6 +41,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>CFBundleVersion</key><string>0.1.0</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleExecutable</key><string>Rubberduck</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHumanReadableCopyright</key><string>RubberDuckHQ</string>
