@@ -48,6 +48,23 @@ Organized by type of work. `★` marks the current highest-leverage item.
   A Swift package is scaffolded under `mac/` (SwiftUI wrapping the local
   server + dashboard). Decide: ship the dashboard in a WKWebView shell first,
   or build native panels against the existing HTTP/SSE API.
+- [ ] **In-dashboard agent supervision (own the PTY).** Today a "launched"
+  session is opened in a real terminal tab (`open_in_terminal`) and the agent
+  runs there — Rubberduck observes via hooks but doesn't own the process. The
+  in-process PTY path (`orchestrator.launch` + `_supervisors`) exists but isn't
+  the default and isn't fully wired through the UI. Build it out so Rubberduck
+  can run the agent itself and the dashboard becomes the primary surface:
+  - [ ] **Live output tab** — stream the agent's stdout/stderr from the PTY
+    (the `output` tab only works for PTY-owned sessions; terminal-launched ones
+    have nothing to stream).
+  - [ ] **Drive the agent from the dashboard** — type input / answer prompts
+    in-panel without switching to the terminal.
+  - [ ] Make PTY-owned launch a first-class option in New session (vs. "open in
+    my terminal").
+  This is the Conductor / Superset-style experience — running and watching
+  agents entirely inside the app. Until it lands, the `output` tab and
+  in-dashboard control are correctly unavailable for terminal-launched
+  sessions; see the jump-to-terminal action below as the interim path.
 
 ## 🏗️ Architecture
 
