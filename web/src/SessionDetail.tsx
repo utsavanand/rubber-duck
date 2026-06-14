@@ -18,6 +18,7 @@ export function SessionDetail({
   const [events, setEvents] = useState<RawEvent[]>([]);
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [diff, setDiff] = useState<string>("");
+  const [capturing, setCapturing] = useState(false);
 
   // Esc closes the panel.
   useEffect(() => {
@@ -53,12 +54,18 @@ export function SessionDetail({
   }, [tab, session.key]);
 
   async function captureCheckpoint() {
+    if (capturing) return;
+    // Capturing runs a summarizer agent (claude -p / codex / copilot), which
+    // takes a few seconds — show a loader so the click doesn't feel dead.
+    setCapturing(true);
     try {
       await api.checkpoint(session.key, "manual");
       toast("Checkpoint recorded");
       loadCheckpoints();
     } catch (e) {
       toast((e as Error).message, "err");
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -183,6 +190,7 @@ export function SessionDetail({
             <Checkpoints
               checkpoints={checkpoints}
               onCapture={captureCheckpoint}
+              capturing={capturing}
             />
           )}
           {tab === "notes" && <Notes sessionKey={session.key} />}
@@ -257,9 +265,11 @@ function DiffView({ diff }: { diff: string }) {
 function Checkpoints({
   checkpoints,
   onCapture,
+  capturing,
 }: {
   checkpoints: CheckpointRecord[];
   onCapture: () => void;
+  capturing: boolean;
 }) {
   return (
     <div>
@@ -267,21 +277,75 @@ function Checkpoints({
         style={{
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
           marginBottom: 12,
         }}
       >
         <span style={{ fontSize: 13, color: "#565869" }}>
           A record of what was done — prompts, files, tools, git state.
         </span>
-        <button className="rd-btn rd-btn-sm rd-btn-ghost" onClick={onCapture}>
-          Capture now
+        <button
+          className="rd-btn rd-btn-sm rd-btn-ghost"
+          onClick={onCapture}
+          disabled={capturing}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            whiteSpace: "nowrap",
+            opacity: capturing ? 0.7 : 1,
+            cursor: capturing ? "default" : "pointer",
+          }}
+        >
+          {capturing && <Spinner />}
+          {capturing ? "Capturing…" : "Capture now"}
         </button>
       </div>
-      {checkpoints.length === 0 ? (
+      {capturing && <CapturingCard />}
+      {checkpoints.length === 0 && !capturing ? (
         <Empty text="No checkpoints recorded yet." />
       ) : (
         checkpoints.map((c) => <CheckpointCard key={c.id} c={c} />)
       )}
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        border: "2px solid currentColor",
+        borderTopColor: "transparent",
+        display: "inline-block",
+        animation: "rd-spin 0.7s linear infinite",
+      }}
+    />
+  );
+}
+
+function CapturingCard() {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        padding: "14px 16px",
+        marginBottom: 10,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        color: "#565869",
+        fontSize: 13,
+      }}
+    >
+      <Spinner />
+      Capturing checkpoint — summarizing this session…
     </div>
   );
 }

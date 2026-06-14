@@ -397,6 +397,11 @@ code,
     transform: translateY(-2px);
   }
 }
+@keyframes rd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .rd-pulse-incoming span {
     animation: none;
