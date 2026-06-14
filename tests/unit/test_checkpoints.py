@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from rubberduck.checkpoints import build_checkpoint
+from rubberduck.persistence.checkpoints import build_checkpoint
 
 
 @pytest.fixture(autouse=True)

@@ -2,7 +2,7 @@ import shutil
 
 import pytest
 
-from rubberduck import tmux
+from rubberduck.agents import tmux
 
 _HAS_TMUX = shutil.which("tmux") is not None
 

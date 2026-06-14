@@ -85,7 +85,7 @@ def test_invalid_json_rejected() -> None:
 
 
 def _token() -> str:
-    from rubberduck import security
+    from rubberduck.helpers import security
 
     return security.load_or_create_token()
 

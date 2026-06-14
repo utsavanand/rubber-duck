@@ -117,7 +117,7 @@ def _rubberduck_responds(host: str, port: int) -> bool:
 
 
 def _auth_headers(content_type: bool = True) -> dict[str, str]:
-    from rubberduck import security
+    from rubberduck.helpers import security
 
     headers = {security.TOKEN_HEADER: security.load_or_create_token()}
     if content_type:
@@ -156,7 +156,7 @@ def _snapshot() -> int:
 
 
 def _install_hooks(global_scope: bool, agent: str) -> int:
-    from rubberduck.hooks_install import install
+    from rubberduck.agents.hooks_install import install
 
     if agent == "codex" and not global_scope:
         print(
@@ -182,7 +182,7 @@ def _install_hooks(global_scope: bool, agent: str) -> int:
 
 
 def _uninstall_hooks(global_scope: bool, agent: str) -> int:
-    from rubberduck.hooks_install import uninstall
+    from rubberduck.agents.hooks_install import uninstall
 
     path = uninstall(global_scope=global_scope, project_dir=Path.cwd(), agent=agent)
     print(f"removed Rubberduck {agent} hooks from {path}")
@@ -193,7 +193,7 @@ def _dashboard() -> int:
     import subprocess
     import webbrowser
 
-    from rubberduck.httpio import dashboard_dir
+    from rubberduck.transport.httpio import dashboard_dir
 
     if dashboard_dir() is None:
         web = Path(__file__).resolve().parents[2] / "web"

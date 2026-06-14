@@ -15,8 +15,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from rubberduck import paths
-from rubberduck.metrics import classify
+from rubberduck.helpers import paths
+from rubberduck.helpers.metrics import classify
 from rubberduck.runtimes.base import SessionState
 
 Event = dict[str, Any]

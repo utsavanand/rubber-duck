@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
-from rubberduck.orchestrator import Orchestrator
+from rubberduck.core.eventbus import EventBus
+from rubberduck.core.orchestrator import Orchestrator
+from rubberduck.git.worktrees import WorktreeManager
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.runtimes.generic import GenericRuntime
-from rubberduck.worktrees import WorktreeManager
 
 FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"
 

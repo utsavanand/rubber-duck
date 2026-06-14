@@ -44,37 +44,38 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from rubberduck import browse, gitdetect, security
-from rubberduck.approvals import ApprovalRegistry
-from rubberduck.checkpoints import build_checkpoint
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
-from rubberduck.httpio import (
+from rubberduck.agents.terminal import available_terminals, close_terminal_by_tty, open_in_terminal
+from rubberduck.core.approvals import ApprovalRegistry
+from rubberduck.core.eventbus import EventBus
+from rubberduck.core.orchestrator import Orchestrator, StateRuntime
+from rubberduck.git import gitdetect
+from rubberduck.git.spotlight import spotlight_to_main
+from rubberduck.git.worktrees import GitError
+from rubberduck.helpers import browse, security
+from rubberduck.persistence.checkpoints import build_checkpoint
+from rubberduck.persistence.history import HistoryStore
+from rubberduck.persistence.snapshots import SnapshotManager, restore_command_for
+from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
+from rubberduck.runtimes.codex import CodexRuntime
+from rubberduck.runtimes.generic import GenericRuntime
+from rubberduck.transport.httpio import (
     KEEPALIVE_SECONDS,
     SELF_PROBE_HEADER,
     dashboard_dir,
 )
-from rubberduck.httpio import parse_request_line as _parse_request_line
-from rubberduck.httpio import read_body as _read_body
-from rubberduck.httpio import read_headers as _read_headers
-from rubberduck.httpio import write_file as _write_file
-from rubberduck.httpio import write_json as _write_json
-from rubberduck.httpio import write_response as _write_response
-from rubberduck.httpio import write_sse as _write_sse
-from rubberduck.orchestrator import Orchestrator, StateRuntime
-from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
-from rubberduck.runtimes.codex import CodexRuntime
-from rubberduck.runtimes.generic import GenericRuntime
-from rubberduck.snapshots import SnapshotManager, restore_command_for
-from rubberduck.spotlight import spotlight_to_main
-from rubberduck.terminal import available_terminals, close_terminal_by_tty, open_in_terminal
-from rubberduck.websocket import (
+from rubberduck.transport.httpio import parse_request_line as _parse_request_line
+from rubberduck.transport.httpio import read_body as _read_body
+from rubberduck.transport.httpio import read_headers as _read_headers
+from rubberduck.transport.httpio import write_file as _write_file
+from rubberduck.transport.httpio import write_json as _write_json
+from rubberduck.transport.httpio import write_response as _write_response
+from rubberduck.transport.httpio import write_sse as _write_sse
+from rubberduck.transport.websocket import (
     close_frame,
     encode_text_frame,
     handshake_response,
     read_frame_opcode,
 )
-from rubberduck.worktrees import GitError
 
 
 def infer_runtime(command: str) -> str:

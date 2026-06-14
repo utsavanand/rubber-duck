@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
-from rubberduck.snapshots import ACTIVE_WINDOW_MS, SnapshotManager, restore_command_for
+from rubberduck.core.eventbus import EventBus
+from rubberduck.persistence.history import HistoryStore
+from rubberduck.persistence.snapshots import ACTIVE_WINDOW_MS, SnapshotManager, restore_command_for
 
 
 def make_store(tmp_path: Path) -> tuple[HistoryStore, EventBus]:

@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from rubberduck import tmux
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
-from rubberduck.orchestrator import Orchestrator
+from rubberduck.agents import tmux
+from rubberduck.core.eventbus import EventBus
+from rubberduck.core.orchestrator import Orchestrator
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.runtimes.generic import GenericRuntime
 
 _HAS_TMUX = shutil.which("tmux") is not None

@@ -8,14 +8,14 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from rubberduck.history import HistoryStore
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.server import Server
 
 FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"
 
 
 def _token() -> str:
-    from rubberduck import security
+    from rubberduck.helpers import security
 
     return security.load_or_create_token()
 

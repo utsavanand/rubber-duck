@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore, derive_state, session_key_of
+from rubberduck.core.eventbus import EventBus
+from rubberduck.persistence.history import HistoryStore, derive_state, session_key_of
 
 
 def make_bus(store: HistoryStore) -> EventBus:

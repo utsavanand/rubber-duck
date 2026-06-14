@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rubberduck import paths, security
-from rubberduck.history import HistoryStore
+from rubberduck.helpers import paths, security
+from rubberduck.persistence.history import HistoryStore
 
 ACTIVE_WINDOW_MS = 60 * 60 * 1000
 

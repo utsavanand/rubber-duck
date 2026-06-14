@@ -5,8 +5,8 @@ import asyncio
 import sys
 from pathlib import Path
 
-from rubberduck.eventbus import EventBus
-from rubberduck.orchestrator import Orchestrator
+from rubberduck.core.eventbus import EventBus
+from rubberduck.core.orchestrator import Orchestrator
 from rubberduck.runtimes.generic import GenericRuntime
 
 FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"

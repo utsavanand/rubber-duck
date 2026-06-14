@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
-from rubberduck.metrics import classify
+from rubberduck.core.eventbus import EventBus
+from rubberduck.helpers.metrics import classify
+from rubberduck.persistence.history import HistoryStore
 
 
 def evt(command: str | None = None, tool: str | None = None, etype: str = "PreToolUse") -> dict:

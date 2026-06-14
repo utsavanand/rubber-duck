@@ -1,5 +1,5 @@
-from rubberduck import terminal
-from rubberduck.terminal import (
+from rubberduck.agents import terminal
+from rubberduck.agents.terminal import (
     _close_iterm_by_tty,
     _close_terminal_by_tty,
     _with_heartbeat,

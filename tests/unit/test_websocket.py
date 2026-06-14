@@ -1,4 +1,4 @@
-from rubberduck.websocket import accept_key, encode_text_frame
+from rubberduck.transport.websocket import accept_key, encode_text_frame
 
 
 def test_accept_key_matches_rfc6455_example() -> None:

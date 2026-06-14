@@ -1,4 +1,4 @@
-from rubberduck.approvals import ApprovalRegistry
+from rubberduck.core.approvals import ApprovalRegistry
 
 
 def perm_event(session: str, command: str = "rm -rf build") -> dict:

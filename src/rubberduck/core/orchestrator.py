@@ -22,12 +22,13 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Protocol
 
-from rubberduck import paths, tmux
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
+from rubberduck.agents import tmux
+from rubberduck.core.eventbus import EventBus
+from rubberduck.git.worktrees import WorktreeManager
+from rubberduck.helpers import paths
+from rubberduck.llm.summarizer import build_prompt, mechanical_summary, summarize
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.runtimes.base import SessionState
-from rubberduck.summarizer import build_prompt, mechanical_summary, summarize
-from rubberduck.worktrees import WorktreeManager
 
 # State -> the event_type whose derive_state yields that state. One vocabulary.
 _STATE_EVENT = {

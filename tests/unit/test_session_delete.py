@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from rubberduck.eventbus import EventBus
-from rubberduck.history import HistoryStore
+from rubberduck.core.eventbus import EventBus
+from rubberduck.git.worktrees import GitError
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.server import Server
-from rubberduck.worktrees import GitError
 
 
 def seed(store: HistoryStore) -> EventBus:

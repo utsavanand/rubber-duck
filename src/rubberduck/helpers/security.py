@@ -20,7 +20,7 @@ import re
 import secrets
 from pathlib import Path
 
-from rubberduck import paths
+from rubberduck.helpers import paths
 
 TOKEN_HEADER = "x-rubberduck-token"
 

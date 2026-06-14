@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from rubberduck import paths
+from rubberduck.helpers import paths
 
 
 @dataclass(frozen=True)

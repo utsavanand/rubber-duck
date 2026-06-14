@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from rubberduck.worktrees import GitError, WorktreeManager
+from rubberduck.git.worktrees import GitError, WorktreeManager
 
 
 def test_add_creates_real_worktree_on_new_branch(git_repo: Path, tmp_path: Path) -> None:

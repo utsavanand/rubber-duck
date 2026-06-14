@@ -5,9 +5,9 @@ import asyncio
 import json
 from pathlib import Path
 
-from rubberduck.history import HistoryStore
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.server import Server
-from rubberduck.websocket import accept_key
+from rubberduck.transport.websocket import accept_key
 
 
 def _decode_text_frame(data: bytes) -> tuple[dict, bytes]:

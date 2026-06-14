@@ -3,7 +3,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from rubberduck.summarizer import (
+from rubberduck.llm.summarizer import (
     build_prompt,
     mechanical_summary,
     summarize,

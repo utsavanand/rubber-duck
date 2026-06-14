@@ -5,7 +5,7 @@ carries the self-probe header."""
 import asyncio
 from pathlib import Path
 
-from rubberduck.history import HistoryStore
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.server import SELF_PROBE_HEADER, Server, dashboard_dir
 
 

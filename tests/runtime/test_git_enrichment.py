@@ -6,13 +6,13 @@ import json
 import urllib.request
 from pathlib import Path
 
-from rubberduck import gitdetect
-from rubberduck.history import HistoryStore
+from rubberduck.git import gitdetect
+from rubberduck.persistence.history import HistoryStore
 from rubberduck.server import Server
 
 
 def _token() -> str:
-    from rubberduck import security
+    from rubberduck.helpers import security
 
     return security.load_or_create_token()
 

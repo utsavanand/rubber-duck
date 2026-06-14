@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rubberduck.eventbus import Event
+from rubberduck.core.eventbus import Event
 
 SELF_PROBE_HEADER = "X-Rubberduck"
 KEEPALIVE_SECONDS = 15

@@ -10,7 +10,7 @@ test, then commit or `git checkout -- .` to discard.
 import subprocess
 from pathlib import Path
 
-from rubberduck.worktrees import GitError
+from rubberduck.git.worktrees import GitError
 
 
 def _git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:

@@ -1,6 +1,6 @@
 import asyncio
 
-from rubberduck.eventbus import EventBus
+from rubberduck.core.eventbus import EventBus
 
 
 def test_publish_stamps_id_and_ts() -> None:

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from rubberduck.hooks_install import (
+from rubberduck.agents.hooks_install import (
     _EVENTS,
     install,
     settings_path,

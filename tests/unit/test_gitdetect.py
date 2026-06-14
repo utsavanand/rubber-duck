@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from rubberduck import gitdetect
+from rubberduck.git import gitdetect
 
 
 def test_detects_repo_name_and_branch(git_repo: Path) -> None:

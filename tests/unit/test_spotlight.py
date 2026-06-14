@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from rubberduck.spotlight import spotlight_to_main
-from rubberduck.worktrees import WorktreeManager
+from rubberduck.git.spotlight import spotlight_to_main
+from rubberduck.git.worktrees import WorktreeManager
 
 
 def test_spotlight_copies_worktree_edit_to_main(git_repo: Path, tmp_path: Path) -> None:
