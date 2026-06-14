@@ -881,3 +881,33 @@ code,
   gap: 8px;
   padding: 4px 0;
 }
+
+/* ── slim, unobtrusive scrollbars ──
+   WebKit (Chrome and the Mac app's WKWebView) renders chunky default
+   scrollbars; WKWebView shows them more readily than Chrome. Make them thin and
+   theme-colored so the scrollable panels look clean in both. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
