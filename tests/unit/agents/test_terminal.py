@@ -4,7 +4,22 @@ from rubberduck.agents.terminal import (
     _close_terminal_by_tty,
     _with_heartbeat,
     close_terminal_by_tty,
+    open_in_terminal,
 )
+
+
+def test_no_terminal_env_skips_opening_a_window(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Tests/CI set RUBBERDUCK_NO_TERMINAL so launching never spawns a real
+    # terminal tab (which would leak past the run). It must not even reach _spawn.
+    monkeypatch.setenv("RUBBERDUCK_NO_TERMINAL", "1")
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+
+    def boom(_argv: list[str]) -> bool:
+        raise AssertionError("opened a terminal despite RUBBERDUCK_NO_TERMINAL")
+
+    monkeypatch.setattr(terminal, "_spawn", boom)
+
+    assert open_in_terminal("/tmp", ["claude"]) is False
 
 
 def test_heartbeat_reports_tty_so_the_tab_can_be_found() -> None:

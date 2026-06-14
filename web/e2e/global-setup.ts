@@ -9,6 +9,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Boot a real `rubberduck serve` for the E2E run, isolated from the dev's state:
 //   - RUBBERDUCK_HOME -> a throwaway temp dir (own db, own token)
 //   - RUBBERDUCK_SUMMARIZER=off -> never shells out to a real agent
+//   - RUBBERDUCK_NO_TERMINAL=1 -> launch never opens a real terminal window,
+//     so test runs don't leave orphan terminal tabs behind
 // The built dashboard is served by the Python server, which injects the auth
 // token into the HTML, so Playwright loading the page is authenticated like a
 // real user. Writes the home dir + pid to a state file for teardown/tests.
@@ -28,6 +30,7 @@ export default async function globalSetup() {
         ...process.env,
         RUBBERDUCK_HOME: home,
         RUBBERDUCK_SUMMARIZER: "off",
+        RUBBERDUCK_NO_TERMINAL: "1",
         PYTHONPATH: join(REPO, "src"),
       },
       stdio: "inherit",

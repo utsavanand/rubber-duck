@@ -53,6 +53,12 @@ def open_in_terminal(
     command = f"cd {_q(cwd)} && {exports}{agent}"
     system = platform.system()
 
+    # Tests (and CI) set this so launching a session never opens a real terminal
+    # window — otherwise every e2e run leaves orphan tabs behind. The caller still
+    # records the session row; it just has no live terminal to drive or close.
+    if os.environ.get("RUBBERDUCK_NO_TERMINAL"):
+        return False
+
     if system == "Darwin":
         choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
         if choice == "iterm" and _open_iterm(command):
