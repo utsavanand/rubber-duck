@@ -29,9 +29,10 @@ Organized by type of work. `★` marks the current highest-leverage item.
   *pause* a resumable session, add Archive as the declutter middle-ground, and
   keep Delete as the only destructive one. Design + state machine:
   `docs/session-lifecycle-design.md`.
-  - [ ] **Phase 1 — Resume** (the reported gap): `stopped` state; Stop keeps the
-    row visible (greyed) with a Resume button; Resume relaunches in the saved
-    worktree, `--resume <session_id>` for claude-code (per-harness resume argv).
+  - [x] **Phase 1 — Resume**: `stopped` state; Stop keeps the row visible
+    (greyed) with a Resume button; `POST /sessions/:key/resume` relaunches in the
+    saved worktree, `claude --resume <session_id>` for claude-code. Delete
+    double-confirms.
   - [ ] **Phase 2 — Archive**: `archived` state + Archived filter +
     archive/unarchive.
   - [ ] **Phase 3 — Watched lifecycle**: PID/tty liveness sweep → auto-archive
