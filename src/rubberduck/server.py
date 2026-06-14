@@ -234,9 +234,12 @@ class Server:
         self.approvals = ApprovalRegistry(self.orchestrator.inject_key)
         self.token = security.load_or_create_token()
 
-    # Activity that means a session is no longer blocked on a permission prompt:
-    # any of these arriving after a PermissionRequest means it was answered (in
-    # the agent's own terminal, for a watched session) and the agent moved on.
+    # Activity that means a session moved past an *earlier* permission prompt:
+    # any of these arriving AFTER a request means it was answered and the agent
+    # continued (otherwise an answered-in-terminal request would linger as fake
+    # "needs human" noise). Time-gated so the tool that IS the request — Claude
+    # emits PermissionRequest and that tool's PreToolUse in the same tick —
+    # doesn't clear its own pending approval.
     _RESOLVES_APPROVAL = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionEnd"}
 
     def _sink(self, event: dict[str, Any]) -> None:
@@ -246,13 +249,10 @@ class Server:
         self._enrich_git(event)
         self.history.record(event)
         self.approvals.from_event(event)
-        # Clear stale approvals: if the agent did anything else, the prompt that
-        # created them is resolved (otherwise an answered-in-terminal request for
-        # a watched session lingers forever as fake "needs human" noise).
         if event.get("event_type") in self._RESOLVES_APPROVAL:
             key = event.get("session_key") or event.get("session_id")
             if key:
-                self.approvals.drop_session(str(key))
+                self.approvals.drop_session_before(str(key), int(event.get("_ts", 0)))
 
     def _enrich_git(self, event: dict[str, Any]) -> None:
         """If an event has a cwd but no repo/branch yet (a watched session),

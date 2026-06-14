@@ -92,6 +92,18 @@ def test_dropping_a_session_clears_its_approvals() -> None:
     assert [a.session_key for a in reg.pending()] == ["s2"]
 
 
+def test_drop_session_before_keeps_a_same_tick_request() -> None:
+    # Claude emits PermissionRequest and the requested tool's PreToolUse in the
+    # same tick — the resolving sweep must not clear the request it just created.
+    reg = ApprovalRegistry(inject=lambda _k, _key: True)
+    a = reg.from_event({**perm_event("s1"), "_ts": 1000})
+    assert a is not None
+    reg.drop_session_before("s1", 1000)  # same ts as the request -> kept
+    assert len(reg.pending()) == 1
+    reg.drop_session_before("s1", 1001)  # a later event -> resolved, cleared
+    assert reg.pending() == []
+
+
 def test_resolve_marks_decided_without_injection() -> None:
     # The tty-answered path: PTY injection didn't land, the server sent the key
     # to the terminal tab instead, then resolves the approval out of pending.

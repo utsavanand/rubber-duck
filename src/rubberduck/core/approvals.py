@@ -112,3 +112,15 @@ class ApprovalRegistry:
     def drop_session(self, session_key: str) -> None:
         """Remove a terminated session's approvals."""
         self._pending = {aid: a for aid, a in self._pending.items() if a.session_key != session_key}
+
+    def drop_session_before(self, session_key: str, ts: int) -> None:
+        """Remove a session's approvals created strictly before `ts` — i.e. ones
+        the agent has since moved past. Keeps a request that arrived at the same
+        instant as the resolving event (Claude often emits PermissionRequest and
+        the tool's PreToolUse in the same tick; that tool IS the pending request,
+        so it must not clear itself)."""
+        self._pending = {
+            aid: a
+            for aid, a in self._pending.items()
+            if a.session_key != session_key or a.created_at >= ts
+        }
