@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Rubberduck — one window over your fleet of AI coding agents",
+  title: "RubberDuckHQ: headquarters for your team of agents",
   description:
-    "Local-first orchestrator for AI coding agents. Launch them into isolated git worktrees, see which one needs you, fork any session, and keep durable history with intent → outcome summaries.",
+    "Run many AI coding agents at once. RubberDuckHQ launches them into isolated git worktrees, shows what each is doing, and surfaces the one that needs you. Local-first; your code never leaves your machine.",
 };
 
 export default function RootLayout({
