@@ -23,6 +23,13 @@ def _server_url() -> str:
     )
 
 
+def _installable_agents() -> list[str]:
+    """Agents the registry can wire hooks for — the --agent choices."""
+    from rubberduck.harnesses import installable_agents
+
+    return installable_agents()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rubberduck")
     parser.add_argument("--version", action="version", version=__version__)
@@ -58,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inst.add_argument(
         "--agent",
-        choices=["claude-code", "codex", "copilot"],
+        choices=_installable_agents(),
         default="claude-code",
         help="which agent to wire (default: claude-code). codex: prefer --global "
         "(repo-local hooks are unreliable upstream)",
@@ -66,9 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     uninst = sub.add_parser("uninstall-hooks", help="remove Rubberduck's hooks for an agent")
     uninst.add_argument("--global", dest="global_scope", action="store_true")
-    uninst.add_argument(
-        "--agent", choices=["claude-code", "codex", "copilot"], default="claude-code"
-    )
+    uninst.add_argument("--agent", choices=_installable_agents(), default="claude-code")
     return parser
 
 

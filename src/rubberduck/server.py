@@ -47,18 +47,16 @@ from typing import Any
 from rubberduck.agents.terminal import available_terminals, close_terminal_by_tty, open_in_terminal
 from rubberduck.core.approvals import ApprovalRegistry
 from rubberduck.core.eventbus import EventBus
-from rubberduck.core.orchestrator import Orchestrator, StateRuntime
+from rubberduck.core.orchestrator import Orchestrator
 from rubberduck.git import gitdetect
 from rubberduck.git.spotlight import spotlight_to_main
 from rubberduck.git.worktrees import GitError
+from rubberduck.harnesses import runtime_for
 from rubberduck.helpers import browse, security
 from rubberduck.persistence.checkpoints import build_checkpoint
 from rubberduck.persistence.history import HistoryStore
 from rubberduck.persistence.snapshots import SnapshotManager, restore_command_for
-from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
-from rubberduck.runtimes.codex import CodexRuntime
-from rubberduck.runtimes.copilot import CopilotRuntime
-from rubberduck.runtimes.generic import GenericRuntime
+from rubberduck.runtimes.base import AgentRuntime
 from rubberduck.transport.httpio import (
     KEEPALIVE_SECONDS,
     SELF_PROBE_HEADER,
@@ -93,15 +91,10 @@ def infer_runtime(command: str) -> str:
     return "generic"
 
 
-def _build_runtime(name: str | None, command: str) -> StateRuntime:
-    name = name or infer_runtime(command)
-    if name == "claude-code":
-        return ClaudeCodeRuntime(command)
-    if name == "codex":
-        return CodexRuntime(command)
-    if name == "copilot":
-        return CopilotRuntime(command)
-    return GenericRuntime(command)
+def _build_runtime(name: str | None, command: str) -> AgentRuntime:
+    # Resolve through the harness registry — the single source of truth for which
+    # agents exist. infer_runtime() guesses from the command when name is unset.
+    return runtime_for(name or infer_runtime(command), command)
 
 
 class Route:
