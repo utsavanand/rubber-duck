@@ -21,6 +21,35 @@ Decision = Literal["approve", "deny"]
 # Keystrokes that answer Claude Code's permission prompt (numbered menu: 1=Yes).
 _KEYS = {"approve": "1", "deny": "Escape"}
 
+# The load-bearing field of a tool's input, by tool — so the approval row shows
+# *what* is being requested (the URL for a fetch, the command for Bash, etc.)
+# instead of a bare tool name. Falls back to the first string value.
+_DETAIL_FIELDS = {
+    "Bash": "command",
+    "WebFetch": "url",
+    "WebSearch": "query",
+    "Read": "file_path",
+    "Edit": "file_path",
+    "Write": "file_path",
+    "Grep": "pattern",
+    "Glob": "pattern",
+}
+
+
+def _request_detail(tool_input: dict[str, Any], tool_name: str = "") -> str:
+    """A human-readable summary of what a tool wants to do, for the approval row."""
+    field_name = _DETAIL_FIELDS.get(tool_name)
+    if field_name and tool_input.get(field_name) is not None:
+        return str(tool_input[field_name])
+    # Unknown tool: try the common fields, then the first stringy value.
+    for k in ("command", "url", "query", "file_path", "pattern", "path"):
+        if tool_input.get(k) is not None:
+            return str(tool_input[k])
+    for v in tool_input.values():
+        if isinstance(v, str) and v:
+            return v
+    return ""
+
 
 @dataclass
 class Approval:
@@ -50,7 +79,9 @@ class ApprovalRegistry:
             id=uuid.uuid4().hex,
             session_key=str(key),
             tool_name=str(event.get("tool_name") or "unknown"),
-            detail=str((event.get("tool_input") or {}).get("command", "")),
+            detail=_request_detail(
+                event.get("tool_input") or {}, str(event.get("tool_name") or "")
+            ),
             created_at=int(event.get("_ts", 0)),
         )
         self._pending[approval.id] = approval

@@ -20,6 +20,34 @@ def test_permission_event_creates_pending_approval() -> None:
     assert [a.session_key for a in reg.pending()] == ["s1"]
 
 
+def test_detail_shows_the_load_bearing_field_per_tool() -> None:
+    reg = ApprovalRegistry(inject=lambda _k, _key: True)
+    # A WebFetch shows the URL (not a blank, since its input has no `command`).
+    fetch = reg.from_event(
+        {
+            "event_type": "PermissionRequest",
+            "session_key": "s1",
+            "tool_name": "WebFetch",
+            "tool_input": {"url": "https://example.com/docs", "prompt": "summarize"},
+            "_ts": 1,
+        }
+    )
+    assert fetch is not None
+    assert fetch.tool_name == "WebFetch"
+    assert fetch.detail == "https://example.com/docs"
+    # Grep shows its pattern; Read shows the file path.
+    grep = reg.from_event(
+        {
+            "event_type": "PermissionRequest",
+            "session_key": "s2",
+            "tool_name": "Grep",
+            "tool_input": {"pattern": "refund", "path": "src"},
+            "_ts": 1,
+        }
+    )
+    assert grep is not None and grep.detail == "refund"
+
+
 def test_non_permission_events_are_ignored() -> None:
     reg = ApprovalRegistry(inject=lambda _k, _key: True)
     assert reg.from_event({"event_type": "Stop", "session_key": "s1"}) is None
