@@ -834,7 +834,10 @@ class Server:
     ) -> None:
         row = self.history.session(session_key)
         if row is None:
-            await _write_json(writer, 404, {"error": f"no session {session_key}"})
+            # The row is gone — almost always because the session was deleted
+            # while its (watched) row still lingered in a stale dashboard tab.
+            msg = f"session {session_key} no longer exists (it may have been deleted)"
+            await _write_json(writer, 404, {"error": msg})
             return
         label = json.loads(body or b"{}").get("label", "checkpoint")
         cwd = Path(str(row.get("worktree_path") or row.get("cwd") or "."))

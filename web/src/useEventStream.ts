@@ -3,6 +3,7 @@ import { applyEvent } from "./sessions";
 import {
   PersistedSession,
   RubberduckEvent,
+  sessionKeyOf,
   SessionView,
   viewFromPersisted,
 } from "./types";
@@ -13,6 +14,14 @@ type Action =
   | { kind: "seed"; sessions: PersistedSession[] }
   | { kind: "event"; event: RubberduckEvent }
   | { kind: "remove"; keys: string[] };
+
+// The reducer tracks deleted keys so a still-firing watched session (whose hooks
+// keep streaming events) can't resurrect a row the user just deleted — mirrors
+// the server's tombstone. A fresh SessionStart lifts the tombstone.
+interface State {
+  sessions: Map<string, SessionView>;
+  tombstoned: Set<string>;
+}
 
 function isInit(data: unknown): data is InitFrame {
   return (
@@ -30,12 +39,9 @@ function mergeDefined(base: SessionView, over: SessionView): SessionView {
   return out;
 }
 
-function reduce(
-  state: Map<string, SessionView>,
-  action: Action,
-): Map<string, SessionView> {
+function reduce(state: State, action: Action): State {
   if (action.kind === "seed") {
-    const next = new Map(state);
+    const next = new Map(state.sessions);
     for (const s of action.sessions) {
       const persisted = viewFromPersisted(s);
       const live = next.get(s.session_key);
@@ -45,14 +51,31 @@ function reduce(
       // without undefined live fields clobbering persisted ones.
       next.set(s.session_key, live ? mergeDefined(persisted, live) : persisted);
     }
-    return next;
+    // A seed only lists live sessions; anything we'd tombstoned that the server
+    // confirms exists again can drop its tombstone.
+    const tombstoned = new Set(state.tombstoned);
+    for (const s of action.sessions) tombstoned.delete(s.session_key);
+    return { sessions: next, tombstoned };
   }
   if (action.kind === "remove") {
-    const next = new Map(state);
-    for (const key of action.keys) next.delete(key);
-    return next;
+    const next = new Map(state.sessions);
+    const tombstoned = new Set(state.tombstoned);
+    for (const key of action.keys) {
+      next.delete(key);
+      tombstoned.add(key);
+    }
+    return { sessions: next, tombstoned };
   }
-  return applyEvent(state, action.event);
+  // A live event for a tombstoned (deleted) session must not resurrect it —
+  // unless it's a SessionStart, which means the key is genuinely a new session.
+  const key = sessionKeyOf(action.event);
+  if (key && state.tombstoned.has(key)) {
+    if (action.event.event_type !== "SessionStart") return state;
+    const tombstoned = new Set(state.tombstoned);
+    tombstoned.delete(key);
+    return { sessions: applyEvent(state.sessions, action.event), tombstoned };
+  }
+  return { ...state, sessions: applyEvent(state.sessions, action.event) };
 }
 
 export function useEventStream(): {
@@ -61,10 +84,10 @@ export function useEventStream(): {
   recentEvents: RubberduckEvent[];
   removeSessions: (keys: string[]) => void;
 } {
-  const [sessions, dispatch] = useReducer(
-    reduce,
-    new Map<string, SessionView>(),
-  );
+  const [state, dispatch] = useReducer(reduce, {
+    sessions: new Map<string, SessionView>(),
+    tombstoned: new Set<string>(),
+  });
   const [connected, setConnected] = useState(false);
   // Rolling buffer of the newest events, newest first, for the Pulse ticker.
   const [recentEvents, setRecentEvents] = useState<RubberduckEvent[]>([]);
@@ -104,7 +127,7 @@ export function useEventStream(): {
 
   // Stable order: newest session first by START time, which never changes —
   // so cards don't reshuffle (and buttons don't move) as events stream in.
-  const list = [...sessions.values()].sort(
+  const list = [...state.sessions.values()].sort(
     (a, b) => b.startedAt - a.startedAt || a.key.localeCompare(b.key),
   );
   const removeSessions = (keys: string[]) => dispatch({ kind: "remove", keys });
