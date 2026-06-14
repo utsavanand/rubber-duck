@@ -54,16 +54,19 @@ final class SessionPoller {
         guard let (data, _) = try? await URLSession.shared.data(for: req),
             let wrapper = try? JSONDecoder().decode(Wrapper.self, from: data)
         else { return }
-        let live = wrapper.sessions.filter { $0.state != "terminated" }
-        var counts = Counts()
+        // At-rest states (ended or put away) don't count toward the live fleet.
+        let atRest: Set = ["terminated", "stopped", "archived"]
+        let live = wrapper.sessions.filter { !atRest.contains($0.state) }
+        var tally = Counts()
         for s in live {
             switch s.state {
-            case "busy": counts.busy += 1
-            case "waiting": counts.waiting += 1
-            case "idle": counts.idle += 1
+            case "busy": tally.busy += 1
+            case "waiting": tally.waiting += 1
+            case "idle": tally.idle += 1
             default: break
             }
         }
+        let counts = tally  // immutable, so the closure capture is Sendable-safe
         let waiting = live.filter { $0.state == "waiting" }
         await MainActor.run { self.onUpdate?(counts, waiting) }
     }
