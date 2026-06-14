@@ -21,22 +21,15 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## 🩺 Onboarding & diagnostics
 
-- [ ] **`rubberduck doctor` — one command that verifies the whole setup.** The
-  install flow has too many silent failure modes: a stale hook file (e.g. Codex
-  hooks with `async:true`, which Codex skips), a Codex hook that needs
-  re-trusting after the script's hash changed, missing `jq`/`curl`, no server on
-  :4200, hooks not installed. Today each just shows up as "my session didn't
-  appear." `doctor` checks them all and prints exactly what's missing + the fix:
-  - [ ] System deps present: `jq`, `curl`.
-  - [ ] Server reachable on :4200 (or port free / what's holding it).
-  - [ ] Hooks installed per agent (claude-code/codex/copilot).
-  - [ ] **Codex trust status** — compare the installed hook's hash to what Codex
-    trusts (`~/.codex/config.toml`); if it changed, say "re-trust via `/hooks`".
-    Trust is global + persisted, so this is once-per-machine + once-per-hook-change,
-    NOT per session. (Detection only — trust itself is interactive, cli.py:233.)
-  - [ ] Token file present/readable.
-  - [ ] Have `install-hooks` end with "now run `rubberduck doctor` to verify" so
-    install closes the loop instead of "start a session and hope".
+- [x] **`rubberduck doctor` — one command that verifies the whole setup.** Checks
+  `jq`/`curl`, the server on :4200 (self-probe header), the auth token, and each
+  agent's installed hook (present, points at the current script, and — for codex —
+  not `async:true`). Prints the exact fix per problem; exits non-zero on any FAIL.
+  `install-hooks` now ends with "Verify it's wired up: rubberduck doctor".
+  - Not done: **Codex *trust* status.** Codex stores trust in `~/.codex/config.toml`
+    `[hooks.state]` as a per-entry `trusted_hash` of a normalized form we can't
+    reliably recompute — so doctor can't prove trusted vs not. It reports the hook
+    is installed/current and points at `/hooks`, rather than claiming a trust state.
 - [ ] **Runtime nudge for a stale/untrusted Codex hook.** Even with `doctor`,
   someone updates the hook and forgets to re-trust. Detect at runtime (a Codex
   session started but its hook never reported / hash mismatch) and show a

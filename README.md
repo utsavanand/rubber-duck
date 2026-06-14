@@ -53,6 +53,16 @@ Watching a session you started in your own terminal needs two more things:
 
    Start the agent normally — its sessions now appear in the dashboard.
 
+3. **Verify the setup** if a session doesn't show up:
+
+   ```sh
+   rubberduck doctor
+   ```
+
+   It checks `jq`/`curl`, the server, the token, and each agent's hooks, and
+   prints the exact fix for anything missing (a hook not installed, a stale
+   Codex `async:true` hook, the server not running).
+
 **Codex needs one extra, one-time step:** Codex won't run a hook until you
 *trust* it. After `install-hooks --agent codex`, start `codex`, run **`/hooks`**,
 and trust the Rubberduck hook. (Trust is keyed to the hook script's hash, so
