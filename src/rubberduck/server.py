@@ -218,6 +218,8 @@ _ROUTES: list[Route] = [
     Route("GET", "/", lambda s, r, w, h, b, seg: s._dashboard(w, "/")),
     Route("GET", "", lambda s, r, w, h, b, seg: s._dashboard(w, "/assets/" + seg),
           prefix="/assets/"),
+    Route("GET", "/favicon.svg", lambda s, r, w, h, b, seg: s._dashboard(w, "/favicon.svg")),
+    Route("GET", "/favicon.ico", lambda s, r, w, h, b, seg: s._dashboard(w, "/favicon.ico")),
 ]
 # fmt: on
 
