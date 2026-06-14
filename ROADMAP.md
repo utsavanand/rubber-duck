@@ -18,8 +18,9 @@ Organized by type of work. `★` marks the current highest-leverage item.
 - [ ] **Worktree-test flakiness under concurrent git** — the git tests shell out
   to real git; they collided with git activity once during a hook run. The
   GIT_* env leak is fixed; watch for residual lock races.
-- [ ] **`serve` doesn't hot-reload** — code/dashboard changes need a manual
-  restart. At minimum document it; consider a `--reload` dev flag.
+- [x] **`serve --reload`** — dev flag that watches `src/rubberduck` and re-execs
+  the process on a Python change (stdlib mtime poll, no new deps). Dashboard
+  changes are served from `dist/` so they just need a rebuild + refresh.
 
 ## ✨ Features
 

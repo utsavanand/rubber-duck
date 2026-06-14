@@ -40,6 +40,11 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--port", type=int, default=int(os.environ.get("RUBBERDUCK_PORT", DEFAULT_PORT))
     )
+    serve.add_argument(
+        "--reload",
+        action="store_true",
+        help="dev: restart the server when a source file changes (watches src/rubberduck)",
+    )
 
     launch = sub.add_parser("launch", help="launch a supervised agent in a running server")
     launch.add_argument(
@@ -80,8 +85,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _serve(host: str, port: int) -> int:
+def _serve(host: str, port: int, reload: bool = False) -> int:
     from rubberduck.server import Server
+
+    if reload:
+        from rubberduck.dev_reload import watch_and_reexec
+
+        watch_and_reexec()  # background thread; re-execs this process on a .py change
 
     try:
         asyncio.run(Server().serve(host, port, on_listening=_print_listening))
@@ -231,7 +241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     if args.command == "serve":
-        return _serve(args.host, args.port)
+        return _serve(args.host, args.port, reload=args.reload)
     if args.command == "launch":
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
     if args.command == "snapshot":
