@@ -55,6 +55,18 @@ function Dashboard() {
   }
 
   async function clearTerminated(terminatedKeys: string[]) {
+    const n = terminatedKeys.length;
+    // Double-confirm: this permanently drops terminated sessions from history.
+    if (
+      !window.confirm(
+        `Clear ${n} terminated session${n === 1 ? "" : "s"} from history?`,
+      )
+    )
+      return;
+    if (
+      !window.confirm("This permanently deletes their history. Are you sure?")
+    )
+      return;
     try {
       const r = await api.clearTerminated();
       removeSessions(terminatedKeys);
@@ -127,7 +139,14 @@ function Dashboard() {
     <div className="rd-app">
       <header className="rd-topbar">
         <span className="rd-brand">
-          <span>🦆</span> RubberDuckHQ
+          <img
+            className="rd-brand-mark"
+            src="/duck.svg"
+            alt=""
+            width={22}
+            height={22}
+          />
+          RubberDuckHQ
         </span>
         <span className="rd-live">
           <span className={`dot ${connected ? "on" : "off"}`} />

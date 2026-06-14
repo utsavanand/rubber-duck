@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api } from "./api";
 import { RubberduckEvent, sessionKeyOf } from "./types";
 
-// A rolling feed of every agent's latest action, newest at the top. Reads the
-// recentEvents buffer from useEventStream (no extra subscription).
+// A scrollable feed of every agent's action, newest at the top. Live events
+// arrive via the `events` prop (the SSE buffer from useEventStream); older
+// history is paged in from /pulse as the user scrolls toward the bottom.
 export function Pulse({
   events,
   labels,
@@ -12,9 +14,59 @@ export function Pulse({
 }) {
   // Which row is expanded to show its full detail inline.
   const [openId, setOpenId] = useState<string | null>(null);
-  // Static window: only the newest ~18, newest pinned at top. Older events drop
-  // off the bottom rather than growing a scroll region.
-  const shown = events.slice(0, 18);
+  // Older events paged in from the durable store, newest-first. The live
+  // `events` prop covers the top of the feed; this continues below it.
+  const [older, setOlder] = useState<RubberduckEvent[]>([]);
+  // Keyset cursor for the next /pulse page; null once history is exhausted.
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const seeded = useRef(false);
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // Seed the first page once on mount so the feed has depth before any live
+  // event arrives. After this, growth happens via scroll (loadMore).
+  useEffect(() => {
+    if (seeded.current) return;
+    seeded.current = true;
+    api
+      .pulse({ limit: 20 })
+      .then((r) => {
+        setOlder(r.events);
+        setCursor(r.next_cursor);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  async function loadMore() {
+    if (loading || cursor == null) return;
+    setLoading(true);
+    try {
+      const r = await api.pulse({ limit: 20, before: cursor });
+      setOlder((prev) => prev.concat(r.events));
+      setCursor(r.next_cursor);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Live events sit on top; paged history continues below. Dedup by _id so the
+  // overlap between the live buffer and the first page collapses to one row.
+  const shown = useMemo(() => {
+    const seen = new Set<string>();
+    const out: RubberduckEvent[] = [];
+    for (const e of [...events, ...older]) {
+      if (e._id && seen.has(e._id)) continue;
+      if (e._id) seen.add(e._id);
+      out.push(e);
+    }
+    return out;
+  }, [events, older]);
+
+  function onScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();
+  }
+
   return (
     <aside className="rd-pulse">
       <div className="rd-panel-head">
@@ -31,9 +83,9 @@ export function Pulse({
       {shown.length === 0 ? (
         <p className="rd-panel-empty">Waiting for activity…</p>
       ) : (
-        <div className="rd-pulse-feed">
+        <div className="rd-pulse-feed" ref={feedRef} onScroll={onScroll}>
           {/* "more updates arrive above" affordance: three travelling dots that
-              sit at the top of the static feed, where newer events land. */}
+              sit at the top of the feed, where newer events land. */}
           <div className="rd-pulse-incoming" aria-hidden>
             <span />
             <span />
@@ -59,6 +111,10 @@ export function Pulse({
               </div>
             );
           })}
+          {loading && <p className="rd-pulse-more">Loading older…</p>}
+          {cursor == null && shown.length > 0 && (
+            <p className="rd-pulse-more">— start of history —</p>
+          )}
         </div>
       )}
     </aside>

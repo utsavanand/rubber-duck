@@ -98,6 +98,7 @@ export const api = {
       branch?: string;
       terminal?: string;
       in_terminal?: boolean;
+      carry_context?: boolean;
     },
   ) =>
     post<{
@@ -105,6 +106,7 @@ export const api = {
       worktree?: string;
       branch?: string;
       command?: string;
+      carried_context?: boolean;
     }>(`/sessions/${key}/fork`, opts),
   forkConversation: (key: string, terminal?: string) =>
     post<{ opened_in_terminal: boolean; command: string; cwd: string }>(
@@ -160,6 +162,12 @@ export const api = {
     ),
   sessionEvents: (key: string) =>
     get<{ events: RawEvent[] }>(`/sessions/${key}/events`),
+  pulse: (opts?: { limit?: number; before?: number }) =>
+    get<{ events: RawEvent[]; next_cursor: number | null }>(
+      `/pulse?limit=${opts?.limit ?? 20}${
+        opts?.before != null ? `&before=${opts.before}` : ""
+      }`,
+    ),
 };
 
 interface RawEvent {

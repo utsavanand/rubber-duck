@@ -141,3 +141,96 @@ def test_fork_unknown_session_404(git_repo: Path, tmp_path: Path) -> None:
                 return e.code
 
     assert asyncio.run(scenario()) == 404
+
+
+def test_worktree_fork_carries_claude_conversation(
+    git_repo: Path, tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """A worktree fork with carry_context relaunches the parent's conversation in
+    the new worktree (claude --resume <id> --fork-session), not a fresh agent."""
+    opened: dict = {}
+    monkeypatch.setattr(
+        "rubberduck.server.open_in_terminal",
+        lambda cwd, argv, **kw: opened.update(cwd=cwd, argv=argv) or True,
+    )
+    # The parent's conversation transcript must exist for it to be resumable.
+    fake_home = tmp_path / "home"
+    slug = str(git_repo.resolve()).replace("/", "-")
+    proj = fake_home / ".claude" / "projects" / slug
+    proj.mkdir(parents=True)
+    (proj / "claude-sid.jsonl").write_text('{"role":"user","text":"hi"}\n')
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+
+    async def scenario() -> dict[str, object]:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            await asyncio.to_thread(
+                _post,
+                port,
+                "/events",
+                {
+                    "event_type": "SessionStart",
+                    "session_key": "P",
+                    "runtime": "claude-code",
+                    "session_id": "claude-sid",
+                    "repo_path": str(git_repo),
+                    "branch": "main",
+                    "cwd": str(git_repo),
+                },
+            )
+            return await asyncio.to_thread(
+                _post,
+                port,
+                "/sessions/P/fork",
+                {"branch": "ctx-fork", "carry_context": True},
+            )
+
+    body = asyncio.run(scenario())
+    assert body["carried_context"] is True
+    assert opened["argv"] == ["claude", "--resume", "claude-sid", "--fork-session"]
+    # ...and it runs in the new worktree, not the parent's cwd.
+    assert "ctx-fork" in opened["cwd"]
+
+
+def test_worktree_fork_no_context_for_codex(
+    git_repo: Path, tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """Codex has no native conversation resume, so carry_context is a no-op — the
+    fork launches the base command fresh (carried_context False)."""
+    opened: dict = {}
+    monkeypatch.setattr(
+        "rubberduck.server.open_in_terminal",
+        lambda cwd, argv, **kw: opened.update(argv=argv) or True,
+    )
+
+    async def scenario() -> dict[str, object]:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            await asyncio.to_thread(
+                _post,
+                port,
+                "/events",
+                {
+                    "event_type": "SessionStart",
+                    "session_key": "P",
+                    "runtime": "codex",
+                    "session_id": "codex-sid",
+                    "repo_path": str(git_repo),
+                    "branch": "main",
+                    "cwd": str(git_repo),
+                },
+            )
+            return await asyncio.to_thread(
+                _post,
+                port,
+                "/sessions/P/fork",
+                {"command": "codex", "branch": "cx-fork", "carry_context": True},
+            )
+
+    body = asyncio.run(scenario())
+    assert body["carried_context"] is False
+    assert opened["argv"] == ["codex"]  # fresh, no resume

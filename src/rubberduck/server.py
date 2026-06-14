@@ -158,6 +158,7 @@ _ROUTES: list[Route] = [
     Route("POST", "/heartbeat", lambda s, r, w, h, b, seg: s._heartbeat(w, b)),
     # ── query ──
     Route("GET", "/events", lambda s, r, w, h, b, seg: s._recent(w)),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._pulse(w, seg), prefix="/pulse"),
     Route("GET", "/sessions", lambda s, r, w, h, b, seg: s._sessions(w)),
     Route("GET", "/tree", lambda s, r, w, h, b, seg: s._tree(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._browse(w, seg), prefix="/browse"),
@@ -383,6 +384,24 @@ class Server:
     async def _recent(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"events": self.bus.recent()})
 
+    async def _pulse(self, writer: asyncio.StreamWriter, seg: str) -> None:
+        """A keyset-paginated page of the global event feed for the Pulse panel.
+        Query: ?limit=20&before=<cursor>. Returns newest-first events plus a
+        next_cursor (null when history is exhausted)."""
+        q = urllib.parse.parse_qs(seg.lstrip("?"))
+        limit = max(1, min(int((q.get("limit") or ["20"])[0] or 20), 100))
+        before_raw = (q.get("before") or [""])[0]
+        before = int(before_raw) if before_raw.isdigit() else None
+        events, next_cursor = self.history.recent_events(limit=limit, before=before)
+        events = [
+            e
+            for e in events
+            if not self.history.is_tombstoned(
+                str(e.get("session_key") or e.get("session_id") or "")
+            )
+        ]
+        await _write_json(writer, 200, {"events": events, "next_cursor": next_cursor})
+
     def _init_events(self) -> list[dict[str, object]]:
         """Events for a stream's init replay, minus any whose session has since
         been deleted. The ring buffer can still hold a deleted session's
@@ -575,9 +594,20 @@ class Server:
         if not security.valid_session_key(child_key):
             await _write_json(writer, 400, {"error": "invalid session_key"})
             return
+        # Carry the parent's conversation into the new worktree, so the fork has
+        # the isolated code AND the prior context — for any harness that can
+        # resume (each declares its own resume command). Falls back to a fresh
+        # agent when the harness has no native resume or no recorded session.
+        argv = shlex.split(command)
+        carried = False
+        if req.get("carry_context"):
+            resumed = self._carry_context_argv(parent, parent_key, repo, command)
+            if resumed:
+                argv = resumed
+                carried = True
         opened = open_in_terminal(
             str(worktree.path),
-            shlex.split(command),
+            argv,
             app=req.get("terminal"),
             env={"RUBBERDUCK_SESSION_KEY": child_key},
             heartbeat=(_heartbeat_url(), child_key),
@@ -610,7 +640,8 @@ class Server:
                 "opened_in_terminal": opened,
                 "worktree": str(worktree.path),
                 "branch": worktree.branch,
-                "command": command,
+                "command": " ".join(argv),
+                "carried_context": carried,
             },
         )
 
@@ -731,6 +762,26 @@ class Server:
                 "cwd": cwd,
             },
         )
+
+    def _carry_context_argv(
+        self, parent: dict[str, Any], parent_key: str, repo: Path, command: str
+    ) -> list[str] | None:
+        """The argv to relaunch a fork *with the parent's conversation* — built
+        from the parent harness's own resume command, so this works for any agent
+        that can resume (Claude: --resume <id> --fork-session; Copilot:
+        --resume=<id>). Returns None for harnesses with no native resume
+        (codex/generic) or when no resumable session is recorded."""
+        runtime = parent.get("runtime") or "generic"
+        cwd = str(parent.get("cwd") or repo)
+        if runtime == "claude-code":
+            sid = self._resumable_session_id(parent_key, cwd)
+            # --fork-session branches the conversation so the parent isn't touched.
+            return ["claude", "--resume", sid, "--fork-session"] if sid else None
+        if runtime == "copilot":
+            sid = self.history.session_id_for(parent_key)
+            return [*shlex.split(command), f"--resume={sid}"] if sid else None
+        # codex / generic: no native conversation resume — can't carry context.
+        return None
 
     def _resumable_session_id(self, parent_key: str, cwd: str) -> str | None:
         """A Claude conversation id that can actually be `--resume`d. The id from

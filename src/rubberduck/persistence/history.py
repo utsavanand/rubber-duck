@@ -293,6 +293,29 @@ class HistoryStore:
             out.append(d)
         return out
 
+    def recent_events(
+        self, limit: int = 20, before: int | None = None
+    ) -> tuple[list[dict[str, Any]], int | None]:
+        """A page of the global event feed, newest-first, for the Pulse panel.
+
+        Keyset-paginated on rowid (monotonic insert order, robust to ts ties):
+        pass the `next_cursor` from the previous page as `before` to fetch older
+        events. Returns (events_newest_first, next_cursor); next_cursor is None
+        when the page reaches the start of history."""
+        sql = "SELECT rowid, payload_json FROM events"
+        params: list[Any] = []
+        if before is not None:
+            sql += " WHERE rowid < ?"
+            params.append(before)
+        sql += " ORDER BY rowid DESC LIMIT ?"
+        params.append(limit + 1)  # one extra row tells us if more remain
+        rows = self._conn.execute(sql, params).fetchall()
+        more = len(rows) > limit
+        rows = rows[:limit]
+        events = [json.loads(r["payload_json"]) for r in rows]
+        next_cursor = rows[-1]["rowid"] if more and rows else None
+        return events, next_cursor
+
     def events_for(self, key: str, limit: int = 200) -> list[dict[str, Any]]:
         """The most recent events for a session, oldest-first, for building a
         checkpoint record."""

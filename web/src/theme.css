@@ -379,6 +379,14 @@ code,
    keeps it to ~18 rows so it never overflows. */
 .rd-pulse-feed {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.rd-pulse-more {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 10px 0 14px;
 }
 /* Travelling dots at the very top, where new events land — signals "more
    updates arrive above" without a scrollbar. */
@@ -543,6 +551,10 @@ code,
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.rd-brand-mark {
+  display: block;
+  border-radius: 6px;
 }
 .rd-live {
   font-size: 13px;

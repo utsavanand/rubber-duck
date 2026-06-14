@@ -8,6 +8,24 @@ def make_bus(store: HistoryStore) -> EventBus:
     return EventBus(sink=store.record)
 
 
+def test_recent_events_paginates_newest_first_to_exhaustion(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    for i in range(5):
+        bus.publish({"event_type": "PreToolUse", "session_key": "s", "tool_name": str(i)})
+
+    page1, cursor1 = store.recent_events(limit=2)
+    assert [e["tool_name"] for e in page1] == ["4", "3"]
+    assert cursor1 is not None
+
+    page2, cursor2 = store.recent_events(limit=2, before=cursor1)
+    assert [e["tool_name"] for e in page2] == ["2", "1"]
+
+    page3, cursor3 = store.recent_events(limit=2, before=cursor2)
+    assert [e["tool_name"] for e in page3] == ["0"]
+    assert cursor3 is None  # last page: no more history
+
+
 def test_session_key_falls_back_through_aliases() -> None:
     assert session_key_of({"session_key": "a", "session_id": "b"}) == "a"
     assert session_key_of({"uvs_session_id": "u", "session_id": "b"}) == "u"

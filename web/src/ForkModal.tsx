@@ -30,6 +30,11 @@ export function ForkModal({
   const [terminals, setTerminals] = useState<string[]>([]);
   const [terminal, setTerminal] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  // Carry the parent's conversation into the worktree fork — only for harnesses
+  // that can resume (Claude Code, Copilot). On by default when available.
+  const canCarryContext =
+    session.runtime === "claude-code" || session.runtime === "copilot";
+  const [carryContext, setCarryContext] = useState(canCarryContext);
 
   useEffect(() => {
     api
@@ -60,9 +65,13 @@ export function ForkModal({
           command,
           branch: branch || undefined,
           terminal: terminal || undefined,
+          carry_context: canCarryContext && carryContext,
         });
         if (r.opened_in_terminal) {
-          toast(`Opened fork on ${r.branch} in ${terminal || "a terminal"}`);
+          const ctx = r.carried_context ? " with its conversation" : "";
+          toast(
+            `Opened fork on ${r.branch}${ctx} in ${terminal || "a terminal"}`,
+          );
         } else {
           toast(
             `Worktree created; run in a terminal: cd ${r.worktree} && ${r.command}`,
@@ -147,6 +156,20 @@ export function ForkModal({
                 onChange={(e) => setCommand(e.target.value)}
               />
             </Field>
+          )}
+          {canCarryContext && (
+            <label className="rd-radio">
+              <input
+                type="checkbox"
+                checked={carryContext}
+                onChange={(e) => setCarryContext(e.target.checked)}
+              />
+              <span>
+                <strong>Carry the conversation</strong> — the fork continues
+                this session's chat in the new worktree, instead of starting
+                fresh.
+              </span>
+            </label>
           )}
         </>
       )}

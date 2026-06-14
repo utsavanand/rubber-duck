@@ -10,14 +10,19 @@
     </linearGradient>
   </defs>
   <rect width="64" height="64" rx="14" fill="#0d0f14"/>
+  <!-- body + head as one continuous classic duck silhouette -->
   <g fill="url(#rd-body)">
     <ellipse cx="31" cy="43" rx="22" ry="13"/>
     <circle cx="42" cy="24" r="13"/>
   </g>
+  <!-- tail flick -->
   <path d="M11 38c-5-1-8 0-9 3 3 2 6 2 9 0 1-1 1-2 0-3z" fill="url(#rd-body)"/>
+  <!-- wing, slightly darker for depth -->
   <path d="M22 42c6-5 16-5 22 0-4 5-18 5-22 0z" fill="#E89400" opacity="0.55"/>
+  <!-- beak -->
   <path d="M52 22c6-1 10 1 11 4-2 3-7 4-11 3-1-2-1-5 0-7z" fill="url(#rd-beak)"/>
   <path d="M52 25.5c4 .6 8 .6 11 0" stroke="#D9620A" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+  <!-- eye -->
   <circle cx="45" cy="21" r="3" fill="#1b1d22"/>
   <circle cx="46.1" cy="19.9" r="1" fill="#fff"/>
 </svg>
