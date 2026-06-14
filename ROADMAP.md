@@ -19,6 +19,35 @@ Organized by type of work. `★` marks the current highest-leverage item.
   the process on a Python change (stdlib mtime poll, no new deps). Dashboard
   changes are served from `dist/` so they just need a rebuild + refresh.
 
+## 🩺 Onboarding & diagnostics
+
+- [ ] **`rubberduck doctor` — one command that verifies the whole setup.** The
+  install flow has too many silent failure modes: a stale hook file (e.g. Codex
+  hooks with `async:true`, which Codex skips), a Codex hook that needs
+  re-trusting after the script's hash changed, missing `jq`/`curl`, no server on
+  :4200, hooks not installed. Today each just shows up as "my session didn't
+  appear." `doctor` checks them all and prints exactly what's missing + the fix:
+  - [ ] System deps present: `jq`, `curl`.
+  - [ ] Server reachable on :4200 (or port free / what's holding it).
+  - [ ] Hooks installed per agent (claude-code/codex/copilot).
+  - [ ] **Codex trust status** — compare the installed hook's hash to what Codex
+    trusts (`~/.codex/config.toml`); if it changed, say "re-trust via `/hooks`".
+    Trust is global + persisted, so this is once-per-machine + once-per-hook-change,
+    NOT per session. (Detection only — trust itself is interactive, cli.py:233.)
+  - [ ] Token file present/readable.
+  - [ ] Have `install-hooks` end with "now run `rubberduck doctor` to verify" so
+    install closes the loop instead of "start a session and hope".
+- [ ] **Runtime nudge for a stale/untrusted Codex hook.** Even with `doctor`,
+  someone updates the hook and forgets to re-trust. Detect at runtime (a Codex
+  session started but its hook never reported / hash mismatch) and show a
+  dashboard banner: "Codex hook needs re-trusting — sessions won't appear until
+  you do." Turns a silent miss into a visible prompt.
+- [ ] **`curl | bash` one-liner installer.** Detect OS + package manager
+  (brew/apt/dnf), install `jq` + `pipx` + `rubberduckhq`, print next steps.
+  Should NOT auto-run `install-hooks`/`serve` (hooks touch agent config; Codex
+  needs interactive trust) — it tells the user, and ends by running `doctor`.
+  Needs a stable hosted URL + a readable "download then run" alternative.
+
 ## ✨ Features
 
 - [ ] **Approve / Deny from the dashboard (blocking, cross-harness).** Today the
