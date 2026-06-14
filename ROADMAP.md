@@ -33,10 +33,11 @@ Organized by type of work. `★` marks the current highest-leverage item.
     (greyed) with a Resume button; `POST /sessions/:key/resume` relaunches in the
     saved worktree, `claude --resume <session_id>` for claude-code. Delete
     double-confirms.
-  - [ ] **Phase 2 — Archive**: `archived` state + Archived filter +
-    archive/unarchive.
-  - [ ] **Phase 3 — Watched lifecycle**: PID/tty liveness sweep → auto-archive
-    when the terminal dies; hide Stop/Resume/Delete for watched sessions.
+  - [x] **Phase 2 — Archive**: `archived` state + Archived filter +
+    archive/unarchive (Unarchive returns it as stopped/resumable).
+  - [x] **Phase 3 — Watched lifecycle**: hook sends agent_pid; liveness sweep
+    archives a watched session when its agent process is gone, and auto-archives
+    launched tabs that stop pinging.
 - [ ] **Fork / continue with a different agent.** Switch agents mid-task (Claude
   low on tokens → continue in Codex). Design: `docs/fork-with-agent-design.md`.
   - [ ] Worktree fork: agent picker — new agent gets the code.
