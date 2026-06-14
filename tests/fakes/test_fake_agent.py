@@ -2,7 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"
+FAKE_AGENT = Path(__file__).parent / "fake_agent.py"
 
 
 def run_agent(*args: str) -> subprocess.CompletedProcess[str]:
