@@ -1,76 +1,79 @@
 # Rubberduck roadmap
 
-Living list of what's planned, decision-ready, and shipped. Most recent thinking
-at the top of each section.
+Organized by type of work. `★` marks the current highest-leverage item.
 
-## Next up
+## 🚀 Release & ops
 
-### Publish the unreleased work to PyPI  ← highest leverage
-`main` is far ahead of the published package. PyPI is on **0.2.0**; everything
-below in "Shipped (unreleased)" reaches no user until this happens. The security
-gate makes the next release at least **0.3.0** (and it's a breaking change for
-existing installs — old hook scripts get 401'd until `install-hooks` is re-run,
-so the changelog must say so).
+- ★ **Publish to PyPI (0.3.0).** `main` is far ahead of the published 0.2.0;
+  nothing in "Shipped (unreleased)" reaches users until this ships. The security
+  gate makes it a breaking change — old hook scripts get 401'd until
+  `install-hooks` is re-run, so the changelog must say so.
+  - [ ] Bump 0.2.0 → 0.3.0 (pyproject.toml + `__init__.py`).
+  - [ ] `scripts/build_package.sh` (rebuild dashboard, bundle, build wheel).
+  - [ ] `twine upload` (PyPI token in ~/.pypirc).
+  - [ ] Changelog: re-run `install-hooks` after upgrade (token gate).
 
-- [ ] Bump version (0.2.0 → 0.3.0) in pyproject.toml + `__init__.py`.
-- [ ] `scripts/build_package.sh` (rebuilds dashboard, bundles it, builds wheel).
-- [ ] `twine upload` (needs the PyPI token in ~/.pypirc).
-- [ ] Changelog note: re-run `install-hooks` after upgrading (token gate).
+## 🐛 Code fixes
 
-### Test automation (decision-ready — research done)
-See `docs/automating-tests-research.md` and `docs/manual-test-cases.md`.
-~50–55 of ~70 manual cases are automatable; ~15 stay manual (Codex trust
-prompt, reboots, real-LLM summary quality).
+- [ ] **Worktree-test flakiness under concurrent git** — the git tests shell out
+  to real git; they collided with git activity once during a hook run. The
+  GIT_* env leak is fixed; watch for residual lock races.
+- [ ] **`serve` doesn't hot-reload** — code/dashboard changes need a manual
+  restart. At minimum document it; consider a `--reload` dev flag.
 
-- [ ] Extend the **pytest runtime suite** first — most cases are API +
-  filesystem assertions with the fake agent + headless launch. Cheapest,
-  most stable.
-- [ ] Add **Playwright** (`pytest-playwright`) only for genuinely UI-only flows:
-  pulse click-to-expand, collapse forks, notes Save state, filter toggles,
-  drawer tabs. Share the existing fixtures/server.
-- [ ] Keep `docs/manual-test-cases.md` for what can't be automated.
+## ✨ Features
 
-## Planned
+- [ ] **Fork / continue with a different agent.** Switch agents mid-task (Claude
+  low on tokens → continue in Codex). Design: `docs/fork-with-agent-design.md`.
+  - [ ] Worktree fork: agent picker — new agent gets the code.
+  - [ ] Conversation fork: generalize beyond Claude (each runtime declares its
+    resume command; all three support native resume).
+  - [ ] Cross-agent handoff: worktree + new agent seeded with a handoff summary
+    from the checkpoint, distilling the agent's *actual responses* (now captured).
+- [ ] **Discoverability**: `serve` startup hint when no agent hooks are installed.
 
-### Fork / continue with a different agent
-Switch agents mid-task (e.g. Claude runs low on tokens → continue in Codex).
-Design: `docs/fork-with-agent-design.md`.
+## 🏗️ Architecture
 
-- [ ] Worktree fork: agent picker (Claude/Codex/Copilot/Custom) — new agent
-  gets the code.
-- [ ] Conversation fork: generalize beyond Claude. Each runtime declares its
-  resume command (`claude --resume --fork-session`, `codex resume <id>`,
-  `copilot --resume=<id>`). All three support native resume.
-- [ ] Cross-agent handoff: worktree + new agent seeded with a handoff summary
-  built from the (now richer) checkpoint.
-- [ ] Richer handoff: distill the agent's *actual responses* (now captured) into
-  the handoff brief, not just prompts/commands.
+- [ ] **Windows support (deferred).** Native needs ConPTY (pywinpty), Windows
+  Terminal launching, and a tmux replacement for persistence — a real project,
+  not a patch. Recommended path is **WSL2** (everything works as-is under Linux).
+- [x] Unified Harness adapter (one contract per agent) + central registry.
+- [x] Role-based package layout.
 
-### Discoverability
-- [ ] `serve` startup hint when no agent hooks are installed.
+## ✅ Testing
 
-### Windows support (deferred)
-Native Windows needs ConPTY (pywinpty), Windows Terminal launching, and a
-tmux replacement for session persistence — a real project, not a patch.
-Recommended path is **WSL2** (Linux under the hood, everything works as-is).
+- [ ] **Frontend unit tests (vitest).** There is no JS test runner today, so the
+  event-stream reducer, `applyEvent`, `viewFromPersisted`, and the client
+  tombstone logic can only be tested through Playwright (slow, indirect). Add
+  vitest + tests for the pure frontend logic — this is what would let us prove a
+  fix *fails without the fix* (the ghost-session fix could only be validated by
+  reading the reducer because there's no unit harness).
+- [ ] **More UI specs** for UI-only flows not yet covered: HITL approve/deny,
+  pulse click-to-expand, collapse forks, drawer tabs (timeline/diff/notes).
+- [ ] Extend the **pytest runtime suite** for any API behavior still only
+  covered manually. See `docs/automating-tests-research.md`,
+  `docs/manual-test-cases.md`, `docs/test-coverage.md`.
+- [x] 3-layer pre-commit gate (`scripts/check.sh`) + coverage doc.
+- [x] Playwright E2E: new-session, delete, stop, checkpoint, fork, snapshot,
+  deleted-stays-gone.
 
 ## Shipped (unreleased — on main, not yet on PyPI)
 - Three-panel dashboard (Agents / HITL "Needs human" / Pulse).
 - Security: localhost token + same-origin gate (CSRF/injection hardening).
-- Multi-agent hooks: `install-hooks --agent {claude-code,codex,copilot}`,
-  with the Codex `/hooks` trust step surfaced.
-- Watched vs launched sessions, with a robust sticky `launched` flag + badge.
+- Multi-agent hooks: `install-hooks --agent {claude-code,codex,copilot}`, with
+  the Codex `/hooks` trust step surfaced.
+- Watched vs launched sessions, with a robust sticky `launched` flag + badge;
+  deleted sessions can't be resurrected by their own streaming events.
 - Git is opt-in: run-in-place vs worktree, base-branch picker, promote later.
 - Fork merged into one action (worktree / promote / conversation).
-- New-session agent picker (Claude/Codex/Copilot/Custom).
-- Pulse shows the actual command; click a row to expand full detail inline.
-- **High-quality checkpoints**: capture human prompts + commands + files AND
-  the agent's own responses (read from each harness's transcript:
-  Claude/Codex JSONL, Copilot SQLite); summaries work by default via an
-  auto-detected CLI agent (`claude -p` / `codex exec` / `copilot -p`).
-- Role-based package layout; tests mirror the source layout.
-- README overhaul (features, per-agent setup, dashboard screenshot).
-- Error-handling fixes: fail-closed delete guard, surfaced task crashes.
+- New-session agent picker; pulse shows the command + click-to-expand.
+- High-quality checkpoints: human prompts + commands + files + the agent's own
+  responses (per-harness transcript: Claude/Codex JSONL, Copilot SQLite);
+  summaries by default via an auto-detected CLI agent.
+- Unified Harness adapter + registry; role-based package + test layout.
+- README overhaul; error-handling fixes (fail-closed delete guard).
+- Three dashboard bugs fixed (dashboard_dir path, origin allowlist port, delete
+  auth token) — all caught by the new E2E tests.
 
 ## Shipped (released)
 - 0.2.0 and earlier: core orchestrator, watched/launched sessions, worktrees,
