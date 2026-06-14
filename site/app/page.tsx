@@ -157,9 +157,11 @@ rubberduck install-hooks --global
 rubberduck serve`}
             </pre>
             <p className="note">
-              Requires Python 3.11+. No pipx? <code>brew install pipx</code>.
-              Then open <code>http://localhost:4200</code> and start your agent
-              — sessions appear on their own.
+              Requires Python 3.11+ — no other Python dependencies. Then open{" "}
+              <code>http://localhost:4200</code> and start your agent; sessions
+              appear on their own. To watch agents you start yourself, the hook
+              needs <code>jq</code> (<code>brew install jq</code>) and a
+              one-time <code>rubberduck install-hooks --global</code>.
             </p>
           </div>
         </section>
@@ -169,10 +171,7 @@ rubberduck serve`}
       <div className="container">
         <section className="cta" style={{ border: "none" }}>
           <h2>Let&apos;s talk.</h2>
-          <p>
-            RubberDuckHQ is in active development. If you want to catch up, you
-            can reach out to me.
-          </p>
+          <p>RubberDuckHQ is in active development.</p>
           <a
             href="https://utsava.xyz"
             target="_blank"
@@ -191,7 +190,7 @@ rubberduck serve`}
             <Duck size={22} />
             <span>RubberDuckHQ</span>
           </div>
-          <span>Runs on localhost · Your code stays yours</span>
+          <span>Your code stays yours</span>
         </footer>
       </div>
     </>

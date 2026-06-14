@@ -21,17 +21,44 @@ Works with **Claude Code · Codex · GitHub Copilot CLI · any CLI agent**
 ## Install
 
 ```sh
-pipx install rubberduckhq
+pipx install rubberduckhq        # pipx keeps it isolated; `pip install` works too
+rubberduck serve                 # run the server + dashboard at :4200
 ```
 
-Requires Python 3.11+. Then, once:
+Requires Python 3.11+. The package has **no Python dependencies** — the
+dashboard and hook script ship inside it. Open **http://localhost:4200**.
 
-```sh
-rubberduck install-hooks --global   # wire your agent to report to Rubberduck
-rubberduck serve                    # run the server + dashboard at :4200
-```
+That alone gets you the dashboard and lets you launch agents from it. (Use
+`pipx`, a venv, or `--user` — modern macOS/Linux block `pip install` into the
+system Python.)
 
-Open **http://localhost:4200** and start your agent — sessions appear on their own.
+### To watch agents you start yourself
+
+Watching a session you started in your own terminal needs two more things:
+
+1. **System tools the hook uses** — `jq` and `curl` (curl is usually already
+   present):
+
+   ```sh
+   brew install jq            # macOS;  apt install jq / dnf install jq on Linux
+   ```
+
+2. **Wire the agent's hooks**, then start a fresh session:
+
+   ```sh
+   rubberduck install-hooks --global --agent claude-code   # or codex, copilot
+   ```
+
+   Start the agent normally — its sessions now appear in the dashboard.
+
+**Codex needs one extra, one-time step:** Codex won't run a hook until you
+*trust* it. After `install-hooks --agent codex`, start `codex`, run **`/hooks`**,
+and trust the Rubberduck hook. (Trust is keyed to the hook script's hash, so
+re-trust if Rubberduck updates it. Claude Code and Copilot need no trust step.)
+
+> Note: launching agents into a terminal, "jump to terminal", and answering
+> prompts by sending keys to a tab use AppleScript and are **macOS-only**. The
+> dashboard and watching work on any platform.
 
 ## What it does
 

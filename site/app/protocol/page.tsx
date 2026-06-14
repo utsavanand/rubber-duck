@@ -231,7 +231,7 @@ export default function Protocol() {
             <Duck size={22} />
             <span>RubberDuckHQ</span>
           </Link>
-          <span>Runs on localhost · Your code stays yours</span>
+          <span>Your code stays yours</span>
         </footer>
       </div>
     </>
