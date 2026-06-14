@@ -351,6 +351,20 @@ class Server:
     async def _recent(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"events": self.bus.recent()})
 
+    def _init_events(self) -> list[dict[str, object]]:
+        """Events for a stream's init replay, minus any whose session has since
+        been deleted. The ring buffer can still hold a deleted session's
+        SessionStart (it was published before the delete), and replaying it would
+        resurrect the row on a fresh page load — its tombstone Set starts empty,
+        so it can't filter the event out client-side."""
+        return [
+            e
+            for e in self.bus.recent()
+            if not self.history.is_tombstoned(
+                str(e.get("session_key") or e.get("session_id") or "")
+            )
+        ]
+
     async def _session_events(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         """A session's own events from the durable store, oldest first — for the
         detail-drawer timeline. (The /events ring buffer only holds the last 100
@@ -1059,7 +1073,7 @@ class Server:
             b"Connection: keep-alive\r\n" + f"{SELF_PROBE_HEADER}: 1\r\n\r\n".encode()
         )
         await writer.drain()
-        _write_sse(writer, {"type": "init", "events": self.bus.recent()})
+        _write_sse(writer, {"type": "init", "events": self._init_events()})
         await writer.drain()
 
         subscription = self.bus.subscribe()
@@ -1102,7 +1116,7 @@ class Server:
             return
         writer.write(handshake_response(key))
         await writer.drain()
-        writer.write(encode_text_frame(json.dumps({"type": "init", "events": self.bus.recent()})))
+        writer.write(encode_text_frame(json.dumps({"type": "init", "events": self._init_events()})))
         await writer.drain()
 
         subscription = self.bus.subscribe()

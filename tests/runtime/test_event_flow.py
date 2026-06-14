@@ -93,6 +93,42 @@ def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
     assert ("ghost", "SessionStart") in keys_types  # revived
 
 
+def test_stream_init_omits_deleted_session(tmp_path: Path) -> None:
+    """A session's SessionStart can sit in the ring buffer when the session is
+    later deleted. The /stream init replay must not include it — otherwise a
+    fresh page load (empty client tombstone Set) re-creates the deleted row."""
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+
+    async def scenario() -> dict[str, object]:
+        srv = Server(history=store)
+        server = await asyncio.start_server(srv.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            # Start two sessions — both land in the ring buffer.
+            await asyncio.to_thread(
+                _post_event, port, {"event_type": "SessionStart", "session_key": "keep"}
+            )
+            await asyncio.to_thread(
+                _post_event, port, {"event_type": "SessionStart", "session_key": "gone"}
+            )
+            # Delete one (tombstones it) — but its SessionStart stays in the buffer.
+            store.delete_session("gone")
+
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(b"GET /stream HTTP/1.1\r\nHost: x\r\n\r\n")
+            await writer.drain()
+            init = await _read_sse_frame(reader)
+            writer.close()
+        return init
+
+    init = asyncio.run(scenario())
+    keys = {e.get("session_key") for e in init["events"]}  # type: ignore[union-attr]
+    assert "keep" in keys
+    assert "gone" not in keys  # the deleted session must not replay
+
+
 def test_root_carries_self_probe_header() -> None:
     async def scenario() -> str:
         server = await asyncio.start_server(Server().handle, "127.0.0.1", 0)
