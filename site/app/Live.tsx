@@ -258,56 +258,110 @@ export function Walkthrough() {
 
   const at = (s: Step) => STEPS.indexOf(step) >= STEPS.indexOf(s);
 
+  // Modal is up while choosing; on "landed" it closes so the new row + toast
+  // become the focus.
+  const modalOpen = step === "agent" || step === "folder";
+
   return (
     <div className="walk">
-      <div className="walk-screen">
-        <div className="walk-bar">
-          <span className="dot" />
-          <span className="dot" />
-          <span className="dot" />
-          <span className="walk-url">localhost:4200</span>
+      {/* the real dark dashboard, as the backdrop */}
+      <div className={`dash walk-dash ${modalOpen ? "dimmed" : ""}`}>
+        <div className="dash-top">
+          <div className="dash-brand">
+            <Duck size={18} />
+            <span>RubberDuckHQ</span>
+            <span className="live-dot" />
+            <span className="live-label">Live</span>
+          </div>
+          <div className="dash-actions">
+            <span className="dbtn">Compare</span>
+            <span className="dbtn">Snapshots</span>
+            <span
+              className={`dbtn dbtn-primary ${step === "click" ? "press" : ""}`}
+            >
+              New session
+            </span>
+          </div>
         </div>
-        <div className="walk-body">
-          <button className={`walk-new ${step === "click" ? "pressed" : ""}`}>
-            + New session
+        <div className="dash-grid walk-grid">
+          <div className="dash-col">
+            <div className="col-head">Agents</div>
+            {/* the new session slides in at the top when it lands */}
+            <div
+              className={`arow walk-newrow ${step === "landed" ? "in" : ""}`}
+            >
+              <div className="arow-main">
+                <div className="arow-name">checkout-service</div>
+                <div className="arow-meta">codex · just now</div>
+              </div>
+              <div className="arow-right">
+                <span className="arow-badge">WATCHED</span>
+                <span className="arow-state st-busy">
+                  <span className="dot-busy" /> BUSY
+                </span>
+              </div>
+            </div>
+            <AgentRow
+              name="api-refactor"
+              meta="checkout-service · 31 ev"
+              badge="WATCHED"
+              state="busy"
+            />
+            <AgentRow
+              name="release-notes"
+              meta="docs · 9 ev"
+              badge="LAUNCHED"
+              state="idle"
+            />
+          </div>
+          <div className="dash-col">
+            <div className="col-head">Needs human</div>
+            <Hitl
+              name="auth-migration"
+              cmd="psql -c 'DROP TABLE refunds_tmp'"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* the New session modal, floating over the dashboard */}
+      <div className={`walk-overlay ${modalOpen ? "show" : ""}`}>
+        <div className="walk-modal">
+          <div className="walk-modal-head">New session</div>
+
+          <div className="walk-field">
+            <span className="walk-label">Agent</span>
+            <div className="walk-pills">
+              {["Claude Code", "Codex", "Copilot"].map((a) => (
+                <span
+                  key={a}
+                  className={`walk-pill ${
+                    at("agent") && a === "Codex" ? "sel" : ""
+                  }`}
+                >
+                  {a}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className={`walk-field ${at("folder") ? "" : "dim"}`}>
+            <span className="walk-label">Folder</span>
+            <div className={`walk-folder ${at("folder") ? "sel" : ""}`}>
+              📁 ~/code/checkout-service
+            </div>
+          </div>
+
+          <button className={`walk-launch ${at("folder") ? "ready" : ""}`}>
+            Launch
           </button>
-
-          <div className={`walk-modal ${step === "click" ? "hidden" : ""}`}>
-            <div className="walk-modal-head">New session</div>
-
-            <div className="walk-field">
-              <span className="walk-label">Agent</span>
-              <div className="walk-pills">
-                {["Claude Code", "Codex", "Copilot"].map((a) => (
-                  <span
-                    key={a}
-                    className={`walk-pill ${
-                      at("agent") && a === "Codex" ? "sel" : ""
-                    }`}
-                  >
-                    {a}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className={`walk-field ${at("folder") ? "" : "dim"}`}>
-              <span className="walk-label">Folder</span>
-              <div className={`walk-folder ${at("folder") ? "sel" : ""}`}>
-                📁 ~/code/checkout-service
-              </div>
-            </div>
-
-            <button className={`walk-launch ${at("folder") ? "ready" : ""}`}>
-              Launch
-            </button>
-          </div>
-
-          <div className={`walk-toast ${step === "landed" ? "show" : ""}`}>
-            <span className="walk-check">✓</span> Added to RubberDuckHQ — now
-            watching <strong>checkout-service</strong>
-          </div>
         </div>
+      </div>
+
+      {/* confirmation toast, after it lands */}
+      <div className={`walk-toast ${step === "landed" ? "show" : ""}`}>
+        <span className="walk-check">✓</span> Added to RubberDuckHQ — now
+        watching <strong>checkout-service</strong>
       </div>
     </div>
   );
