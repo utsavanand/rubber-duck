@@ -188,6 +188,8 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/stop")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._focus_terminal(w, seg),
           **_mid("/sessions/", "/focus")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._resume(w, seg),
+          **_mid("/sessions/", "/resume")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._checkpoint(w, seg, b),
           **_mid("/sessions/", "/checkpoint")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._spotlight(w, seg),
@@ -713,8 +715,57 @@ class Server:
             row = self.history.session(session_key)
             if row is not None and row.get("heartbeat") and row.get("tty"):
                 stopped = close_terminal_by_tty(str(row["tty"]))
+        # Mark it stopped (resumable) rather than terminated — Stop is a pause; the
+        # worktree, branch, and conversation id are kept so Resume can continue it.
+        if stopped:
+            self.history.set_state(session_key, "stopped", now=int(time.time() * 1000))
+            self.approvals.drop_session(session_key)
         status = 200 if stopped else 404
         await _write_json(writer, status, {"stopped": stopped, "session_key": session_key})
+
+    async def _resume(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        """Resume a stopped/terminated launched session: relaunch its agent in the
+        saved worktree/cwd under the same session_key. For claude-code, continue
+        the conversation with `--resume <claude session_id>`; other runtimes
+        relaunch their command (fresh conversation if they have no native resume).
+        """
+        row = self.history.session(session_key)
+        if row is None:
+            await _write_json(writer, 404, {"error": f"no session {session_key}"})
+            return
+        if not row.get("heartbeat") and not row.get("launched"):
+            await _write_json(
+                writer, 400, {"error": "only Rubberduck-launched sessions can be resumed"}
+            )
+            return
+        cwd = str(row.get("worktree_path") or row.get("cwd") or ".")
+        runtime = row.get("runtime") or "generic"
+        argv = self._resume_argv(session_key, runtime, row)
+        title = row.get("name") or row.get("source_app")
+        opened = open_in_terminal(
+            cwd,
+            argv,
+            env={"RUBBERDUCK_SESSION_KEY": session_key},
+            heartbeat=(_heartbeat_url(), session_key),
+            title=str(title) if title else None,
+        )
+        if opened:
+            self.history.mark_heartbeat(session_key)
+            self.history.set_state(session_key, "busy")
+        await _write_json(
+            writer, 200, {"resumed": opened, "session_key": session_key, "command": argv}
+        )
+
+    def _resume_argv(self, key: str, runtime: str, row: dict[str, Any]) -> list[str]:
+        """The command to relaunch a session. claude-code continues its
+        conversation if we recorded a session id; everything else relaunches the
+        base agent binary (a fresh conversation — no native resume here yet)."""
+        if runtime == "claude-code":
+            sid = self.history.session_id_for(key)
+            return ["claude", "--resume", sid] if sid else ["claude"]
+        # The runtime name doubles as the default binary for the known agents.
+        binary = {"codex": "codex", "copilot": "copilot"}.get(runtime, "claude")
+        return [binary]
 
     async def _focus_terminal(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         """Bring this session's terminal tab to the front. Only works for a

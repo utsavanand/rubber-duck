@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-SessionState = Literal["idle", "busy", "waiting", "terminated"]
+SessionState = Literal["idle", "busy", "waiting", "terminated", "stopped"]
 
 
 @dataclass(frozen=True)

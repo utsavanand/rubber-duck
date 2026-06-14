@@ -20,9 +20,11 @@ test("delete removes the session from the UI and the backend", async ({
   const row = page.locator(".rd-row", { hasText: key });
   await expect(row).toBeVisible();
 
-  // Actions are hover-revealed; hover the row, then click its Delete.
+  // Actions are hover-revealed; hover the row. Delete double-confirms: the first
+  // click arms it ("Confirm delete?"), the second deletes.
   await row.hover();
   await row.getByRole("button", { name: "Delete" }).click();
+  await row.getByRole("button", { name: "Confirm delete?" }).click();
 
   // UI: the row disappears.
   await expect(row).toHaveCount(0);

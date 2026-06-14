@@ -85,6 +85,10 @@ def session_key_of(event: Event) -> str | None:
 def derive_state(event: Event, prev: SessionState | None) -> SessionState:
     if event.get("lifecycle") == "terminated" or event.get("event_type") == "SessionEnd":
         return "terminated"
+    # A user-stopped session stays stopped until it's explicitly resumed
+    # (a SessionStart) — a stray late hook event must not silently revive it.
+    if prev == "stopped" and event.get("event_type") != "SessionStart":
+        return "stopped"
     match event.get("event_type"):
         case "PermissionRequest" | "Notification":
             return "waiting"
@@ -302,6 +306,18 @@ class HistoryStore:
         that pings us). Only these are eligible for the killed-tab sweep."""
         self._conn.execute("UPDATE sessions SET heartbeat = 1 WHERE session_key = ?", (key,))
         self._conn.commit()
+
+    def set_state(self, key: str, state: str, *, now: int | None = None) -> bool:
+        """Set a session's state directly — for an explicit user action (Stop sets
+        'stopped', Resume clears it). Distinct from event-derived state. Returns
+        whether the session exists."""
+        ended = now if state in ("stopped", "terminated") else None
+        cur = self._conn.execute(
+            "UPDATE sessions SET state = ?, ended_at = ? WHERE session_key = ?",
+            (state, ended, key),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
     def touch(self, key: str, ts: int, *, tty: str | None = None) -> bool:
         """Record a liveness ping (and the tab's tty, so delete can close it).

@@ -13,6 +13,9 @@ export const IDLE_SETTLE_MS = 5 * 60_000;
 function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
   if (e.lifecycle === "terminated" || e.event_type === "SessionEnd")
     return "terminated";
+  // A stopped session stays stopped until it's explicitly resumed (SessionStart)
+  // — mirrors the server, so a stray late event can't revive it as busy.
+  if (prev === "stopped" && e.event_type !== "SessionStart") return "stopped";
   switch (e.event_type) {
     case "PermissionRequest":
     case "Notification":
@@ -35,7 +38,12 @@ function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
 
 /** The state to display/filter on, applying the post-Stop settling grace. */
 export function effectiveState(s: SessionView, now: number): SessionState {
-  if (s.state === "terminated" || s.state === "waiting") return s.state;
+  if (
+    s.state === "terminated" ||
+    s.state === "stopped" ||
+    s.state === "waiting"
+  )
+    return s.state;
   if (s.idleSince !== undefined && now - s.idleSince >= IDLE_SETTLE_MS)
     return "idle";
   return s.state;

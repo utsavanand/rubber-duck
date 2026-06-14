@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
 import { effectiveState } from "./sessions";
 import { SessionView } from "./types";
@@ -87,7 +87,10 @@ function TreeRow({
   const toast = useToast();
   const s = node.session;
   const effState = effectiveState(s, now);
-  const live = effState !== "terminated";
+  // "live" = actively running (Stop applies). stopped/terminated are not live but
+  // are resumable for a launched session (we still have its worktree + id).
+  const live = effState !== "terminated" && effState !== "stopped";
+  const resumable = !live && s.launched;
   const stateLabel = effState === "waiting" ? "waiting on you" : effState;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(s.notes ?? "");
@@ -96,6 +99,10 @@ function TreeRow({
   // Once stop/delete is in flight, grey the whole row's actions so a second
   // click can't fire a phantom request before the row is removed.
   const [ending, setEnding] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  // Delete is destructive (wipes history) — require a second, deliberate click:
+  // the button arms ("Confirm delete?") then deletes. Auto-disarms after 4s.
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const hasChildren = node.children.length > 0;
   // Branching is possible for any live session on a git repo (worktree fork or
   // promote) and for any live claude-code session (conversation fork, even with
@@ -127,6 +134,41 @@ function TreeRow({
     } catch (e) {
       toast(`Stop failed: ${(e as Error).message}`, "err");
       setEnding(false); // let the user retry
+    }
+  }
+
+  // Disarm the delete confirmation if the user doesn't follow through quickly.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const t = setTimeout(() => setConfirmDelete(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmDelete]);
+
+  async function requestDelete() {
+    if (ending) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true); // first click: arm
+      return;
+    }
+    setConfirmDelete(false);
+    setEnding(true);
+    const deleted = await onDelete(s.key);
+    if (!deleted) setEnding(false); // cancelled (e.g. unmerged confirm) or failed
+  }
+
+  async function resumeSession() {
+    if (resuming) return;
+    setResuming(true);
+    try {
+      const r = await api.resume(s.key);
+      toast(
+        r.resumed ? "Resumed" : "Couldn't open a terminal to resume",
+        r.resumed ? undefined : "err",
+      );
+    } catch (e) {
+      toast(`Resume failed: ${(e as Error).message}`, "err");
+    } finally {
+      setResuming(false);
     }
   }
 
@@ -245,6 +287,23 @@ function TreeRow({
               "Checkpoint"
             )}
           </button>
+          {resumable && (
+            <button
+              className="rd-btn rd-btn-sm rd-btn-primary"
+              title="Relaunch this session — continues the conversation for Claude Code"
+              disabled={resuming}
+              onClick={resumeSession}
+            >
+              {resuming ? (
+                <span className="rd-inline-spin">
+                  <span className="rd-spinner" />
+                  Resuming…
+                </span>
+              ) : (
+                "Resume"
+              )}
+            </button>
+          )}
           {live && (
             <button
               className="rd-btn rd-btn-sm rd-btn-danger"
@@ -262,16 +321,16 @@ function TreeRow({
             </button>
           )}
           <button
-            className="rd-btn rd-btn-sm rd-btn-danger"
-            title="Remove this session from history"
+            className={`rd-btn rd-btn-sm rd-btn-danger${confirmDelete ? " armed" : ""}`}
+            title={
+              confirmDelete
+                ? "Click again to permanently delete this session and its history"
+                : "Remove this session from history"
+            }
             disabled={ending}
-            onClick={async () => {
-              setEnding(true);
-              const deleted = await onDelete(s.key);
-              if (!deleted) setEnding(false); // cancelled or failed — re-enable
-            }}
+            onClick={requestDelete}
           >
-            Delete
+            {confirmDelete ? "Confirm delete?" : "Delete"}
           </button>
         </div>
         {notesOpen && (

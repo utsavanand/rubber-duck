@@ -605,6 +605,12 @@ code,
 .rd-btn-danger:hover:not(:disabled) {
   background: var(--danger-soft);
 }
+/* Armed delete (second click confirms) — solid red so it reads as committed. */
+.rd-btn-danger.armed {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
 .rd-btn-sm {
   padding: 5px 11px;
   font-size: 12.5px;
@@ -809,6 +815,12 @@ code,
   color: var(--term);
 }
 .st-terminated .dot {
+  background: var(--term);
+}
+.st-stopped {
+  color: var(--term);
+}
+.st-stopped .dot {
   background: var(--term);
 }
 .rd-card .line {

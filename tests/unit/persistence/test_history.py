@@ -26,6 +26,11 @@ def test_derive_state_transitions() -> None:
     assert derive_state({"lifecycle": "terminated"}, "busy") == "terminated"
     # Unknown event keeps the previous state.
     assert derive_state({"event_type": "Mystery"}, "waiting") == "waiting"
+    # A stopped session stays stopped until explicitly resumed (SessionStart);
+    # a stray late event can't revive it.
+    assert derive_state({"event_type": "PreToolUse"}, "stopped") == "stopped"
+    assert derive_state({"event_type": "Stop"}, "stopped") == "stopped"
+    assert derive_state({"event_type": "SessionStart"}, "stopped") == "busy"
 
 
 def test_session_row_accumulates_across_events(tmp_path: Path) -> None:

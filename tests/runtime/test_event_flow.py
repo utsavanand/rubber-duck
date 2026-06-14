@@ -124,6 +124,54 @@ def test_stop_closes_the_terminal_tab_for_a_launched_session(
     result = asyncio.run(scenario())
     assert result["stopped"] is True
     assert closed["tty"] == "/dev/ttys042"  # closed the right tab
+    # Stop is a resumable pause, not a terminate: state is now 'stopped'.
+    assert store.session("tabbed")["state"] == "stopped"
+
+
+def test_resume_relaunches_a_stopped_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Resume reopens a stopped launched session in its saved cwd. For
+    claude-code it continues the conversation with the recorded session id."""
+    import rubberduck.server as server_mod
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.record(
+        {
+            "event_type": "SessionStart",
+            "session_key": "resumable",
+            "session_id": "claude-sid-123",
+            "runtime": "claude-code",
+            "cwd": "/tmp/proj",
+            "_ts": 1,
+            "_id": "a",
+        }
+    )
+    store.mark_heartbeat("resumable")
+    store.set_state("resumable", "stopped", now=2)
+
+    opened: dict = {}
+
+    def fake_open(cwd, argv, **kw):  # type: ignore[no-untyped-def]
+        opened["cwd"] = cwd
+        opened["argv"] = argv
+        return True
+
+    monkeypatch.setattr(server_mod, "open_in_terminal", fake_open)
+
+    async def scenario() -> dict[str, object]:
+        server = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            body = await asyncio.to_thread(_post, port, "/sessions/resumable/resume")
+        return dict(json.loads(body))
+
+    result = asyncio.run(scenario())
+    assert result["resumed"] is True
+    assert opened["cwd"] == "/tmp/proj"
+    assert opened["argv"] == ["claude", "--resume", "claude-sid-123"]
+    assert store.session("resumable")["state"] == "busy"
 
 
 def test_stream_init_omits_deleted_session(tmp_path: Path) -> None:

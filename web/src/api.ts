@@ -115,6 +115,8 @@ export const api = {
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
   focusTerminal: (key: string) =>
     post<{ focused: boolean }>(`/sessions/${key}/focus`),
+  resume: (key: string) =>
+    post<{ resumed: boolean }>(`/sessions/${key}/resume`),
   remove: (key: string, force = false) =>
     fetch(`/sessions/${key}`, {
       method: "DELETE",

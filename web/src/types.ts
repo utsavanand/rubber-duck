@@ -21,7 +21,12 @@ export interface RubberduckEvent {
   runtime?: string;
 }
 
-export type SessionState = "idle" | "busy" | "waiting" | "terminated";
+export type SessionState =
+  | "idle"
+  | "busy"
+  | "waiting"
+  | "terminated"
+  | "stopped";
 
 export interface SessionView {
   key: string;

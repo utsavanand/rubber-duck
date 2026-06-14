@@ -17,9 +17,10 @@ test("a deleted watched session is not resurrected by its later events", async (
   const row = page.locator(".rd-row", { hasText: key });
   await expect(row).toBeVisible();
 
-  // Delete it from the UI.
+  // Delete it from the UI (double-confirm: arm, then confirm).
   await row.hover();
   await row.getByRole("button", { name: "Delete" }).click();
+  await row.getByRole("button", { name: "Confirm delete?" }).click();
   await expect(row).toHaveCount(0);
 
   // The watched session's hooks keep firing — simulate more events for the key.
