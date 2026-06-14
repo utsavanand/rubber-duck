@@ -90,3 +90,14 @@ def test_dropping_a_session_clears_its_approvals() -> None:
     reg.from_event(perm_event("s2"))
     reg.drop_session("s1")
     assert [a.session_key for a in reg.pending()] == ["s2"]
+
+
+def test_resolve_marks_decided_without_injection() -> None:
+    # The tty-answered path: PTY injection didn't land, the server sent the key
+    # to the terminal tab instead, then resolves the approval out of pending.
+    reg = ApprovalRegistry(inject=lambda _k, _key: False)
+    approval = reg.from_event(perm_event("s1"))
+    assert approval is not None
+    assert reg.decide(approval.id, "approve") is False  # no PTY to inject into
+    reg.resolve(approval.id, "approve")
+    assert reg.pending() == []

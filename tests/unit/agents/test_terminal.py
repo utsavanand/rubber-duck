@@ -3,10 +3,31 @@ from rubberduck.agents.terminal import (
     _close_iterm_by_tty,
     _close_terminal_by_tty,
     _with_heartbeat,
+    answer_prompt_by_tty,
     close_terminal_by_tty,
     focus_terminal_by_tty,
     open_in_terminal,
 )
+
+
+def test_answer_prompt_by_tty_sends_the_right_key(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(terminal, "_iterm_installed", lambda: False)
+    spawned: dict = {}
+    monkeypatch.setattr(terminal, "_spawn", lambda argv: spawned.update(argv=argv) or True)
+
+    assert answer_prompt_by_tty("/dev/ttys003", "approve", app="terminal") is True
+    assert "/dev/ttys003" in spawned["argv"][-1]
+    assert "key code 36" in spawned["argv"][-1]  # Return = accept the default Yes
+
+    assert answer_prompt_by_tty("/dev/ttys003", "deny", app="terminal") is True
+    assert "key code 53" in spawned["argv"][-1]  # Escape = cancel
+
+
+def test_answer_prompt_by_tty_rejects_bad_input(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+    assert answer_prompt_by_tty("", "approve") is False  # no tty
+    assert answer_prompt_by_tty("/dev/ttys003", "maybe") is False  # bad decision
 
 
 def test_focus_by_tty_runs_osascript_selecting_the_tab(monkeypatch) -> None:  # type: ignore[no-untyped-def]

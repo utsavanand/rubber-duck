@@ -105,6 +105,67 @@ def focus_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
     return _spawn(["osascript", "-e", _focus_terminal_by_tty(tty)])
 
 
+def answer_prompt_by_tty(tty: str, decision: str, *, app: str | None = None) -> bool:
+    """Answer an agent's terminal prompt by sending a keystroke to its tab —
+    'approve' sends Enter on the default (Yes) choice, 'deny' sends Escape. This
+    is how Rubberduck answers a permission/yes-no prompt for a session launched
+    into a real terminal tab (no PTY of our own to inject into). macOS only."""
+    if platform.system() != "Darwin" or not tty or decision not in ("approve", "deny"):
+        return False
+    choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
+    if choice == "iterm" and _iterm_installed():
+        return _spawn(["osascript", "-e", _answer_iterm_by_tty(tty, decision)])
+    return _spawn(["osascript", "-e", _answer_terminal_by_tty(tty, decision)])
+
+
+def _answer_iterm_by_tty(tty: str, decision: str) -> str:
+    esc = _esc(tty)
+    # iTerm writes to a specific session directly. Approve: send Enter (accept the
+    # default Yes). Deny: send ESC (char 27) with no newline to cancel.
+    send = (
+        "write text newline YES"
+        if decision == "approve"
+        else "write text (ASCII character 27) newline NO"
+    )
+    return (
+        'tell application "iTerm"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        "      repeat with s in sessions of t\n"
+        f'        if (tty of s as string) is "{esc}" then\n'
+        f"          tell s to {send}\n"
+        "          return\n"
+        "        end if\n"
+        "      end repeat\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell"
+    )
+
+
+def _answer_terminal_by_tty(tty: str, decision: str) -> str:
+    esc = _esc(tty)
+    # Terminal.app has no per-tab write API, so focus the tab and synthesize the
+    # key via System Events: Return accepts the default (Yes); Escape cancels.
+    keystroke = "key code 36" if decision == "approve" else "key code 53"  # Return / Escape
+    return (
+        'tell application "Terminal"\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        f'      if (tty of t as string) is "{esc}" then\n'
+        "        set selected of t to true\n"
+        "        set index of w to 1\n"
+        "        activate\n"
+        "        delay 0.15\n"
+        f"        tell application \"System Events\" to {keystroke}\n"
+        "        return\n"
+        "      end if\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "end tell"
+    )
+
+
 def _focus_terminal_by_tty(tty: str) -> str:
     esc = _esc(tty)
     return (

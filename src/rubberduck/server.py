@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Any
 
 from rubberduck.agents.terminal import (
+    answer_prompt_by_tty,
     available_terminals,
     close_terminal_by_tty,
     focus_terminal_by_tty,
@@ -978,6 +979,23 @@ class Server:
             return
         await _write_json(writer, 200, {"branches": names})
 
+    def _answer_tty(self, session_key: str) -> str | None:
+        """The terminal tty for a launched session we can send keystrokes to
+        (when we don't own its PTY). None for watched sessions we never tracked."""
+        row = self.history.session(session_key)
+        if row is None or not row.get("heartbeat"):
+            return None
+        tty = row.get("tty")
+        return str(tty) if tty else None
+
+    def _can_answer(self, session_key: str) -> bool:
+        # Answerable from the dashboard if we own its PTY (inject) OR it's a tab
+        # we launched and recorded a tty for (send keys via AppleScript).
+        return (
+            self.orchestrator.get(session_key) is not None
+            or self._answer_tty(session_key) is not None
+        )
+
     async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
         pending = [
             {
@@ -986,10 +1004,10 @@ class Server:
                 "tool_name": a.tool_name,
                 "detail": a.detail,
                 "created_at": a.created_at,
-                # Rubberduck can only answer sessions it launched (owns the PTY/
-                # tmux). Hook-watched sessions run in your own terminal, so the
-                # UI should not present Approve/Deny as actionable for them.
-                "reachable": self.orchestrator.get(a.session_key) is not None,
+                # Answerable from the dashboard if Rubberduck owns the PTY or
+                # launched the tab (we have its tty). A purely watched session
+                # in your own terminal can't be answered here.
+                "reachable": self._can_answer(a.session_key),
             }
             for a in self.approvals.pending()
         ]
@@ -1002,9 +1020,23 @@ class Server:
         if decision not in ("approve", "deny"):
             await _write_json(writer, 400, {"error": "decision must be approve or deny"})
             return
+        # First try injecting into a PTY we own; if there's no supervisor, fall
+        # back to sending the keystroke to the launched terminal tab by its tty.
         landed = self.approvals.decide(approval_id, decision)
+        if not landed:
+            key = self._approval_session_key(approval_id)
+            tty = self._answer_tty(key) if key else None
+            if tty and answer_prompt_by_tty(tty, decision):
+                self.approvals.resolve(approval_id, decision)
+                landed = True
         status = 200 if landed else 409
         await _write_json(writer, status, {"decided": landed, "decision": decision})
+
+    def _approval_session_key(self, approval_id: str) -> str | None:
+        for a in self.approvals.pending():
+            if a.id == approval_id:
+                return a.session_key
+        return None
 
     def _worktree_of(self, session_key: str) -> str | None:
         row = self.history.session(session_key)

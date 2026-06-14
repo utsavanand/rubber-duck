@@ -102,6 +102,13 @@ class ApprovalRegistry:
             approval.decided = decision
         return landed
 
+    def resolve(self, approval_id: str, decision: Decision) -> None:
+        """Mark an approval decided when the answer was delivered another way
+        (e.g. keystroke sent to the session's terminal tab, not its PTY)."""
+        approval = self._pending.get(approval_id)
+        if approval is not None:
+            approval.decided = decision
+
     def drop_session(self, session_key: str) -> None:
         """Remove a terminated session's approvals."""
         self._pending = {aid: a for aid, a in self._pending.items() if a.session_key != session_key}
