@@ -7,41 +7,50 @@ type AgentState = "busy" | "idle" | "wait";
 
 /* ── live dashboard recreation ── */
 
-const AGENTS: {
+interface Agent {
   name: string;
   meta: string;
-  badge: string;
+  origin: "watched" | "launched";
   state: AgentState;
-}[] = [
+  git?: boolean;
+  fork?: boolean;
+}
+
+const AGENTS: Agent[] = [
   {
     name: "api-refactor",
-    meta: "checkout-service · 31 ev",
-    badge: "WATCHED",
+    meta: "checkout-service · checkout-refactor · 31 ev",
+    origin: "watched",
     state: "busy",
+    git: true,
   },
   {
     name: "auth-migration",
-    meta: "checkout-service · 14 ev",
-    badge: "WATCHED",
+    meta: "checkout-service · auth-migration · 14 ev",
+    origin: "watched",
     state: "wait",
+    git: true,
   },
   {
     name: "release-notes",
     meta: "docs · 9 ev",
-    badge: "LAUNCHED",
+    origin: "launched",
     state: "idle",
   },
   {
     name: "search-feature",
-    meta: "forked · api-refactor · 6 ev",
-    badge: "WATCHED",
+    meta: "checkout-service · checkout-search · 6 ev",
+    origin: "watched",
     state: "busy",
+    git: true,
+    fork: true,
   },
   {
     name: "dep-upgrade",
-    meta: "checkout-service · 22 ev",
-    badge: "LAUNCHED",
+    meta: "checkout-service · dep-upgrade · 22 ev",
+    origin: "launched",
     state: "busy",
+    git: true,
   },
 ];
 
@@ -128,7 +137,8 @@ export function Dashboard() {
           <div className="tabs">
             <span className="tab tab-on">Active 4</span>
             <span className="tab">Idle 1</span>
-            <span className="tab">Watched 5</span>
+            <span className="tab">Watched 3</span>
+            <span className="tab">Launched 2</span>
             <span className="tab">All 5</span>
           </div>
           {AGENTS.map((a) => (
@@ -157,30 +167,29 @@ export function Dashboard() {
   );
 }
 
-function AgentRow({
-  name,
-  meta,
-  badge,
-  state,
-}: {
-  name: string;
-  meta: string;
-  badge: string;
-  state: AgentState;
-}) {
+function AgentRow({ name, meta, origin, state, git, fork }: Agent) {
   const label =
-    state === "busy" ? "BUSY" : state === "wait" ? "WAITING" : "IDLE";
+    state === "busy" ? "busy" : state === "wait" ? "waiting" : "idle";
   return (
     <div className="arow">
-      <div className="arow-main">
-        <div className="arow-name">{name}</div>
-        <div className="arow-meta">{meta}</div>
-      </div>
-      <div className="arow-right">
-        <span className="arow-badge">{badge}</span>
-        <span className={`arow-state st-${state}`}>
-          <span className={`dot-${state}`} /> {label}
+      <div className="arow-head">
+        <span className="arow-name">
+          {fork && <span className="arow-twig">⑂</span>}
+          {git && <span className="arow-git">⎇</span>}
+          {name}
+          <span className={`arow-origin ${origin}`}>{origin}</span>
+          <span className={`arow-state st-${state}`}>
+            <span className={`dot-${state}`} /> {label}
+          </span>
         </span>
+      </div>
+      <div className="arow-meta">{meta}</div>
+      <div className="arow-actions">
+        {git && <span className="rowbtn">Fork</span>}
+        <span className="rowbtn">Notes</span>
+        <span className="rowbtn">Checkpoint</span>
+        {state !== "idle" && <span className="rowbtn danger">Stop</span>}
+        <span className="rowbtn danger">Delete</span>
       </div>
     </div>
   );
@@ -293,21 +302,17 @@ export function Walkthrough() {
               </span>
               <span className="tab">Idle 1</span>
               <span className="tab">Watched {step === "landed" ? 6 : 5}</span>
+              <span className="tab">Launched 2</span>
               <span className="tab">All {step === "landed" ? 6 : 5}</span>
             </div>
-            <div
-              className={`arow walk-newrow ${step === "landed" ? "in" : ""}`}
-            >
-              <div className="arow-main">
-                <div className="arow-name">checkout-service</div>
-                <div className="arow-meta">codex · just now</div>
-              </div>
-              <div className="arow-right">
-                <span className="arow-badge">WATCHED</span>
-                <span className="arow-state st-busy">
-                  <span className="dot-busy" /> BUSY
-                </span>
-              </div>
+            <div className={`walk-newrow ${step === "landed" ? "in" : ""}`}>
+              <AgentRow
+                name="checkout-service"
+                meta="checkout-service · just now"
+                origin="watched"
+                state="busy"
+                git
+              />
             </div>
             {AGENTS.map((a) => (
               <AgentRow key={a.name} {...a} />
@@ -336,15 +341,18 @@ export function Walkthrough() {
         </div>
       </div>
 
-      {/* the New session modal, floating over the dashboard */}
+      {/* the New session modal, floating over the dashboard — matches the
+          real LaunchModal: agent pills, folder, run-mode, name, prompt, open-in */}
       <div className={`walk-overlay ${modalOpen ? "show" : ""}`}>
         <div className="walk-modal">
-          <div className="walk-modal-head">New session</div>
+          <div className="walk-modal-head">
+            New session <span className="walk-x">✕</span>
+          </div>
 
           <div className="walk-field">
             <span className="walk-label">Agent</span>
             <div className="walk-pills">
-              {["Claude Code", "Codex", "Copilot"].map((a) => (
+              {["Claude Code", "Codex", "Copilot", "Custom…"].map((a) => (
                 <span
                   key={a}
                   className={`walk-pill ${
@@ -358,15 +366,42 @@ export function Walkthrough() {
           </div>
 
           <div className={`walk-field ${at("folder") ? "" : "dim"}`}>
-            <span className="walk-label">Folder</span>
+            <span className="walk-label">Folder to work in</span>
             <div className={`walk-folder ${at("folder") ? "sel" : ""}`}>
-              📁 ~/code/checkout-service
+              <span className="mono">📁 ~/code/checkout-service</span>
+              <span className="walk-git-tag">git repo</span>
+              <span className="walk-change">Change</span>
             </div>
           </div>
 
-          <button className={`walk-launch ${at("folder") ? "ready" : ""}`}>
-            Launch
-          </button>
+          <div className={`walk-field ${at("folder") ? "" : "dim"}`}>
+            <span className="walk-label">How should this run?</span>
+            <label className="walk-radio on">
+              <span className="walk-dot checked" />
+              <span>
+                <strong>Run in place</strong> — work directly in the folder
+              </span>
+            </label>
+            <label className="walk-radio">
+              <span className="walk-dot" />
+              <span>
+                <strong>Isolated worktree</strong> — branch off into a separate
+                checkout
+              </span>
+            </label>
+          </div>
+
+          <div className={`walk-field ${at("folder") ? "" : "dim"}`}>
+            <span className="walk-label">Name (optional)</span>
+            <div className="walk-input">checkout fixes</div>
+          </div>
+
+          <div className="walk-footer">
+            <span className="walk-cancel">Cancel</span>
+            <span className={`walk-launch ${at("folder") ? "ready" : ""}`}>
+              Launch
+            </span>
+          </div>
         </div>
       </div>
 
