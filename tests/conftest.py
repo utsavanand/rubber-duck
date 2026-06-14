@@ -42,6 +42,24 @@ def _clean_git_env() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _no_real_terminal() -> Iterator[None]:
+    """Never open a real terminal window during tests. Any launch/fork path that
+    reaches open_in_terminal would otherwise spawn an iTerm/Terminal tab running
+    the test's fake agent and leave it behind. RUBBERDUCK_NO_TERMINAL makes
+    open_in_terminal a no-op (returns False); the session row is still recorded,
+    which is all the tests assert."""
+    prev = os.environ.get("RUBBERDUCK_NO_TERMINAL")
+    os.environ["RUBBERDUCK_NO_TERMINAL"] = "1"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("RUBBERDUCK_NO_TERMINAL", None)
+        else:
+            os.environ["RUBBERDUCK_NO_TERMINAL"] = prev
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _no_summarizer_autodetect() -> Iterator[None]:
     """Disable the summarizer's CLI-agent auto-detection in tests, so a
     checkpoint never shells out to a real claude/codex/copilot on the dev's

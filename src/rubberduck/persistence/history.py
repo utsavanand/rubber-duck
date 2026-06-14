@@ -83,12 +83,19 @@ def session_key_of(event: Event) -> str | None:
 
 
 def derive_state(event: Event, prev: SessionState | None) -> SessionState:
-    if event.get("lifecycle") == "terminated" or event.get("event_type") == "SessionEnd":
-        return "terminated"
-    # A user-stopped session stays stopped until it's explicitly resumed
-    # (a SessionStart) — a stray late hook event must not silently revive it.
-    if prev == "stopped" and event.get("event_type") != "SessionStart":
+    # An explicit lifecycle marker (server-initiated, e.g. the liveness sweep)
+    # sets the state directly: archived / stopped / terminated.
+    lifecycle = event.get("lifecycle")
+    if lifecycle == "archived":
+        return "archived"
+    if lifecycle == "stopped":
         return "stopped"
+    if lifecycle == "terminated" or event.get("event_type") == "SessionEnd":
+        return "terminated"
+    # A stopped or archived session stays put until it's explicitly resumed
+    # (a SessionStart) — a stray late hook event must not silently revive it.
+    if prev in ("stopped", "archived") and event.get("event_type") != "SessionStart":
+        return prev
     match event.get("event_type"):
         case "PermissionRequest" | "Notification":
             return "waiting"
@@ -132,6 +139,10 @@ _SESSIONS_COLUMNS = {
     "test": "INTEGER NOT NULL DEFAULT 0",
     "last_seen": "INTEGER",
     "tty": "TEXT",
+    # The agent process's pid (the hook's $PPID). For a watched session — which
+    # has no heartbeat — this is how the liveness sweep tells a still-running
+    # agent from one whose terminal was closed.
+    "agent_pid": "INTEGER",
 }
 
 
@@ -309,13 +320,25 @@ class HistoryStore:
 
     def set_state(self, key: str, state: str, *, now: int | None = None) -> bool:
         """Set a session's state directly — for an explicit user action (Stop sets
-        'stopped', Resume clears it). Distinct from event-derived state. Returns
-        whether the session exists."""
-        ended = now if state in ("stopped", "terminated") else None
-        cur = self._conn.execute(
-            "UPDATE sessions SET state = ?, ended_at = ? WHERE session_key = ?",
-            (state, ended, key),
-        )
+        'stopped', Resume sets 'busy', Archive sets 'archived'). Distinct from
+        event-derived state. Returns whether the session exists.
+
+        Stamps ended_at when a session ends; keeps the existing ended_at when
+        archiving an already-ended session; clears it when reviving (busy)."""
+        if state in ("stopped", "terminated"):
+            cur = self._conn.execute(
+                "UPDATE sessions SET state = ?, ended_at = ? WHERE session_key = ?",
+                (state, now, key),
+            )
+        elif state == "busy":
+            cur = self._conn.execute(
+                "UPDATE sessions SET state = ?, ended_at = NULL WHERE session_key = ?",
+                (state, key),
+            )
+        else:  # archived (and any other) — keep ended_at as-is
+            cur = self._conn.execute(
+                "UPDATE sessions SET state = ? WHERE session_key = ?", (state, key)
+            )
         self._conn.commit()
         return cur.rowcount > 0
 
@@ -329,24 +352,36 @@ class HistoryStore:
         self._conn.commit()
         return cur.rowcount > 0
 
+    # States we never sweep — the session is already at rest or put away.
+    _AT_REST = ("terminated", "stopped", "archived")
+
     def sweep_dead(self, now: int, *, stale_after_ms: int) -> list[str]:
-        """Terminate heartbeat-tracked sessions that stopped pinging (killed tab).
-        Returns the keys swept. Never touches hook-only/watched sessions, which
-        have no heartbeat and may be legitimately quiet for a long time."""
+        """Heartbeat-tracked (launched) sessions whose tab stopped pinging — the
+        tab is gone but the user didn't delete it. Returns their keys (the caller
+        publishes a lifecycle event to archive them; kept and resumable, not
+        wiped). Never includes watched sessions (no heartbeat); those go through
+        the PID sweep."""
         cutoff = now - stale_after_ms
+        placeholders = ", ".join("?" for _ in self._AT_REST)
         rows = self._conn.execute(
-            "SELECT session_key FROM sessions WHERE heartbeat = 1 AND state != 'terminated' "
-            "AND COALESCE(last_seen, started_at) < ?",
-            (cutoff,),
+            f"SELECT session_key FROM sessions WHERE heartbeat = 1 "
+            f"AND state NOT IN ({placeholders}) "
+            f"AND COALESCE(last_seen, started_at) < ?",
+            (*self._AT_REST, cutoff),
         ).fetchall()
-        keys = [r["session_key"] for r in rows]
-        for key in keys:
-            self._conn.execute(
-                "UPDATE sessions SET state = 'terminated', ended_at = ? WHERE session_key = ?",
-                (now, key),
-            )
-        self._conn.commit()
-        return keys
+        return [r["session_key"] for r in rows]
+
+    def live_watched(self) -> list[dict[str, Any]]:
+        """Watched (non-launched) sessions that are still considered running, with
+        their recorded agent pid — so the server can check whether the agent
+        process is actually alive and archive it if its terminal is gone."""
+        placeholders = ", ".join("?" for _ in self._AT_REST)
+        rows = self._conn.execute(
+            f"SELECT session_key, agent_pid FROM sessions WHERE launched = 0 "
+            f"AND state NOT IN ({placeholders}) AND agent_pid IS NOT NULL",
+            self._AT_REST,
+        ).fetchall()
+        return [{"session_key": r["session_key"], "agent_pid": r["agent_pid"]} for r in rows]
 
     def set_outcome(self, key: str, outcome: str) -> None:
         """Record a session's outcome summary (written when it ends)."""
@@ -391,8 +426,8 @@ class HistoryStore:
                 "(session_key, runtime, repo_path, worktree_path, branch, "
                 " parent_session_key, compare_group, state, source_app, cwd, "
                 " last_event_type, last_tool, event_count, started_at, updated_at, ended_at, "
-                " last_seen, launched, test) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)",
+                " last_seen, launched, test, agent_pid) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
@@ -412,6 +447,7 @@ class HistoryStore:
                     ts,
                     1 if event.get("launched") else 0,
                     1 if event.get("test") else 0,
+                    event.get("agent_pid"),
                 ),
             )
         else:
@@ -436,7 +472,8 @@ class HistoryStore:
                 # Sticky: only ever flips 0 -> 1, so a later hook event can't
                 # downgrade a launched session to watched.
                 "launched = MAX(launched, ?), "
-                "test = MAX(test, ?) "
+                "test = MAX(test, ?), "
+                "agent_pid = COALESCE(?, agent_pid) "
                 "WHERE session_key = ?",
                 (
                     event.get("runtime"),
@@ -454,6 +491,7 @@ class HistoryStore:
                     ts,
                     1 if event.get("launched") else 0,
                     1 if event.get("test") else 0,
+                    event.get("agent_pid"),
                     key,
                 ),
             )

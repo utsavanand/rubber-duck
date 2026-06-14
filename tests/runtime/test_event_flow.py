@@ -174,6 +174,55 @@ def test_resume_relaunches_a_stopped_session(
     assert store.session("resumable")["state"] == "busy"
 
 
+def test_archive_then_unarchive_round_trip(tmp_path: Path) -> None:
+    """Archive hides a session (keeps its history); unarchive brings it back as
+    a stopped (resumable) row."""
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.record({"event_type": "SessionStart", "session_key": "keep", "_ts": 1, "_id": "a"})
+
+    async def scenario() -> tuple[str, str]:
+        server = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            await asyncio.to_thread(_post, port, "/sessions/keep/archive")
+            after_archive = store.session("keep")["state"]
+            await asyncio.to_thread(_post, port, "/sessions/keep/unarchive")
+            after_unarchive = store.session("keep")["state"]
+        return after_archive, after_unarchive
+
+    archived, unarchived = asyncio.run(scenario())
+    assert archived == "archived"
+    assert unarchived == "stopped"  # back in view, resumable
+    assert store.session("keep") is not None  # history kept
+
+
+def test_watched_session_archived_when_its_agent_pid_dies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A watched session (no heartbeat) is auto-archived when its recorded agent
+    pid is no longer alive — its terminal is gone."""
+    import rubberduck.server as server_mod
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    # A watched (launched=0) session with a recorded agent pid.
+    store.record(
+        {"event_type": "SessionStart", "session_key": "w", "agent_pid": 99999, "_ts": 1, "_id": "a"}
+    )
+    srv = Server(history=store)
+    # Pretend the agent process is gone.
+    monkeypatch.setattr(server_mod, "_pid_alive", lambda pid: False)
+
+    # Run one sweep iteration's watched check directly.
+    for entry in store.live_watched():
+        if not server_mod._pid_alive(int(entry["agent_pid"])):
+            srv._archive_swept(str(entry["session_key"]))
+
+    assert store.session("w")["state"] == "archived"
+
+
 def test_stream_init_omits_deleted_session(tmp_path: Path) -> None:
     """A session's SessionStart can sit in the ring buffer when the session is
     later deleted. The /stream init replay must not include it — otherwise a

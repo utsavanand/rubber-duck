@@ -23,7 +23,7 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-type Filter = "active" | "idle" | "watched" | "launched" | "all";
+type Filter = "active" | "idle" | "watched" | "launched" | "archived" | "all";
 
 function Dashboard() {
   const { sessions, connected, recentEvents, removeSessions } =
@@ -92,27 +92,35 @@ function Dashboard() {
     return st === "busy" || st === "waiting";
   };
   const isIdle = (s: SessionView) => effectiveState(s, now) === "idle";
-  const activeCount = sessions.filter(isActive).length;
-  const idleCount = sessions.filter(isIdle).length;
-  const watchedCount = sessions.filter((s) => !s.launched).length;
-  const launchedCount = sessions.filter((s) => s.launched).length;
+  const isArchived = (s: SessionView) => effectiveState(s, now) === "archived";
+  // Archived sessions are put away — they only show under the Archived filter,
+  // never in the active/idle/watched/launched/all views.
+  const visible = sessions.filter((s) => !isArchived(s));
+  const activeCount = visible.filter(isActive).length;
+  const idleCount = visible.filter(isIdle).length;
+  const watchedCount = visible.filter((s) => !s.launched).length;
+  const launchedCount = visible.filter((s) => s.launched).length;
+  const archivedCount = sessions.filter(isArchived).length;
   const FILTERS: { key: Filter; label: string; count: number }[] = [
     { key: "active", label: "Active", count: activeCount },
     { key: "idle", label: "Idle", count: idleCount },
     { key: "watched", label: "Watched", count: watchedCount },
     { key: "launched", label: "Launched", count: launchedCount },
-    { key: "all", label: "All", count: sessions.length },
+    { key: "archived", label: "Archived", count: archivedCount },
+    { key: "all", label: "All", count: visible.length },
   ];
   const shown =
     filter === "active"
-      ? sessions.filter(isActive)
+      ? visible.filter(isActive)
       : filter === "idle"
-        ? sessions.filter(isIdle)
+        ? visible.filter(isIdle)
         : filter === "watched"
-          ? sessions.filter((s) => !s.launched)
+          ? visible.filter((s) => !s.launched)
           : filter === "launched"
-            ? sessions.filter((s) => s.launched)
-            : sessions;
+            ? visible.filter((s) => s.launched)
+            : filter === "archived"
+              ? sessions.filter(isArchived)
+              : visible;
   const hasTerminated = sessions.some((s) => s.state === "terminated");
 
   return (

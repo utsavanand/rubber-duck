@@ -33,7 +33,8 @@ if command -v jq >/dev/null 2>&1; then
   # Field names differ across agents: Claude/Codex use snake_case (session_id,
   # tool_name); Copilot uses camelCase (sessionId, toolName). Accept either.
   PAYLOAD=$(printf '%s' "$INPUT" | jq -c \
-    --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" --arg rt "$RUNTIME" '
+    --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" --arg rt "$RUNTIME" \
+    --argjson apid "$PPID" '
     {
       event_type: $etype,
       session_key: (if $skey == "" then null else $skey end),
@@ -43,7 +44,8 @@ if command -v jq >/dev/null 2>&1; then
       tool_name: (.tool_name // .toolName),
       tool_input: (.tool_input // .toolInput),
       prompt: .prompt,
-      runtime: $rt
+      runtime: $rt,
+      agent_pid: $apid
     } | with_entries(select(.value != null))' 2>/dev/null)
 fi
 
@@ -59,8 +61,8 @@ if [ -z "$PAYLOAD" ] || [ "$PAYLOAD" = "null" ]; then
   PROMPT_FIELD=""
   [ -n "$PROMPT" ] && PROMPT_FIELD=$(printf '"prompt":"%s",' "$PROMPT")
   [ -z "$SID" ] && SID=$(printf '%s' "$INPUT" | grep -o '"sessionId"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
-  PAYLOAD=$(printf '{"event_type":"%s",%s%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"%s"}' \
-    "$EVENT_TYPE" "$SKEY_FIELD" "$PROMPT_FIELD" "$SID" "$CWD" "$APP" "$TOOL" "$RUNTIME")
+  PAYLOAD=$(printf '{"event_type":"%s",%s%s"session_id":"%s","cwd":"%s","source_app":"%s","tool_name":"%s","runtime":"%s","agent_pid":%s}' \
+    "$EVENT_TYPE" "$SKEY_FIELD" "$PROMPT_FIELD" "$SID" "$CWD" "$APP" "$TOOL" "$RUNTIME" "$PPID")
 fi
 
 # The server writes a per-install secret to this file (0600). We read it and

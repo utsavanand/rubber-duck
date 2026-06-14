@@ -823,6 +823,12 @@ code,
 .st-stopped .dot {
   background: var(--term);
 }
+.st-archived {
+  color: var(--muted);
+}
+.st-archived .dot {
+  background: var(--muted);
+}
 .rd-card .line {
   font-size: 13px;
   color: var(--text-soft);

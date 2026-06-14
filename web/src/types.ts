@@ -26,7 +26,8 @@ export type SessionState =
   | "busy"
   | "waiting"
   | "terminated"
-  | "stopped";
+  | "stopped"
+  | "archived";
 
 export interface SessionView {
   key: string;

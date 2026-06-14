@@ -190,6 +190,10 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/focus")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._resume(w, seg),
           **_mid("/sessions/", "/resume")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._archive(w, seg),
+          **_mid("/sessions/", "/archive")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._unarchive(w, seg),
+          **_mid("/sessions/", "/unarchive")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._checkpoint(w, seg, b),
           **_mid("/sessions/", "/checkpoint")),
     Route("POST", "", lambda s, r, w, h, b, seg: s._spotlight(w, seg),
@@ -341,6 +345,14 @@ class Server:
         if not isinstance(raw, dict):
             await _write_json(writer, 400, {"error": "event must be a JSON object"})
             return
+        # agent_pid comes from an external hook ($PPID) and is later fed to
+        # os.kill in the liveness sweep — coerce to a positive int or drop it.
+        if "agent_pid" in raw:
+            try:
+                pid = int(raw["agent_pid"])
+                raw["agent_pid"] = pid if pid > 0 else None
+            except (TypeError, ValueError):
+                raw["agent_pid"] = None
         # A deleted (tombstoned) session whose hooks keep firing must not stream
         # phantom events — they'd rebuild a ghost row in the dashboard that the
         # backend has no record of (so checkpoint/stop/etc. 404). Drop them here,
@@ -717,11 +729,21 @@ class Server:
                 stopped = close_terminal_by_tty(str(row["tty"]))
         # Mark it stopped (resumable) rather than terminated — Stop is a pause; the
         # worktree, branch, and conversation id are kept so Resume can continue it.
+        # Publish so the change persists AND reaches connected dashboards over SSE.
         if stopped:
-            self.history.set_state(session_key, "stopped", now=int(time.time() * 1000))
+            self._set_lifecycle(session_key, "stopped")
             self.approvals.drop_session(session_key)
         status = 200 if stopped else 404
         await _write_json(writer, status, {"stopped": stopped, "session_key": session_key})
+
+    def _set_lifecycle(self, session_key: str, lifecycle: str) -> None:
+        """Publish a lifecycle event (stopped/archived) for a session. The bus
+        sink persists it via history.record (derive_state honors the marker) and
+        the SSE stream pushes it to dashboards, so a manual stop/archive updates
+        the UI live instead of only on reload."""
+        self.bus.publish(
+            {"event_type": "Notification", "session_key": session_key, "lifecycle": lifecycle}
+        )
 
     async def _resume(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         """Resume a stopped/terminated launched session: relaunch its agent in the
@@ -766,6 +788,31 @@ class Server:
         # The runtime name doubles as the default binary for the known agents.
         binary = {"codex": "codex", "copilot": "copilot"}.get(runtime, "claude")
         return [binary]
+
+    async def _archive(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        """Put a session away to declutter — keep all its history but hide it
+        behind the Archived filter. Stops it first if it's still live (closing
+        its tab), so archive is also "I'm done, get it out of the way"."""
+        row = self.history.session(session_key)
+        if row is None:
+            await _write_json(writer, 404, {"error": f"no session {session_key}"})
+            return
+        await self.orchestrator.stop(session_key)
+        if row.get("heartbeat") and row.get("tty"):
+            close_terminal_by_tty(str(row["tty"]))
+        self._set_lifecycle(session_key, "archived")
+        self.approvals.drop_session(session_key)
+        await _write_json(writer, 200, {"archived": True, "session_key": session_key})
+
+    async def _unarchive(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        """Bring an archived session back into view as a stopped (resumable) row."""
+        if self.history.session(session_key) is None:
+            await _write_json(writer, 404, {"unarchived": False, "session_key": session_key})
+            return
+        self._set_lifecycle(session_key, "stopped")
+        await _write_json(
+            writer, 200, {"unarchived": True, "session_key": session_key}
+        )
 
     async def _focus_terminal(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         """Bring this session's terminal tab to the front. Only works for a
@@ -1256,15 +1303,37 @@ class Server:
                 sweeper.cancel()
 
     async def _sweep_dead_loop(self) -> None:
-        """Mark heartbeat-tracked sessions dead when their tab stops pinging.
-        A tab pings every 20s; we declare it dead after 60s of silence."""
+        """Auto-archive sessions whose terminal is gone. Launched tabs ping every
+        20s; we archive after 60s of silence. Watched sessions (no heartbeat) are
+        archived when their recorded agent pid is no longer alive. Archived keeps
+        everything (resumable) — it's not delete."""
         while True:
             await asyncio.sleep(20)
-            dead = self.history.sweep_dead(int(time.time() * 1000), stale_after_ms=60_000)
-            for key in dead:
-                self.bus.publish(
-                    {"event_type": "SessionEnd", "session_key": key, "lifecycle": "terminated"}
-                )
+            now = int(time.time() * 1000)
+            for key in self.history.sweep_dead(now, stale_after_ms=60_000):
+                self._archive_swept(key)
+            for w in self.history.live_watched():
+                if not _pid_alive(int(w["agent_pid"])):
+                    self._archive_swept(str(w["session_key"]))
+
+    def _archive_swept(self, key: str) -> None:
+        """Archive a session whose terminal is gone (auto-sweep)."""
+        self._set_lifecycle(key, "archived")
+        self.approvals.drop_session(key)
+
+
+def _pid_alive(pid: int) -> bool:
+    """Whether a process is still running. `kill(pid, 0)` doesn't signal; it just
+    checks existence/permission. ESRCH = gone; EPERM = alive but not ours."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _heartbeat_url() -> str:

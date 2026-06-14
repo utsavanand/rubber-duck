@@ -87,10 +87,12 @@ function TreeRow({
   const toast = useToast();
   const s = node.session;
   const effState = effectiveState(s, now);
+  const archived = effState === "archived";
   // "live" = actively running (Stop applies). stopped/terminated are not live but
   // are resumable for a launched session (we still have its worktree + id).
-  const live = effState !== "terminated" && effState !== "stopped";
-  const resumable = !live && s.launched;
+  const live = effState !== "terminated" && effState !== "stopped" && !archived;
+  const resumable =
+    (effState === "stopped" || effState === "terminated") && s.launched;
   const stateLabel = effState === "waiting" ? "waiting on you" : effState;
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(s.notes ?? "");
@@ -100,6 +102,7 @@ function TreeRow({
   // click can't fire a phantom request before the row is removed.
   const [ending, setEnding] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   // Delete is destructive (wipes history) — require a second, deliberate click:
   // the button arms ("Confirm delete?") then deletes. Auto-disarms after 4s.
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -154,6 +157,31 @@ function TreeRow({
     setEnding(true);
     const deleted = await onDelete(s.key);
     if (!deleted) setEnding(false); // cancelled (e.g. unmerged confirm) or failed
+  }
+
+  async function archiveSession() {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      await api.archive(s.key);
+      toast("Archived");
+      // The archive event removes it from this view; no need to un-set.
+    } catch (e) {
+      toast(`Archive failed: ${(e as Error).message}`, "err");
+      setArchiving(false);
+    }
+  }
+
+  async function unarchiveSession() {
+    if (archiving) return;
+    setArchiving(true);
+    try {
+      await api.unarchive(s.key);
+      toast("Unarchived");
+    } catch (e) {
+      toast(`Unarchive failed: ${(e as Error).message}`, "err");
+      setArchiving(false);
+    }
   }
 
   async function resumeSession() {
@@ -253,10 +281,28 @@ function TreeRow({
           {s.eventCount} ev
         </div>
         <div className="rd-row-actions">
+          {/* An archived session is at rest: only bring-it-back and delete. */}
+          {archived && (
+            <button
+              className="rd-btn rd-btn-sm rd-btn-primary"
+              title="Bring this session back into view (as stopped — resume to continue)"
+              disabled={archiving}
+              onClick={unarchiveSession}
+            >
+              {archiving ? (
+                <span className="rd-inline-spin">
+                  <span className="rd-spinner" />
+                  Unarchiving…
+                </span>
+              ) : (
+                "Unarchive"
+              )}
+            </button>
+          )}
           {/* One branching action: the modal offers a git worktree fork (or
               promotes an in-place session onto a branch) and, for claude-code,
               a conversation-only fork. */}
-          {canBranch && (
+          {!archived && canBranch && (
             <button
               className="rd-btn rd-btn-sm rd-btn-ghost"
               title="Fork this session — into a git worktree, or fork the conversation"
@@ -265,28 +311,32 @@ function TreeRow({
               Fork
             </button>
           )}
-          <button
-            className={`rd-btn rd-btn-sm rd-btn-ghost${notesOpen ? " active" : ""}`}
-            title="Personal notes for this session (local only)"
-            onClick={() => setNotesOpen((o) => !o)}
-          >
-            Notes{s.notes ? " •" : ""}
-          </button>
-          <button
-            className="rd-btn rd-btn-sm rd-btn-ghost"
-            title="Record what was done so far"
-            disabled={capturing}
-            onClick={captureCheckpoint}
-          >
-            {capturing ? (
-              <span className="rd-inline-spin">
-                <span className="rd-spinner" />
-                Capturing…
-              </span>
-            ) : (
-              "Checkpoint"
-            )}
-          </button>
+          {!archived && (
+            <button
+              className={`rd-btn rd-btn-sm rd-btn-ghost${notesOpen ? " active" : ""}`}
+              title="Personal notes for this session (local only)"
+              onClick={() => setNotesOpen((o) => !o)}
+            >
+              Notes{s.notes ? " •" : ""}
+            </button>
+          )}
+          {!archived && (
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              title="Record what was done so far"
+              disabled={capturing}
+              onClick={captureCheckpoint}
+            >
+              {capturing ? (
+                <span className="rd-inline-spin">
+                  <span className="rd-spinner" />
+                  Capturing…
+                </span>
+              ) : (
+                "Checkpoint"
+              )}
+            </button>
+          )}
           {resumable && (
             <button
               className="rd-btn rd-btn-sm rd-btn-primary"
@@ -317,6 +367,23 @@ function TreeRow({
                 </span>
               ) : (
                 "Stop"
+              )}
+            </button>
+          )}
+          {!archived && (
+            <button
+              className="rd-btn rd-btn-sm rd-btn-ghost"
+              title="Put this session away — keeps its history, hides it under Archived"
+              disabled={archiving}
+              onClick={archiveSession}
+            >
+              {archiving ? (
+                <span className="rd-inline-spin">
+                  <span className="rd-spinner" />
+                  Archiving…
+                </span>
+              ) : (
+                "Archive"
               )}
             </button>
           )}

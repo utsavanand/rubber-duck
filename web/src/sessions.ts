@@ -11,11 +11,18 @@ import {
 export const IDLE_SETTLE_MS = 5 * 60_000;
 
 function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
+  // Explicit lifecycle marker from the server (e.g. the auto-archive sweep).
+  if (e.lifecycle === "archived") return "archived";
+  if (e.lifecycle === "stopped") return "stopped";
   if (e.lifecycle === "terminated" || e.event_type === "SessionEnd")
     return "terminated";
-  // A stopped session stays stopped until it's explicitly resumed (SessionStart)
-  // — mirrors the server, so a stray late event can't revive it as busy.
-  if (prev === "stopped" && e.event_type !== "SessionStart") return "stopped";
+  // A stopped/archived session stays put until it's explicitly resumed
+  // (SessionStart) — mirrors the server, so a stray late event can't revive it.
+  if (
+    (prev === "stopped" || prev === "archived") &&
+    e.event_type !== "SessionStart"
+  )
+    return prev;
   switch (e.event_type) {
     case "PermissionRequest":
     case "Notification":
@@ -41,6 +48,7 @@ export function effectiveState(s: SessionView, now: number): SessionState {
   if (
     s.state === "terminated" ||
     s.state === "stopped" ||
+    s.state === "archived" ||
     s.state === "waiting"
   )
     return s.state;

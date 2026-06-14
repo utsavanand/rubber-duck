@@ -31,6 +31,11 @@ def test_derive_state_transitions() -> None:
     assert derive_state({"event_type": "PreToolUse"}, "stopped") == "stopped"
     assert derive_state({"event_type": "Stop"}, "stopped") == "stopped"
     assert derive_state({"event_type": "SessionStart"}, "stopped") == "busy"
+    # Archived behaves the same; an explicit lifecycle marker sets state directly.
+    assert derive_state({"event_type": "PreToolUse"}, "archived") == "archived"
+    assert derive_state({"lifecycle": "archived"}, "busy") == "archived"
+    assert derive_state({"lifecycle": "stopped"}, "busy") == "stopped"
+    assert derive_state({"event_type": "SessionStart"}, "archived") == "busy"
 
 
 def test_session_row_accumulates_across_events(tmp_path: Path) -> None:
@@ -128,7 +133,9 @@ def test_fork_tree_returns_parent_links(tmp_path: Path) -> None:
     assert tree == {"root": None, "child": "root"}
 
 
-def test_sweep_dead_terminates_only_stale_heartbeat_sessions(tmp_path: Path) -> None:
+def test_sweep_dead_flags_only_stale_heartbeat_sessions(tmp_path: Path) -> None:
+    # sweep_dead returns the keys of launched tabs whose heartbeat went stale (the
+    # server archives them); it never includes a fresh tab or a watched session.
     store = HistoryStore(tmp_path / "db.sqlite")
     bus = make_bus(store)
     now = 1_000_000
@@ -144,15 +151,38 @@ def test_sweep_dead_terminates_only_stale_heartbeat_sessions(tmp_path: Path) -> 
     store.touch("alive", now - 5_000)
 
     # A watched (hook-only) session, quiet for 10 minutes — NOT heartbeat-tracked,
-    # must never be swept (that was the original idle-kill mistake).
+    # must never be swept by the heartbeat path (it has the PID path instead).
     bus.publish({"event_type": "SessionStart", "session_key": "watched", "_ts": now - 600_000})
 
     swept = store.sweep_dead(now, stale_after_ms=60_000)
 
     assert swept == ["killed"]
-    assert store.session("killed")["state"] == "terminated"
-    assert store.session("alive")["state"] != "terminated"
-    assert store.session("watched")["state"] != "terminated"
+
+
+def test_sweep_dead_skips_already_at_rest_sessions(tmp_path: Path) -> None:
+    # A stopped/archived launched session must not be re-swept (it's at rest).
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    now = 1_000_000
+    bus.publish({"event_type": "SessionStart", "session_key": "s", "_ts": now - 200_000})
+    store.mark_heartbeat("s")
+    store.touch("s", now - 90_000)
+    store.set_state("s", "stopped", now=now - 80_000)
+
+    assert store.sweep_dead(now, stale_after_ms=60_000) == []
+
+
+def test_live_watched_lists_watched_sessions_with_a_pid(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.record(
+        {"event_type": "SessionStart", "session_key": "w", "agent_pid": 4242, "_ts": 1, "_id": "a"}
+    )
+    # A launched session is excluded (it uses the heartbeat path, not PID).
+    store.record({"event_type": "SessionStart", "session_key": "L", "_ts": 1, "_id": "b"})
+    store.mark_heartbeat("L")
+
+    watched = store.live_watched()
+    assert watched == [{"session_key": "w", "agent_pid": 4242}]
 
 
 def test_launched_flag_is_sticky(tmp_path: Path) -> None:
