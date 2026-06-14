@@ -1,68 +1,115 @@
-# Session lifecycle: stop / archive / delete
+# Session lifecycle: stop / resume / archive / delete
 
 ## The problem this fixes
-Today "delete" is ambiguous for a session that's still running. Deleting *this*
-running session (a watched claude-code session) tombstoned it, but its hooks
-kept firing — so it either rebuilt as a ghost row (checkpoint 404) or, after an
-over-aggressive event-drop fix, vanished entirely even though it's alive. The
-root cause: delete/stop were offered on sessions Rubberduck doesn't control.
+Two muddled things:
+
+1. **Stop is a dead end.** Today Stop terminates the agent and the row drops out
+   of the Active view; there's no way to pick it back up from the dashboard. Stop
+   should *pause* a session you can **resume**, not kill-and-forget.
+2. **Delete is ambiguous / destructive.** Delete is the only way to clear a row,
+   but it wipes everything. There's no "I'm done for now, declutter but keep it"
+   middle ground (archive). And delete was historically offered on sessions
+   Rubberduck doesn't control (watched), which caused ghost rows.
 
 ## Principle
-**Lifecycle actions only apply to sessions Rubberduck controls.** A watched
-session follows its real terminal's lifecycle; Rubberduck observes, it doesn't
-stop or delete it.
+**Lifecycle actions only apply to sessions Rubberduck controls.** A *launched*
+session (Rubberduck owns the terminal/PTY) gets the full lifecycle. A *watched*
+session (you started it in your own terminal) follows its real terminal's
+lifecycle — Rubberduck observes, it can't stop/resume/delete the process.
 
 ## States
-`busy` · `idle` · `waiting` · `terminated` · **`archived`** (new)
+`busy` · `idle` · `waiting` · **`stopped`** (new, resumable) ·
+**`archived`** (new) · `terminated`
 
-- **archived** = the session's terminal is gone but we keep its history
-  (checkpoints, notes, events) so you can read it later. Distinct from
-  `terminated` (just ended) and from permanent delete (gone from memory).
-- Filter bar: **Active** (busy/idle/waiting) · **Archived** · **All**. Watched /
-  Launched origin filters remain.
+- **stopped** = Rubberduck killed the process *on purpose* and kept everything
+  (worktree, branch, conversation id, checkpoints). It is **resumable**.
+- **archived** = put away to declutter; everything kept, hidden from default
+  views behind an Archived filter. Reachable from stopped or terminated.
+- **terminated** = the process ended on its own (agent exited, tab closed). For a
+  launched session this is effectively the same as stopped-but-not-by-us; it's
+  also resumable if we still have its worktree + session id.
+- Permanent delete is **not a state** — it removes the row from memory entirely.
 
-## Launched sessions (Rubberduck owns the terminal/process)
-- **Stop** → terminate the agent; close the terminal tab. State → terminated.
-- **Delete** → prompt with two choices:
-  - **Permanent delete** → close terminal + remove from memory entirely
-    (the current delete behavior, incl. the unmerged-commit guard).
-  - **Archive** → close terminal, keep in memory; state → archived.
+Filter bar: **Active** (busy/idle/waiting) · **Archived** · **All**.
+Watched / Launched origin filters remain.
+
+## State machine (launched sessions)
+
+```
+            ┌─────────── Resume ──────────┐
+            ▼                              │
+   busy/idle/waiting ── Stop ──▶ stopped ─┘
+        │                          │  └── Archive ──▶ archived ── Unarchive ─┐
+        │                          │                      │                   │
+        │ (agent exits / tab dies) │                      └── Delete ──▶ (gone)
+        ▼                          ▼
+     terminated ◀──────────────────┘
+        │  └── Resume / Archive / Delete (same options as stopped)
+```
+
+- **Stop**: kill the PTY / close the terminal tab. State → `stopped`. Keep the
+  worktree, branch, and (claude-code) the conversation session id.
+- **Resume**: relaunch the agent in the session's original cwd/worktree. For
+  claude-code, pass `--resume <session_id>` so the conversation continues where
+  it left off (non-forking sibling of the existing conversation-fork). Reuses the
+  same session_key so lineage/history stays attached. State → busy.
+- **Archive**: from stopped or terminated → `archived` (hidden). Process already
+  dead; nothing to kill.
+- **Unarchive**: `archived` → `stopped` (back in view, still resumable).
+- **Delete**: permanent — close terminal, remove worktree, wipe events /
+  checkpoints / metrics, tombstone the key. Keeps the unmerged-commits confirm.
 
 ## Watched sessions (you own the terminal)
-- **No Stop / Delete buttons** — grayed out with a hint:
-  *"To stop or delete, close the terminal yourself."*
+- **No Stop / Resume / Delete buttons** — Rubberduck doesn't own the process.
+  Shown grayed with a hint: *"To stop or delete, close the terminal yourself."*
 - Rubberduck **detects when the terminal is gone** (explicit PID/tty liveness
-  check, not just heartbeat silence) → **auto-archive** the session.
-- If the server restarts and the agent is still running, its next events
-  recreate it as a normal live session. No tombstone for watched sessions.
+  check, not just heartbeat silence) → **auto-archive**.
+- A watched session is never user-deletable, only auto-archived when its terminal
+  actually dies. No tombstone (its live events legitimately keep it alive). This
+  removes the ghost-row problem entirely.
 
-## Why no tombstone for watched
-Tombstones exist to stop a deleted session's stray events from resurrecting it.
-But if a watched session is alive, its events *should* keep it alive — that's
-the whole point. So: watched sessions are never user-deletable, only
-auto-archived when their terminal actually dies. This removes the ghost problem
-entirely.
+## Why Resume needs care per harness
+Resume is behind the unified Harness contract — each runtime declares how to
+continue a session:
+- **claude-code**: `claude --resume <session_id>` (session_id captured from
+  hooks; same plumbing the conversation-fork uses, minus `--fork-session`).
+- **codex / copilot**: their own resume command (each Harness already declares a
+  `restore_command`; reuse/extend it).
+- **generic / bring-your-own**: no native resume — Resume just relaunches the
+  command in the cwd (fresh conversation). Surface this honestly ("relaunches;
+  this agent has no conversation resume").
+
+## UI behavior (the specific thing the user hit)
+- A **stopped** (or terminated, launched) row **stays visible**, greyed, with a
+  **Resume** button — instead of vanishing. Plus Archive and Delete.
+- Stop, once clicked, greys the row's actions immediately (already shipped) and
+  transitions to `stopped` rather than dropping it from Active silently.
+- The Active filter shows busy/idle/waiting; stopped rows show under All (and a
+  possible "Stopped" sub-filter) so you can find and resume them.
 
 ## Implementation outline
-1. **Schema**: `archived` is representable. Either a new state value or an
-   `archived_at` column; sessions() reports it; effectiveState maps it.
-2. **Terminal liveness** (watched): a sweep that checks each watched session's
-   recorded tty/PID; when the process is gone, set archived. Replaces relying on
-   heartbeat-silence alone for watched sessions.
-3. **Launched delete**: the API takes a mode — `permanent` (today's delete) or
-   `archive` (close terminal, keep row, set archived). The dashboard's Delete
-   opens a small confirm with the two choices.
-4. **Stop** (launched): unchanged behavior, ensure terminal closes.
-5. **UI gating**: Stop/Delete shown only for launched sessions; for watched they
-   are absent/grayed with the hint.
-6. **Undo the over-aggressive event-drop**: watched sessions are no longer
-   tombstone-able from the UI, so the ingest-drop for tombstoned watched
-   sessions isn't needed for them. Keep the drop only for genuinely
-   permanent-deleted (launched) sessions. This unbreaks the currently-invisible
-   live session.
+1. **Schema**: represent `stopped` and `archived` (state values or
+   `archived_at` / `stopped_at` columns). `sessions()` reports them;
+   `effectiveState` maps them. Keep `repo_path` / `worktree_path` /
+   `session_id` on stop so Resume has what it needs.
+2. **Stop** (launched): kill PTY / close tab → set `stopped` (today it ends as
+   terminated; change to the resumable state). Keep the worktree.
+3. **Resume** (launched): `POST /sessions/:key/resume` — rebuild the runtime's
+   resume argv (per-harness), relaunch in the saved cwd/worktree under the same
+   session_key, clear `stopped`/`archived`.
+4. **Archive / Unarchive**: `POST /sessions/:key/archive` and `/unarchive`
+   (or a mode on delete). No process action; just the state + filter.
+5. **Delete**: unchanged permanent behavior (close terminal, remove worktree,
+   wipe, tombstone, unmerged-commit guard).
+6. **Watched liveness sweep**: check each watched session's tty/PID; when the
+   process is gone, set `archived`. Replaces heartbeat-silence-only for watched.
+7. **UI**: Resume button on stopped/terminated launched rows; Archive on
+   stopped/terminated/archived; Stop only on live launched; for watched, hide
+   Stop/Resume/Delete with the hint. Add the Archived filter.
 
-## The immediate regression
-This running session is invisible right now because it was tombstoned (deleted
-while live) and the ingest-drop silences its events. Step 6 fixes it: once
-watched sessions can't be deleted, the existing tombstone on it should be
-cleared and its events flow again.
+## Build order (incremental)
+- **Phase 1 — Resume** (fixes the reported gap): stopped state + Resume for
+  launched sessions, keep stopped rows visible with a Resume button.
+- **Phase 2 — Archive**: archived state + filter + archive/unarchive.
+- **Phase 3 — Watched lifecycle**: liveness sweep → auto-archive; gate the
+  watched buttons.
