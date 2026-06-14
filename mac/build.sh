@@ -40,8 +40,6 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>Rubberduck</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <!-- Menu-bar app: no Dock icon, no main window on launch. -->
-  <key>LSUIElement</key><true/>
   <key>NSHumanReadableCopyright</key><string>RubberDuckHQ</string>
 </dict>
 </plist>

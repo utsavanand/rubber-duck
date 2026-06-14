@@ -1,29 +1,26 @@
 import AppKit
 import UserNotifications
 
+/// Standalone desktop app: double-click to launch, opens its own window with the
+/// dashboard (an embedded web view — never your browser). Owns the local server
+/// process, shows native notifications when a session needs you, and quits when
+/// you close the window.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let server = ServerProcess()
     private var poller: SessionPoller?
     private var window: DashboardWindow?
-    private var statusItem: NSStatusItem!
-    private var countItem: NSMenuItem!
     private var notified = Set<String>()  // waiting keys we've already alerted on
 
     func applicationDidFinishLaunching(_ note: Notification) {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "🦆"
-        statusItem.menu = buildMenu()
-
         window = DashboardWindow(url: server.url)
+        window?.show()  // open the dashboard window on launch
+        NSApp.activate(ignoringOtherApps: true)
 
         Task {
-            let ok = await server.start()
-            await MainActor.run {
-                self.countItem.title = ok ? "Connecting…" : "Server not found — install rubberduck"
-                if ok { self.startPolling() }
-            }
+            _ = await server.start()  // start the server, or attach to a running one
+            await MainActor.run { self.startPolling() }
         }
     }
 
@@ -32,40 +29,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         server.stop()
     }
 
-    private func buildMenu() -> NSMenu {
-        let menu = NSMenu()
-        countItem = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
-        countItem.isEnabled = false
-        menu.addItem(countItem)
-        menu.addItem(.separator())
-        menu.addItem(
-            NSMenuItem(title: "Open dashboard", action: #selector(openDashboard), keyEquivalent: "o")
-        )
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Rubberduck", action: #selector(quit), keyEquivalent: "q"))
-        menu.items.forEach { $0.target = self }
-        return menu
+    // Quit when the dashboard window is closed — it's the whole app.
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool {
+        true
+    }
+
+    // Re-open the window if the user clicks the Dock icon after closing it.
+    func applicationShouldHandleReopen(_ app: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { window?.show() }
+        return true
     }
 
     private func startPolling() {
         let p = SessionPoller(base: server.url)
-        p.onUpdate = { [weak self] counts, waiting in
-            self?.apply(counts, waiting)
+        p.onUpdate = { [weak self] _, waiting in
+            self?.notifyWaiting(waiting)
         }
         p.start()
         poller = p
     }
 
-    private func apply(_ counts: Counts, _ waiting: [Session]) {
-        statusItem.button?.title = counts.badge.isEmpty ? "🦆" : "🦆 \(counts.badge)"
-        countItem.title =
-            "\(counts.busy) busy · \(counts.waiting) waiting · \(counts.idle) idle"
-
+    private func notifyWaiting(_ waiting: [Session]) {
         let current = Set(waiting.map(\.session_key))
         for s in waiting where !notified.contains(s.session_key) {
             notify(session: s)
         }
-        notified = current  // reset so a session that waits again re-notifies
+        notified = current  // a session that waits again later re-notifies
     }
 
     private func notify(session: Session) {
@@ -78,13 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         UNUserNotificationCenter.current().add(req)
     }
-
-    @objc private func openDashboard() { window?.show() }
-    @objc private func quit() { NSApp.terminate(nil) }
 }
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.accessory)  // menu-bar only — no Dock icon
+app.setActivationPolicy(.regular)  // a normal app: Dock icon + windows
 app.run()
