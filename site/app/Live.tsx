@@ -264,7 +264,7 @@ export function Walkthrough() {
 
   return (
     <div className="walk">
-      {/* the real dark dashboard, as the backdrop */}
+      {/* the real dark dashboard (all three panels), as the backdrop */}
       <div className={`dash walk-dash ${modalOpen ? "dimmed" : ""}`}>
         <div className="dash-top">
           <div className="dash-brand">
@@ -283,10 +283,18 @@ export function Walkthrough() {
             </span>
           </div>
         </div>
-        <div className="dash-grid walk-grid">
+        <div className="dash-grid">
+          {/* agents — the new session slides in at the top when it lands */}
           <div className="dash-col">
             <div className="col-head">Agents</div>
-            {/* the new session slides in at the top when it lands */}
+            <div className="tabs">
+              <span className="tab tab-on">
+                Active {step === "landed" ? 5 : 4}
+              </span>
+              <span className="tab">Idle 1</span>
+              <span className="tab">Watched {step === "landed" ? 6 : 5}</span>
+              <span className="tab">All {step === "landed" ? 6 : 5}</span>
+            </div>
             <div
               className={`arow walk-newrow ${step === "landed" ? "in" : ""}`}
             >
@@ -301,25 +309,29 @@ export function Walkthrough() {
                 </span>
               </div>
             </div>
-            <AgentRow
-              name="api-refactor"
-              meta="checkout-service · 31 ev"
-              badge="WATCHED"
-              state="busy"
-            />
-            <AgentRow
-              name="release-notes"
-              meta="docs · 9 ev"
-              badge="LAUNCHED"
-              state="idle"
-            />
+            {AGENTS.map((a) => (
+              <AgentRow key={a.name} {...a} />
+            ))}
           </div>
+          {/* needs human */}
           <div className="dash-col">
             <div className="col-head">Needs human</div>
             <Hitl
               name="auth-migration"
               cmd="psql -c 'DROP TABLE refunds_tmp'"
             />
+            <Hitl name="dep-upgrade" cmd="rm -rf node_modules && npm ci" />
+          </div>
+          {/* pulse */}
+          <div className="dash-col">
+            <div className="col-head">
+              Pulse <span className="pulse-live">● live</span>
+            </div>
+            <div className="pulse-feed">
+              {FEED.slice(0, 7).map((f, i) => (
+                <PulseRow key={i} id={i} time={clock(i * 11)} {...f} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
