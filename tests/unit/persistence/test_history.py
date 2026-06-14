@@ -216,3 +216,29 @@ def test_deleted_session_is_not_resurrected_by_later_events(tmp_path: Path) -> N
     assert store.session("s1") is None
     bus.publish({"event_type": "SessionStart", "session_key": "s1", "cwd": "/repo"})
     assert store.session("s1") is not None
+
+
+def test_purge_test_sessions_removes_only_flagged(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "real"})
+    bus.publish({"event_type": "SessionStart", "session_key": "seed", "test": True})
+    bus.publish({"event_type": "PreToolUse", "session_key": "seed", "tool_name": "Bash"})
+
+    purged = store.purge_test_sessions()
+
+    assert purged == ["seed"]
+    keys = {s["session_key"] for s in store.sessions()}
+    assert keys == {"real"}
+    # All of the test session's data is gone, and it left no tombstone.
+    assert store.events_for("seed") == []
+    assert store.is_tombstoned("seed") is False
+
+
+def test_test_flag_is_sticky(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s", "test": True})
+    # A later event without the flag must not clear it.
+    bus.publish({"event_type": "PreToolUse", "session_key": "s", "tool_name": "Read"})
+    assert store.session("s")["test"] == 1

@@ -58,9 +58,13 @@ export async function findSession(
 }
 
 // Post a raw event for a session (e.g. UserPromptSubmit, PreToolUse) so a
-// checkpoint has real prompts/commands to capture.
+// checkpoint has real prompts/commands to capture. Flagged test=1 so the
+// session never counts as real data (the e2e server uses a throwaway home too).
 export async function postEvent(event: Record<string, unknown>): Promise<void> {
-  await api("/events", { method: "POST", body: JSON.stringify(event) });
+  await api("/events", {
+    method: "POST",
+    body: JSON.stringify({ test: true, ...event }),
+  });
 }
 
 // Seed a watched session straight through the events API (no terminal/agent) so

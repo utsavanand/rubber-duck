@@ -53,6 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
     sub.add_parser("dashboard", help="build (if needed) and open the dashboard in a browser")
+    sub.add_parser(
+        "purge-test", help="delete all test/seed sessions and their data (test=1)"
+    )
 
     inst = sub.add_parser(
         "install-hooks", help="wire an agent so its sessions stream into Rubberduck"
@@ -239,8 +242,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _install_hooks(args.global_scope, args.agent)
     if args.command == "uninstall-hooks":
         return _uninstall_hooks(args.global_scope, args.agent)
+    if args.command == "purge-test":
+        return _purge_test()
     print(f"command '{args.command}' is not implemented yet", file=sys.stderr)
     return 1
+
+
+def _purge_test() -> int:
+    from rubberduck.persistence.history import HistoryStore
+
+    purged = HistoryStore().purge_test_sessions()
+    print(f"purged {len(purged)} test session(s) and all their data")
+    return 0
 
 
 if __name__ == "__main__":
