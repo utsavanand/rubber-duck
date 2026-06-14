@@ -35,9 +35,17 @@ def detect(cwd: str) -> GitInfo | None:
 
 
 def _detect_uncached(cwd: str) -> GitInfo | None:
+    from rubberduck.git.worktrees import _clean_git_env
+
     def git(*args: str) -> str | None:
         try:
-            r = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=3)
+            r = subprocess.run(
+                ["git", "-C", cwd, *args],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                env=_clean_git_env(),
+            )
         except (OSError, subprocess.TimeoutExpired):
             return None
         return r.stdout.strip() if r.returncode == 0 else None

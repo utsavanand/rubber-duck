@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Git pre-commit hook: run the fast gate (lint + types + unit + API tests) on
+# every commit. The UI/Playwright layer is skipped here because booting a
+# browser on every commit is too slow — run the full gate before pushing:
+#
+#   scripts/check.sh        # includes UI
+#
+# Install:  ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+# Bypass once (not recommended):  git commit --no-verify
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+exec scripts/check.sh --no-ui

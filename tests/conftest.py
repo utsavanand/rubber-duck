@@ -25,6 +25,23 @@ def _isolated_home() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _clean_git_env() -> Iterator[None]:
+    """Strip inherited GIT_* repo pointers (GIT_DIR/GIT_INDEX_FILE/…) for the
+    whole test session. Without this, running the suite from inside a git hook
+    (e.g. pre-commit) leaks the main repo's git context into the worktree tests'
+    `git -C <tmp>` calls, making them act on the wrong repo and fail."""
+    removed = {
+        k: os.environ.pop(k)
+        for k in list(os.environ)
+        if k.startswith("GIT_") and k not in ("GIT_SSH", "GIT_SSH_COMMAND")
+    }
+    try:
+        yield
+    finally:
+        os.environ.update(removed)
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _no_summarizer_autodetect() -> Iterator[None]:
     """Disable the summarizer's CLI-agent auto-detection in tests, so a
     checkpoint never shells out to a real claude/codex/copilot on the dev's

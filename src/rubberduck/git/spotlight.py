@@ -10,11 +10,16 @@ test, then commit or `git checkout -- .` to discard.
 import subprocess
 from pathlib import Path
 
-from rubberduck.git.worktrees import GitError
+from rubberduck.git.worktrees import GitError, _clean_git_env
 
 
 def _git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+    result = subprocess.run(
+        ["git", "-C", str(cwd), *args],
+        capture_output=True,
+        text=True,
+        env=_clean_git_env(),
+    )
     if check and result.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result
@@ -40,6 +45,7 @@ def spotlight_to_main(repo: Path, worktree: Path) -> list[str]:
             input=diff,
             capture_output=True,
             text=True,
+            env=_clean_git_env(),
         )
         if apply.returncode != 0:
             raise GitError(f"spotlight apply failed: {apply.stderr.strip()}")

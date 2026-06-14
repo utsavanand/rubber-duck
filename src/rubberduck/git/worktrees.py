@@ -9,6 +9,7 @@ branch. Pure `git` subprocess calls; no dependencies.
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,11 +28,24 @@ class GitError(RuntimeError):
     pass
 
 
+def _clean_git_env() -> dict[str, str]:
+    """Environment with GIT_* repo-pointer vars stripped. When Rubberduck runs
+    inside a git hook (or anything that exported GIT_DIR/GIT_INDEX_FILE/…), an
+    inherited GIT_DIR would override `-C <repo>` and make git act on the wrong
+    repository. Drop those so `-C` always wins."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not (k.startswith("GIT_") and k not in ("GIT_SSH", "GIT_SSH_COMMAND"))
+    }
+
+
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(repo), *args],
         capture_output=True,
         text=True,
+        env=_clean_git_env(),
     )
     if result.returncode != 0:
         raise GitError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
