@@ -24,6 +24,22 @@ def test_unknown_command_is_rejected(capsys: pytest.CaptureFixture[str]) -> None
     assert exc.value.code != 0
 
 
+def test_doctor_returns_nonzero_when_a_check_fails(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.doctor as doctor
+
+    monkeypatch.setattr(
+        doctor, "run", lambda url, agents: [doctor.Result("fail", "boom", "fix it")]
+    )
+    assert main(["doctor"]) == 1
+
+
+def test_doctor_returns_zero_when_all_ok(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.doctor as doctor
+
+    monkeypatch.setattr(doctor, "run", lambda url, agents: [doctor.Result("ok", "fine")])
+    assert main(["doctor"]) == 0
+
+
 def test_restart_starts_a_server_when_none_is_running(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import rubberduck.cli as cli
 

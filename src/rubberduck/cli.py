@@ -68,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
     sub.add_parser("dashboard", help="build (if needed) and open the dashboard in a browser")
     sub.add_parser("purge-test", help="delete all test/seed sessions and their data (test=1)")
+    sub.add_parser("doctor", help="check deps, server, hooks, and trust; print what's missing")
 
     inst = sub.add_parser(
         "install-hooks", help="wire an agent so its sessions stream into Rubberduck"
@@ -238,6 +239,7 @@ def _install_hooks(global_scope: bool, agent: str) -> int:
             "  (You'll need to re-trust if Rubberduck updates the hook script.)",
             file=sys.stderr,
         )
+    print("\nVerify it's wired up: rubberduck doctor")
     return 0
 
 
@@ -276,6 +278,27 @@ def _dashboard() -> int:
     return 0
 
 
+def _doctor() -> int:
+    from rubberduck import doctor
+
+    results = doctor.run(f"{_server_url()}/", _installable_agents())
+    glyph = {"ok": "\033[32m✓\033[0m", "warn": "\033[33m!\033[0m", "fail": "\033[31m✗\033[0m"}
+    for r in results:
+        print(f"{glyph[r.status]} {r.title}")
+        if r.detail and r.status != "ok":
+            print(f"    → {r.detail}")
+    fails = sum(1 for r in results if r.status == "fail")
+    warns = sum(1 for r in results if r.status == "warn")
+    print()
+    if fails:
+        print(f"\033[31m{fails} problem(s) to fix.\033[0m", file=sys.stderr)
+    elif warns:
+        print(f"\033[33m{warns} thing(s) to check; nothing fatal.\033[0m")
+    else:
+        print("\033[32mAll checks passed.\033[0m")
+    return 1 if fails else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
@@ -296,6 +319,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _install_hooks(args.global_scope, args.agent)
     if args.command == "uninstall-hooks":
         return _uninstall_hooks(args.global_scope, args.agent)
+    if args.command == "doctor":
+        return _doctor()
     if args.command == "purge-test":
         return _purge_test()
     print(f"command '{args.command}' is not implemented yet", file=sys.stderr)
