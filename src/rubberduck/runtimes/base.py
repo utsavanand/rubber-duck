@@ -20,4 +20,10 @@ class AgentRuntime(Protocol):
 
     def locate_transcript(self, *, cwd: Path, session_id: str) -> Path | None: ...
 
+    def read_transcript(self, *, cwd: Path, session_id: str) -> list[dict[str, str]]:
+        """The session's conversation as uniform {role, text} records (including
+        the agent's own responses), newest-last. Empty when unavailable. Each
+        runtime reads its native format (JSONL, SQLite, …)."""
+        ...
+
     def restore_command(self, *, cwd: Path, session_key: str) -> list[str]: ...

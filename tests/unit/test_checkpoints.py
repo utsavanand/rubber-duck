@@ -106,7 +106,8 @@ def test_checkpoint_notes_non_git_dir(tmp_path: Path) -> None:
     assert cp.record["path"] == str(plain)
 
 
-def test_mechanical_summary_when_no_llm(tmp_path: Path) -> None:
+def test_mechanical_summary_when_no_llm(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("RUBBERDUCK_SUMMARIZER", "off")  # force the no-LLM path
     cp = build_checkpoint(
         session_key="s1",
         label="m",
@@ -115,7 +116,7 @@ def test_mechanical_summary_when_no_llm(tmp_path: Path) -> None:
         intention="build auth",
         now_ms=1,
     )
-    # No summarizer configured -> mechanical fallback mentioning intent + activity.
+    # No summarizer -> mechanical fallback mentioning intent + activity.
     assert "build auth" in cp.summary
     assert "5 events" in cp.summary
 

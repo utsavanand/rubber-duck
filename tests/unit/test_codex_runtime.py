@@ -29,3 +29,31 @@ def test_codex_has_no_transcript_yet() -> None:
     rt = CodexRuntime()
     assert rt.locate_transcript(cwd=Path("/x"), session_id="s") is None
     assert rt.restore_command(cwd=Path("/x"), session_key="s") == ["codex"]
+
+
+def test_parse_codex_transcript_extracts_messages(tmp_path):  # type: ignore[no-untyped-def]
+    import json
+
+    from rubberduck.runtimes.codex import parse_codex_transcript
+
+    t = tmp_path / "rollout.jsonl"
+    t.write_text(
+        "\n".join(
+            json.dumps(o)
+            for o in [
+                {"type": "session_meta", "payload": {"id": "x"}},
+                {"type": "response_item", "payload": {
+                    "type": "message", "role": "user",
+                    "content": [{"type": "input_text", "text": "fix the bug"}]}},
+                {"type": "response_item", "payload": {
+                    "type": "message", "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Fixed it in store.ts"}]}},
+                {"type": "event_msg", "payload": {"type": "user_message"}},
+            ]
+        )
+    )
+    records = parse_codex_transcript(t)
+    assert records == [
+        {"role": "user", "text": "fix the bug"},
+        {"role": "assistant", "text": "Fixed it in store.ts"},
+    ]

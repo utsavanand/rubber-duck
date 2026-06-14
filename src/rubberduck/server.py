@@ -57,6 +57,7 @@ from rubberduck.persistence.history import HistoryStore
 from rubberduck.persistence.snapshots import SnapshotManager, restore_command_for
 from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
 from rubberduck.runtimes.codex import CodexRuntime
+from rubberduck.runtimes.copilot import CopilotRuntime
 from rubberduck.runtimes.generic import GenericRuntime
 from rubberduck.transport.httpio import (
     KEEPALIVE_SECONDS,
@@ -87,6 +88,8 @@ def infer_runtime(command: str) -> str:
         return "claude-code"
     if first.startswith("codex"):
         return "codex"
+    if first.startswith("copilot"):
+        return "copilot"
     return "generic"
 
 
@@ -96,6 +99,8 @@ def _build_runtime(name: str | None, command: str) -> StateRuntime:
         return ClaudeCodeRuntime(command)
     if name == "codex":
         return CodexRuntime(command)
+    if name == "copilot":
+        return CopilotRuntime(command)
     return GenericRuntime(command)
 
 
@@ -843,6 +848,10 @@ class Server:
         # Summarize the delta since the most recent checkpoint (0 if first).
         prior = self.history.checkpoints(session_key)
         since_ms = int(prior[0]["created_at"]) if prior else 0
+        # Read the agent's own conversation (including its responses) from its
+        # native transcript, so the checkpoint captures what the agent said and
+        # did — not just the human prompts and tool calls in our event store.
+        transcript = self._read_transcript(session_key, row)
         cp = await asyncio.to_thread(
             build_checkpoint,
             session_key=session_key,
@@ -851,6 +860,7 @@ class Server:
             # The whole session, not just the last 200 events — a checkpoint is
             # a complete record and must capture every prompt.
             events=self.history.events_for(session_key, limit=100_000),
+            transcript=transcript,
             intention=str(row.get("intention") or ""),
             now_ms=int(time.time() * 1000),
             since_ms=since_ms,
@@ -865,6 +875,22 @@ class Server:
             created_at=cp.created_at,
         )
         await _write_json(writer, 200, {"id": cp.id, "label": cp.label, "summary": cp.summary})
+
+    def _read_transcript(
+        self, session_key: str, row: dict[str, Any]
+    ) -> list[dict[str, str]]:
+        """The agent's own conversation for a session (role/text incl. its
+        responses), read from its native transcript. Empty when we can't (no
+        runtime/session_id, or the agent keeps no readable transcript)."""
+        session_id = self.history.session_id_for(session_key)
+        if not session_id:
+            return []
+        runtime = _build_runtime(row.get("runtime"), "")
+        cwd = Path(str(row.get("worktree_path") or row.get("cwd") or "."))
+        try:
+            return runtime.read_transcript(cwd=cwd, session_id=session_id)
+        except OSError:
+            return []
 
     async def _list_checkpoints(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         await _write_json(writer, 200, {"checkpoints": self.history.checkpoints(session_key)})

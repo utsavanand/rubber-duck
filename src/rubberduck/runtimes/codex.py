@@ -9,6 +9,7 @@ a stable transcript/log format worth parsing, add it here; until then, coarse
 output-based state is the honest level of support.
 """
 
+import json
 import re
 import shlex
 from pathlib import Path
@@ -45,8 +46,54 @@ class CodexRuntime:
         return None
 
     def locate_transcript(self, *, cwd: Path, session_id: str) -> Path | None:
-        # No stable transcript format to parse yet (see module docstring).
-        return None
+        # Codex writes one rollout-*.jsonl per session under a date hierarchy,
+        # with the session_id (a UUID) in the filename.
+        root = Path.home() / ".codex" / "sessions"
+        if not root.exists():
+            return None
+        matches = sorted(root.glob(f"**/rollout-*-{session_id}.jsonl"))
+        return matches[-1] if matches else None
+
+    def read_transcript(self, *, cwd: Path, session_id: str) -> list[dict[str, str]]:
+        path = self.locate_transcript(cwd=cwd, session_id=session_id)
+        return parse_codex_transcript(path) if path else []
 
     def restore_command(self, *, cwd: Path, session_key: str) -> list[str]:
         return list(self._argv)
+
+
+def parse_codex_transcript(path: Path) -> list[dict[str, str]]:
+    """Read {role, text} records from a Codex rollout JSONL. Messages are
+    `response_item` lines whose payload is {type:"message", role, content:[…]};
+    each content block carries text under "text". Skips unreadable lines."""
+    records: list[dict[str, str]] = []
+    for line in path.read_text(errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") != "response_item":
+            continue
+        payload = obj.get("payload") or {}
+        if payload.get("type") != "message":
+            continue
+        role = payload.get("role")
+        text = _codex_text(payload.get("content"))
+        if role and text:
+            records.append({"role": str(role), "text": text})
+    return records
+
+
+def _codex_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [
+            str(b["text"])
+            for b in content
+            if isinstance(b, dict) and isinstance(b.get("text"), str)
+        ]
+        return "\n".join(parts)
+    return ""

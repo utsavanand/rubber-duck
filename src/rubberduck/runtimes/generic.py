@@ -52,5 +52,8 @@ class GenericRuntime:
     def locate_transcript(self, *, cwd: Path, session_id: str) -> Path | None:
         return None
 
+    def read_transcript(self, *, cwd: Path, session_id: str) -> list[dict[str, str]]:
+        return []  # a generic CLI keeps no transcript we can read
+
     def restore_command(self, *, cwd: Path, session_key: str) -> list[str]:
         return list(self._argv)

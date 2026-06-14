@@ -11,17 +11,15 @@ from rubberduck.llm.summarizer import (
 
 
 @pytest.fixture
-def clean_env() -> Iterator[None]:
-    saved = {
-        k: os.environ.pop(k, None)
-        for k in ("RUBBERDUCK_SUMMARIZER_CMD", "RUBBERDUCK_SUMMARIZER_URL")
-    }
-    try:
-        yield
-    finally:
-        for k, v in saved.items():
-            if v is not None:
-                os.environ[k] = v
+def clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    # No env backends AND no auto-detectable agent on PATH, so summarize() takes
+    # the true no-backend path.
+    for k in ("RUBBERDUCK_SUMMARIZER_CMD", "RUBBERDUCK_SUMMARIZER_URL", "RUBBERDUCK_SUMMARIZER"):
+        monkeypatch.delenv(k, raising=False)
+    import rubberduck.llm.summarizer as s
+
+    monkeypatch.setattr(s.shutil, "which", lambda _b: None)
+    yield
 
 
 def test_no_backend_returns_empty_none(clean_env: None) -> None:
@@ -60,3 +58,29 @@ def test_build_prompt_includes_all_sections() -> None:
     assert "ship feature" in p
     assert "10 events." in p
     assert "user: hi" in p
+
+
+def test_auto_detects_installed_agent(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.llm.summarizer as s
+
+    monkeypatch.delenv("RUBBERDUCK_SUMMARIZER_CMD", raising=False)
+    monkeypatch.delenv("RUBBERDUCK_SUMMARIZER_URL", raising=False)
+    monkeypatch.delenv("RUBBERDUCK_SUMMARIZER", raising=False)
+    # Pretend only codex is installed.
+    monkeypatch.setattr(s.shutil, "which", lambda b: "/usr/bin/codex" if b == "codex" else None)
+    assert s._auto_command() == "codex exec -"
+
+
+def test_summarizer_off_disables_autodetect_only(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.llm.summarizer as s
+
+    # off disables the auto-detect fallback...
+    monkeypatch.delenv("RUBBERDUCK_SUMMARIZER_CMD", raising=False)
+    monkeypatch.delenv("RUBBERDUCK_SUMMARIZER_URL", raising=False)
+    monkeypatch.setenv("RUBBERDUCK_SUMMARIZER", "off")
+    monkeypatch.setattr(s.shutil, "which", lambda _b: "/usr/bin/claude")
+    assert s.summarize("x").backend == "none"
+
+    # ...but an explicitly-set backend still wins.
+    monkeypatch.setenv("RUBBERDUCK_SUMMARIZER_CMD", "printf done")
+    assert s.summarize("x").text == "done"

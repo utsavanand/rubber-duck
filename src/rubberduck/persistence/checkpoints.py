@@ -101,10 +101,13 @@ def build_checkpoint(
     intention: str,
     now_ms: int,
     since_ms: int = 0,
+    transcript: list[dict[str, str]] | None = None,
 ) -> Checkpoint:
     """Capture a checkpoint over `events`. If `since_ms` is set (the previous
     checkpoint's time), the record also breaks out the work done *since then* so
-    the summary describes the delta, not the whole session again."""
+    the summary describes the delta, not the whole session again. `transcript`
+    is the agent's own conversation (role/text incl. its responses) when its
+    runtime can read one — it sharpens the summary and is recorded for handoff."""
     activity = _extract(events)
     git = _git_state(cwd)
     new_events = [e for e in events if int(e.get("_ts", 0)) > since_ms] if since_ms else events
@@ -115,6 +118,7 @@ def build_checkpoint(
         **git,
         "created_at": now_ms,
         "since_ms": since_ms,
+        "turns": len(transcript or []),
         "new_since_last": {
             "prompts": new_activity["prompts"],
             "commands": new_activity["commands"],
@@ -123,7 +127,7 @@ def build_checkpoint(
             "event_count": new_activity["event_count"],
         },
     }
-    summary = _summarize(intention, new_activity if since_ms else activity, git)
+    summary = _summarize(intention, new_activity if since_ms else activity, git, transcript)
     markdown = _write_markdown(cwd, session_key, label, record, summary, now_ms)
     return Checkpoint(
         id=uuid.uuid4().hex,
@@ -136,7 +140,12 @@ def build_checkpoint(
     )
 
 
-def _summarize(intention: str, activity: dict[str, Any], git: dict[str, Any]) -> str:
+def _summarize(
+    intention: str,
+    activity: dict[str, Any],
+    git: dict[str, Any],
+    transcript: list[dict[str, str]] | None = None,
+) -> str:
     facts = (
         f"{activity['event_count']} events; "
         f"{len(activity['files'])} files changed; "
@@ -150,8 +159,29 @@ def _summarize(intention: str, activity: dict[str, Any], git: dict[str, Any]) ->
         f"Prompts given:\n" + "\n".join(f"- {p}" for p in activity["prompts"]) + "\n\n"
         f"Activity: {facts}"
     )
+    # When we have the agent's own conversation, give the summarizer the tail of
+    # it (including the agent's responses) — far better signal than counts alone.
+    convo = _transcript_excerpt(transcript)
+    if convo:
+        prompt += f"\n\nConversation (most recent):\n{convo}"
     result = summarize(prompt)
     return result.text or f"{intention or 'Session'} — {facts}."
+
+
+def _transcript_excerpt(transcript: list[dict[str, str]] | None, budget: int = 4000) -> str:
+    """The tail of the conversation as `role: text` lines, capped at ~budget
+    chars (most recent kept) so a long session doesn't blow the prompt."""
+    if not transcript:
+        return ""
+    lines = [f"{r.get('role', '?')}: {r.get('text', '').strip()}" for r in transcript]
+    out: list[str] = []
+    used = 0
+    for line in reversed(lines):
+        if used + len(line) > budget:
+            break
+        out.append(line)
+        used += len(line) + 1
+    return "\n".join(reversed(out))
 
 
 def _write_markdown(

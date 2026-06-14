@@ -24,6 +24,22 @@ def _isolated_home() -> Iterator[None]:
                 os.environ["RUBBERDUCK_HOME"] = prev
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _no_summarizer_autodetect() -> Iterator[None]:
+    """Disable the summarizer's CLI-agent auto-detection in tests, so a
+    checkpoint never shells out to a real claude/codex/copilot on the dev's
+    PATH. Tests that exercise the LLM path opt back in explicitly."""
+    prev = os.environ.get("RUBBERDUCK_SUMMARIZER")
+    os.environ["RUBBERDUCK_SUMMARIZER"] = "off"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("RUBBERDUCK_SUMMARIZER", None)
+        else:
+            os.environ["RUBBERDUCK_SUMMARIZER"] = prev
+
+
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
     """A real git repo with one commit, for worktree tests."""
