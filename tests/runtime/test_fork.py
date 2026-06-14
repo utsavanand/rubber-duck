@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from rubberduck.persistence.history import HistoryStore
+from rubberduck.runtimes.claude_code import project_slug
 from rubberduck.server import Server
 
 FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"
@@ -155,7 +156,7 @@ def test_worktree_fork_carries_claude_conversation(
     )
     # The parent's conversation transcript must exist for it to be resumable.
     fake_home = tmp_path / "home"
-    slug = str(git_repo.resolve()).replace("/", "-")
+    slug = project_slug(git_repo)
     proj = fake_home / ".claude" / "projects" / slug
     proj.mkdir(parents=True)
     (proj / "claude-sid.jsonl").write_text('{"role":"user","text":"hi"}\n')

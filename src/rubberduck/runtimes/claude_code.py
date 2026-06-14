@@ -4,8 +4,9 @@ hook events and writes a JSONL transcript.
 Two things this adds over the generic runtime:
 
 1. Transcript location + parsing. Claude writes the session transcript to
-   ~/.claude/projects/<cwd-with-/-as-->/<session_id>.jsonl. Locating and parsing
-   it gives the summarizer the real conversation instead of just the PTY log.
+   ~/.claude/projects/<slug>/<session_id>.jsonl, where <slug> is the cwd with
+   every non-alphanumeric char turned into a dash (see project_slug). Locating
+   and parsing it gives the summarizer the real conversation, not just the PTY log.
 
 2. State from hook events rather than scraped output. In practice Claude Code's
    hooks POST events straight to /events (the claude-code ingest adapter), so the
@@ -17,11 +18,22 @@ every other runtime path stays generic.
 """
 
 import json
+import re
 import shlex
 from pathlib import Path
 
 from rubberduck.agents.hooks_install import claude_style_build, claude_style_strip
 from rubberduck.runtimes.base import Harness, HookSpec, SessionState
+
+
+def project_slug(cwd: Path) -> str:
+    """The ~/.claude/projects/ directory name Claude derives from a cwd. Claude
+    replaces EVERY non-alphanumeric char with a dash — not just `/`. So `.` and
+    `_` become dashes too: `/Users/a/.rubberduck/x` -> `-Users-a--rubberduck-x`
+    (note the double dash). A naive `.replace("/", "-")` kept the dot and looked
+    in a directory that never existed, breaking transcript lookup / conversation
+    fork for every worktree under ~/.rubberduck/."""
+    return re.sub(r"[^a-zA-Z0-9]", "-", str(cwd.resolve()))
 
 
 class ClaudeCodeRuntime(Harness):
@@ -53,7 +65,7 @@ class ClaudeCodeRuntime(Harness):
         return None
 
     def locate_transcript(self, *, cwd: Path, session_id: str) -> Path | None:
-        slug = str(cwd.resolve()).replace("/", "-")
+        slug = project_slug(cwd)
         path = Path.home() / ".claude" / "projects" / slug / f"{session_id}.jsonl"
         return path if path.exists() else None
 

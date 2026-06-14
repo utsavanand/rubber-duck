@@ -15,7 +15,7 @@ from rubberduck.core.eventbus import EventBus
 from rubberduck.core.orchestrator import Orchestrator
 from rubberduck.git.worktrees import WorktreeManager
 from rubberduck.persistence.history import HistoryStore
-from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
+from rubberduck.runtimes.claude_code import ClaudeCodeRuntime, project_slug
 
 FAKE_AGENT = Path(__file__).parent.parent / "fakes" / "fake_agent.py"
 
@@ -36,7 +36,7 @@ def test_claude_session_summary_uses_transcript(tmp_path: Path, fake_home: Path)
     work.mkdir()
 
     # Plant a Claude transcript where the locator will look.
-    slug = str(work.resolve()).replace("/", "-")
+    slug = project_slug(work)
     transcript = fake_home / ".claude" / "projects" / slug / "claude-sess.jsonl"
     transcript.parent.mkdir(parents=True)
     transcript.write_text(

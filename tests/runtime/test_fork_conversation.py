@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 
 from rubberduck.persistence.history import HistoryStore
+from rubberduck.runtimes.claude_code import project_slug
 from rubberduck.server import Server
 
 
@@ -105,7 +106,7 @@ def test_fork_conversation_opens_terminal_with_resume_command(
     # _resumable_session_id verifies the conversation transcript exists before
     # forking, so seed one for claude-xyz under a fake home.
     fake_home = tmp_path / "home"
-    slug = str(Path("/work/repo").resolve()).replace("/", "-")
+    slug = project_slug(Path("/work/repo"))
     proj = fake_home / ".claude" / "projects" / slug
     proj.mkdir(parents=True)
     (proj / "claude-xyz.jsonl").write_text('{"role":"user","text":"hi"}\n')
