@@ -233,6 +233,11 @@ class Server:
         self.approvals = ApprovalRegistry(self.orchestrator.inject_key)
         self.token = security.load_or_create_token()
 
+    # Activity that means a session is no longer blocked on a permission prompt:
+    # any of these arriving after a PermissionRequest means it was answered (in
+    # the agent's own terminal, for a watched session) and the agent moved on.
+    _RESOLVES_APPROVAL = {"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionEnd"}
+
     def _sink(self, event: dict[str, Any]) -> None:
         """Fan a published event to the durable store and the approval registry.
         Enrich watched sessions with git state detected from their cwd, so they
@@ -240,7 +245,10 @@ class Server:
         self._enrich_git(event)
         self.history.record(event)
         self.approvals.from_event(event)
-        if event.get("event_type") == "SessionEnd":
+        # Clear stale approvals: if the agent did anything else, the prompt that
+        # created them is resolved (otherwise an answered-in-terminal request for
+        # a watched session lingers forever as fake "needs human" noise).
+        if event.get("event_type") in self._RESOLVES_APPROVAL:
             key = event.get("session_key") or event.get("session_id")
             if key:
                 self.approvals.drop_session(str(key))

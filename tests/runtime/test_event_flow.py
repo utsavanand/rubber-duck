@@ -59,6 +59,44 @@ def test_recent_endpoint_returns_posted_events() -> None:
     assert [e["event_type"] for e in events] == ["SessionStart", "Stop"]
 
 
+def test_permission_request_clears_when_the_agent_moves_on() -> None:
+    """A PermissionRequest answered in the agent's own terminal (we never see the
+    answer) must not linger as a fake 'needs human' approval. The next activity
+    event for that session resolves it."""
+
+    async def count_approvals(port: int) -> int:
+        body = await asyncio.to_thread(_get, port, "/approvals")
+        return len(json.loads(body)["approvals"])
+
+    async def scenario() -> tuple[int, int]:
+        server = await asyncio.start_server(Server().handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            await asyncio.to_thread(
+                _post_event,
+                port,
+                {
+                    "event_type": "PermissionRequest",
+                    "session_key": "pa",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": "npm run build"},
+                },
+            )
+            after_request = await count_approvals(port)
+            # The agent ran the command (answered in its terminal) and moved on.
+            await asyncio.to_thread(
+                _post_event,
+                port,
+                {"event_type": "PreToolUse", "session_key": "pa", "tool_name": "Bash"},
+            )
+            after_activity = await count_approvals(port)
+        return after_request, after_activity
+
+    after_request, after_activity = asyncio.run(scenario())
+    assert after_request == 1  # the request registered
+    assert after_activity == 0  # and cleared once the agent moved on
+
+
 def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
     """A deleted session whose hooks keep firing must not stream phantom events
     that rebuild a ghost row in the dashboard."""
