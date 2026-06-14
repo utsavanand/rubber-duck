@@ -805,7 +805,7 @@ class Server:
         transcript was deleted), so verify the transcript file exists. If the
         recorded id is dead, fall back to the newest real conversation in this
         cwd. Returns None if there's nothing resumable."""
-        from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
+        from rubberduck.runtimes.claude_code import ClaudeCodeRuntime, project_slug
 
         rt = ClaudeCodeRuntime()
         cwd_path = Path(cwd)
@@ -814,7 +814,7 @@ class Server:
             return recorded
         # The recorded id has no transcript — use the most recent one for this
         # project directory, if any.
-        slug = str(cwd_path.resolve()).replace("/", "-")
+        slug = project_slug(cwd_path)
         proj = Path.home() / ".claude" / "projects" / slug
         if not proj.is_dir():
             return None
