@@ -25,12 +25,11 @@ from rubberduck.helpers import paths
 TOKEN_HEADER = "x-rubberduck-token"
 
 # Origins the dashboard is actually served from. A request whose Origin/Referer
-# is none of these is cross-origin and refused.
-_ALLOWED_ORIGINS = frozenset(
-    f"http://{host}:{port}"
-    for host in ("127.0.0.1", "localhost")
-    for port in ("4200",)
-)
+# is anything else is cross-origin and refused. The server only binds
+# localhost, so a same-machine browser tab on its own port (any port — the user
+# may run --port 4300) is legitimate; a foreign website has a non-localhost
+# origin and is caught. Matches http/https on localhost/127.0.0.1 with any port.
+_LOCAL_ORIGIN_RE = re.compile(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$")
 
 # session_key flows into shell strings (heartbeat) and DB rows. Constrain it to
 # characters that are inert in a shell and a path.
@@ -65,10 +64,12 @@ def origin_allowed(headers: dict[str, str]) -> bool:
     another site always sends one, so it's caught."""
     origin = headers.get("origin")
     if origin is not None:
-        return origin in _ALLOWED_ORIGINS
+        return _LOCAL_ORIGIN_RE.match(origin) is not None
     referer = headers.get("referer")
     if referer is not None:
-        return any(referer.startswith(o + "/") or referer == o for o in _ALLOWED_ORIGINS)
+        # Referer carries a path; match just the scheme://host:port prefix.
+        m = re.match(r"^(https?://[^/]+)", referer)
+        return m is not None and _LOCAL_ORIGIN_RE.match(m.group(1)) is not None
     return True
 
 

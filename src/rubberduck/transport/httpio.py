@@ -120,9 +120,13 @@ async def write_file(writer: asyncio.StreamWriter, path: Path) -> None:
 def dashboard_dir() -> Path | None:
     """Locate the built dashboard. Prefer the copy bundled in the installed
     package (src/rubberduck/dashboard); fall back to the dev build at web/dist
-    so a repo checkout serves the freshly-built UI."""
-    packaged = Path(__file__).resolve().parent / "dashboard"
+    so a repo checkout serves the freshly-built UI.
+
+    This file lives at src/rubberduck/transport/httpio.py, so the package root
+    is two parents up and the repo root is four."""
+    pkg_root = Path(__file__).resolve().parents[1]  # src/rubberduck/
+    packaged = pkg_root / "dashboard"
     if (packaged / "index.html").is_file():
         return packaged
-    dev = Path(__file__).resolve().parents[2] / "web" / "dist"
+    dev = pkg_root.parents[1] / "web" / "dist"  # repo/web/dist
     return dev if (dev / "index.html").is_file() else None

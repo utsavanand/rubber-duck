@@ -116,7 +116,7 @@ export const api = {
   remove: (key: string, force = false) =>
     fetch(`/sessions/${key}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ force }),
     }).then(async (r) => ({
       status: r.status,
