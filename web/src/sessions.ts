@@ -77,6 +77,10 @@ export function applyEvent(
     // Don't let a live event without these fields overwrite the seeded values.
     cwd: prev?.cwd ?? e.cwd,
     branch: prev?.branch ?? e.branch,
+    // Keep the runtime once known: a session born from a live event (a launched
+    // session's SessionStart) must capture it, or the conversation-fork option
+    // (gated on runtime === "claude-code") stays disabled.
+    runtime: prev?.runtime ?? e.runtime,
     repoName: prev?.repoName ?? repoNameFrom(e.repo_path, e.source_app),
     worktreePath: prev?.worktreePath ?? e.worktree_path,
     parentKey: prev?.parentKey ?? e.parent_session_key,

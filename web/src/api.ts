@@ -113,6 +113,8 @@ export const api = {
     ),
   terminals: () => get<{ terminals: string[] }>("/terminals"),
   stop: (key: string) => post<{ stopped: boolean }>(`/sessions/${key}/stop`),
+  focusTerminal: (key: string) =>
+    post<{ focused: boolean }>(`/sessions/${key}/focus`),
   remove: (key: string, force = false) =>
     fetch(`/sessions/${key}`, {
       method: "DELETE",

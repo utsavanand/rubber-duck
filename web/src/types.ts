@@ -18,6 +18,7 @@ export interface RubberduckEvent {
   worktree_path?: string;
   parent_session_key?: string;
   launched?: boolean;
+  runtime?: string;
 }
 
 export type SessionState = "idle" | "busy" | "waiting" | "terminated";

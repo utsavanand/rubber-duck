@@ -178,6 +178,22 @@ code,
   font-size: 13px;
   line-height: 1;
 }
+/* Jump to a launched session's terminal tab. */
+.rd-row-jump {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.rd-row-jump:hover {
+  color: var(--text);
+  background: var(--bg-soft, rgba(127, 127, 127, 0.12));
+}
 .rd-row-name {
   font-weight: 600;
   font-size: 14px;
@@ -402,6 +418,25 @@ code,
     transform: rotate(360deg);
   }
 }
+.rd-inline-spin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rd-spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  display: inline-block;
+  animation: rd-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd-spinner {
+    animation: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .rd-pulse-incoming span {
     animation: none;
@@ -608,6 +643,13 @@ code,
   font-weight: 600;
   font-size: 13.5px;
   color: var(--text);
+}
+.rd-approval .who .when {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
 }
 .rd-approval .what {
   color: var(--text-soft);

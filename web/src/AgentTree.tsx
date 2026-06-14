@@ -92,6 +92,7 @@ function TreeRow({
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(s.notes ?? "");
   const [collapsed, setCollapsed] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const hasChildren = node.children.length > 0;
   // Branching is possible for any live session on a git repo (worktree fork or
   // promote) and for any live claude-code session (conversation fork, even with
@@ -110,6 +111,19 @@ function TreeRow({
   async function saveNotes() {
     if (notes === (s.notes ?? "")) return;
     await act("Notes saved", () => api.updateSession(s.key, { notes }));
+    setNotesOpen(false);
+  }
+
+  async function captureCheckpoint() {
+    if (capturing) return;
+    // Capturing runs a summarizer agent (claude -p / codex / copilot), a few
+    // seconds — show a spinner so the click doesn't feel dead.
+    setCapturing(true);
+    try {
+      await act("Checkpoint recorded", () => api.checkpoint(s.key, "manual"));
+    } finally {
+      setCapturing(false);
+    }
   }
 
   return (
@@ -162,6 +176,18 @@ function TreeRow({
               {stateLabel}
             </span>
           </span>
+          {s.launched && live && (
+            <button
+              className="rd-row-jump"
+              title="Jump to this session's terminal tab"
+              onClick={(e) => {
+                e.stopPropagation();
+                act("Opened terminal", () => api.focusTerminal(s.key));
+              }}
+            >
+              ↗
+            </button>
+          )}
         </div>
         <div className="rd-row-meta" onClick={() => onOpen(s.key)}>
           {s.branch ? `${s.repoName ?? "repo"} · ${s.branch}` : (s.cwd ?? "—")}
@@ -191,11 +217,17 @@ function TreeRow({
           <button
             className="rd-btn rd-btn-sm rd-btn-ghost"
             title="Record what was done so far"
-            onClick={() =>
-              act("Checkpoint recorded", () => api.checkpoint(s.key, "manual"))
-            }
+            disabled={capturing}
+            onClick={captureCheckpoint}
           >
-            Checkpoint
+            {capturing ? (
+              <span className="rd-inline-spin">
+                <span className="rd-spinner" />
+                Capturing…
+              </span>
+            ) : (
+              "Checkpoint"
+            )}
           </button>
           {live && (
             <button

@@ -7,6 +7,7 @@ interface Approval {
   session_key: string;
   tool_name: string;
   detail: string;
+  created_at: number;
   reachable: boolean;
 }
 
@@ -83,6 +84,11 @@ export function Approvals({
                 <div className="who">
                   {labels[a.session_key] ?? a.session_key.slice(0, 8)} ·{" "}
                   {a.tool_name}
+                  {a.created_at > 0 && (
+                    <span className="when">
+                      {new Date(a.created_at).toLocaleTimeString()}
+                    </span>
+                  )}
                 </div>
                 {a.detail && (
                   <div className="what">

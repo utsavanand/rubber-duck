@@ -156,9 +156,16 @@ export function SessionDetail({
           {(
             [
               "timeline",
-              // Output (live PTY) and diff only exist for Rubberduck-launched
-              // worktree sessions; watched sessions run in your own terminal.
-              ...(session.worktreePath ? (["output", "diff"] as Tab[]) : []),
+              // Diff is a plain git operation — show it for any session on a git
+              // repo (a worktree, or run-in-place on a branch), not just
+              // worktrees.
+              ...(session.worktreePath || session.branch
+                ? (["diff"] as Tab[])
+                : []),
+              // Output streams a PTY Rubberduck owns. Only the in-process
+              // worktree-launch path has one; terminal-launched and watched
+              // sessions run elsewhere, so there's nothing to stream.
+              ...(session.worktreePath ? (["output"] as Tab[]) : []),
               "checkpoints",
               "notes",
             ] as Tab[]
@@ -232,7 +239,16 @@ function Timeline({ events }: { events: RawEvent[] }) {
 function DiffView({ diff }: { diff: string }) {
   if (!diff)
     return (
-      <Empty text="No changes in this session's worktree (or diff unavailable)." />
+      <div style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.6 }}>
+        <p style={{ margin: "0 0 6px", fontWeight: 600, color: "var(--text)" }}>
+          Diff — stay tuned.
+        </p>
+        <p style={{ margin: 0 }}>
+          This shows uncommitted changes in the session&apos;s working tree.
+          Showing a full diff of everything the session changed (including
+          commits, vs. its base branch) is coming soon.
+        </p>
+      </div>
     );
   return (
     <pre
