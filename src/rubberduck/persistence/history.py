@@ -83,19 +83,20 @@ def session_key_of(event: Event) -> str | None:
 
 
 def derive_state(event: Event, prev: SessionState | None) -> SessionState:
-    # An explicit lifecycle marker (server-initiated, e.g. the liveness sweep)
-    # sets the state directly: archived / stopped / terminated.
+    # An explicit lifecycle marker (a deliberate stop/archive/sweep) always wins.
     lifecycle = event.get("lifecycle")
     if lifecycle == "archived":
         return "archived"
     if lifecycle == "stopped":
         return "stopped"
-    if lifecycle == "terminated" or event.get("event_type") == "SessionEnd":
-        return "terminated"
-    # A stopped or archived session stays put until it's explicitly resumed
-    # (a SessionStart) — a stray late hook event must not silently revive it.
+    # A stopped or archived session is at rest: only an explicit resume
+    # (SessionStart) revives it. A stray late event — including the resumed-then-
+    # exited agent's SessionEnd — must NOT flip it (e.g. archived -> terminated).
+    # This guard runs before the SessionEnd/terminated rule on purpose.
     if prev in ("stopped", "archived") and event.get("event_type") != "SessionStart":
         return prev
+    if lifecycle == "terminated" or event.get("event_type") == "SessionEnd":
+        return "terminated"
     match event.get("event_type"):
         case "PermissionRequest" | "Notification":
             return "waiting"

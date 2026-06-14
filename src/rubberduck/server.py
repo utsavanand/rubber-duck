@@ -773,7 +773,19 @@ class Server:
         )
         if opened:
             self.history.mark_heartbeat(session_key)
-            self.history.set_state(session_key, "busy")
+            # Publish a SessionStart so the revive persists AND reaches dashboards
+            # over SSE — this is the one event that lifts the stopped/archived
+            # rest-state back to busy. (set_state alone wouldn't notify clients.)
+            self.bus.publish(
+                {
+                    "event_type": "SessionStart",
+                    "session_key": session_key,
+                    "runtime": row.get("runtime"),
+                    "cwd": row.get("cwd"),
+                    "source_app": row.get("source_app"),
+                    "launched": True,
+                }
+            )
         await _write_json(
             writer, 200, {"resumed": opened, "session_key": session_key, "command": argv}
         )

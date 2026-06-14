@@ -11,18 +11,20 @@ import {
 export const IDLE_SETTLE_MS = 5 * 60_000;
 
 function deriveState(e: RubberduckEvent, prev?: SessionState): SessionState {
-  // Explicit lifecycle marker from the server (e.g. the auto-archive sweep).
+  // An explicit lifecycle marker (deliberate stop/archive/sweep) always wins.
   if (e.lifecycle === "archived") return "archived";
   if (e.lifecycle === "stopped") return "stopped";
-  if (e.lifecycle === "terminated" || e.event_type === "SessionEnd")
-    return "terminated";
-  // A stopped/archived session stays put until it's explicitly resumed
-  // (SessionStart) — mirrors the server, so a stray late event can't revive it.
+  // A stopped/archived session is at rest: only an explicit resume
+  // (SessionStart) revives it. A stray late event — including a resumed-then-
+  // exited agent's SessionEnd — must not flip it. This runs before the
+  // terminated rule on purpose (mirrors the server).
   if (
     (prev === "stopped" || prev === "archived") &&
     e.event_type !== "SessionStart"
   )
     return prev;
+  if (e.lifecycle === "terminated" || e.event_type === "SessionEnd")
+    return "terminated";
   switch (e.event_type) {
     case "PermissionRequest":
     case "Notification":

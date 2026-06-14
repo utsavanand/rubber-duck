@@ -36,6 +36,10 @@ def test_derive_state_transitions() -> None:
     assert derive_state({"lifecycle": "archived"}, "busy") == "archived"
     assert derive_state({"lifecycle": "stopped"}, "busy") == "stopped"
     assert derive_state({"event_type": "SessionStart"}, "archived") == "busy"
+    # A late SessionEnd (e.g. a resumed-then-exited agent) must NOT flip an
+    # at-rest session back to terminated — the at-rest guard wins.
+    assert derive_state({"event_type": "SessionEnd"}, "archived") == "archived"
+    assert derive_state({"event_type": "SessionEnd"}, "stopped") == "stopped"
 
 
 def test_session_row_accumulates_across_events(tmp_path: Path) -> None:
