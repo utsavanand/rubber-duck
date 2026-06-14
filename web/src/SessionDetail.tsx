@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, CheckpointRecord, RawEvent } from "./api";
 import { LiveOutput } from "./LiveOutput";
+import { effectiveState } from "./sessions";
 import { SessionView } from "./types";
 import { useToast } from "./ui";
 
@@ -19,6 +20,14 @@ export function SessionDetail({
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [diff, setDiff] = useState<string>("");
   const [capturing, setCapturing] = useState(false);
+  // Jump-to-terminal applies to a launched session that's actually running
+  // (we recorded its tab's tty; a stopped/archived/watched one has none to open).
+  const liveState = effectiveState(session, Date.now());
+  const canJumpToTerminal =
+    session.launched &&
+    liveState !== "terminated" &&
+    liveState !== "stopped" &&
+    liveState !== "archived";
 
   // Esc closes the panel.
   useEffect(() => {
@@ -111,14 +120,35 @@ export function SessionDetail({
             }}
           >
             <strong style={{ fontSize: 16 }}>{session.label}</strong>
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="rd-btn rd-btn-ghost rd-btn-sm"
-              style={{ lineHeight: 1 }}
-            >
-              ✕ Close
-            </button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {canJumpToTerminal && (
+                <button
+                  className="rd-btn rd-btn-ghost rd-btn-sm"
+                  title="Jump to this session's terminal tab"
+                  style={{ lineHeight: 1 }}
+                  onClick={async () => {
+                    try {
+                      await api.focusTerminal(session.key);
+                    } catch (e) {
+                      toast(
+                        `Couldn't open terminal: ${(e as Error).message}`,
+                        "err",
+                      );
+                    }
+                  }}
+                >
+                  ↗ Terminal
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="rd-btn rd-btn-ghost rd-btn-sm"
+                style={{ lineHeight: 1 }}
+              >
+                ✕ Close
+              </button>
+            </div>
           </div>
           <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
             {session.state} · {session.runtime ?? "—"} · {session.eventCount}{" "}
