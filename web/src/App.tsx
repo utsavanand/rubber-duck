@@ -226,6 +226,9 @@ function Dashboard() {
               waiting={sessions.filter(
                 (s) => effectiveState(s, now) === "waiting",
               )}
+              launchedKeys={
+                new Set(sessions.filter((s) => s.launched).map((s) => s.key))
+              }
             />
           </div>
         </section>

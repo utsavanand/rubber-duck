@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { authHeaders } from "./api";
+import { api, authHeaders } from "./api";
 import { SessionView } from "./types";
 import { useToast } from "./ui";
 
@@ -21,14 +21,26 @@ export function Approvals({
   onOpen,
   knownKeys,
   waiting,
+  launchedKeys,
 }: {
   labels: Record<string, string>;
   pollKey: number;
   onOpen: (key: string) => void;
   knownKeys: Set<string>;
   waiting: SessionView[];
+  launchedKeys: Set<string>;
 }) {
   const toast = useToast();
+
+  // Jump straight to a launched session's terminal tab — the whole point of the
+  // arrow here: when an agent needs you, one tap takes you to answer it.
+  async function jump(key: string) {
+    try {
+      await api.focusTerminal(key);
+    } catch (e) {
+      toast(`Couldn't open terminal: ${(e as Error).message}`, "err");
+    }
+  }
   const [approvals, setApprovals] = useState<Approval[]>([]);
 
   const refresh = useCallback(() => {
@@ -132,6 +144,15 @@ export function Approvals({
               watched
             </span>
           )}
+          {launchedKeys.has(a.session_key) && (
+            <button
+              className="rd-row-jump"
+              title="Jump to this session's terminal tab"
+              onClick={() => jump(a.session_key)}
+            >
+              ↗
+            </button>
+          )}
         </div>
       ))}
       {asking.map((s) => {
@@ -160,6 +181,15 @@ export function Approvals({
             >
               {s.launched ? "launched" : "watched"}
             </span>
+            {s.launched && (
+              <button
+                className="rd-row-jump"
+                title="Jump to this session's terminal tab"
+                onClick={() => jump(s.key)}
+              >
+                ↗
+              </button>
+            )}
           </div>
         );
       })}
