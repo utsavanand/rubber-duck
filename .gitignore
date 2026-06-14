@@ -13,3 +13,4 @@ web/dist/
 .uv-suite-state/
 *.tsbuildinfo
 src/rubberduck/dashboard/
+uv-out/
