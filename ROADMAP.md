@@ -42,6 +42,12 @@ Organized by type of work. `★` marks the current highest-leverage item.
   active sessions are shown side by side as a live fleet — a fun, at-a-glance way
   to watch several agents make progress at once (vs the current flat list).
   Likely a grid/canvas of session cards animating on each event.
+- [ ] **Native Mac app.** A real menubar/desktop app instead of a browser tab:
+  launch `serve` on login, show fleet status in the menubar, native
+  notifications when a session needs you, and one-click open of the dashboard.
+  A Swift package is scaffolded under `mac/` (SwiftUI wrapping the local
+  server + dashboard). Decide: ship the dashboard in a WKWebView shell first,
+  or build native panels against the existing HTTP/SSE API.
 
 ## 🏗️ Architecture
 

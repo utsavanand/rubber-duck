@@ -167,13 +167,18 @@ rubberduck serve`}
       {/* cta */}
       <div className="container">
         <section className="cta" style={{ border: "none" }}>
-          <h2>Want in early?</h2>
+          <h2>Let&apos;s talk.</h2>
           <p>
-            RubberDuckHQ is in active development. If you run agents at scale,
-            or just want to try it, reach out.
+            RubberDuckHQ is in active development. If you want to catch up, you
+            can reach out to me.
           </p>
-          <a href="mailto:utsava@utsava.xyz" className="btn btn-primary">
-            utsava@utsava.xyz
+          <a
+            href="https://utsava.xyz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary"
+          >
+            utsava.xyz
           </a>
         </section>
       </div>
