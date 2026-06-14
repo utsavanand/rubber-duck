@@ -97,9 +97,11 @@ def test_permission_request_clears_when_the_agent_moves_on() -> None:
     assert after_activity == 0  # and cleared once the agent moved on
 
 
-def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
-    """A deleted session whose hooks keep firing must not stream phantom events
-    that rebuild a ghost row in the dashboard."""
+def test_tombstoned_session_events_are_all_dropped(tmp_path: Path) -> None:
+    """A deleted session whose hooks keep firing must not leak ANY events — not
+    even a SessionStart. Deleted stays deleted (no phantom rows, nothing in the
+    Pulse feed); `rubberduck restart` is the way to bring back a live session
+    deleted by mistake."""
     from rubberduck.persistence.history import HistoryStore
 
     store = HistoryStore(tmp_path / "db.sqlite")
@@ -113,11 +115,11 @@ def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
             await asyncio.to_thread(
                 _post_event, port, {"event_type": "PreToolUse", "session_key": "live"}
             )
-            # The tombstoned session's events are dropped...
+            # The tombstoned session's events are ALL dropped, including a
+            # later SessionStart (a still-running agent's periodic event).
             await asyncio.to_thread(
                 _post_event, port, {"event_type": "PreToolUse", "session_key": "ghost"}
             )
-            # ...but a SessionStart revives it.
             await asyncio.to_thread(
                 _post_event, port, {"event_type": "SessionStart", "session_key": "ghost"}
             )
@@ -125,10 +127,21 @@ def test_tombstoned_session_events_are_dropped(tmp_path: Path) -> None:
         return list(json.loads(body)["events"])
 
     events = asyncio.run(scenario())
-    keys_types = [(e.get("session_key"), e["event_type"]) for e in events]
-    assert ("live", "PreToolUse") in keys_types
-    assert ("ghost", "PreToolUse") not in keys_types  # dropped
-    assert ("ghost", "SessionStart") in keys_types  # revived
+    keys = [e.get("session_key") for e in events]
+    assert "live" in keys
+    assert "ghost" not in keys  # nothing from the deleted session, not even SessionStart
+
+
+def test_clear_tombstones_revives_deleted_sessions(tmp_path: Path) -> None:
+    """rubberduck restart clears tombstones so a still-running agent reappears."""
+    from rubberduck.persistence.history import HistoryStore
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    store.delete_session("ghost")
+    assert store.is_tombstoned("ghost") is True
+    cleared = store.clear_tombstones()
+    assert cleared == 1
+    assert store.is_tombstoned("ghost") is False  # now its events flow again
 
 
 def test_stop_closes_the_terminal_tab_for_a_launched_session(

@@ -367,17 +367,14 @@ class Server:
                 raw["agent_pid"] = pid if pid > 0 else None
             except (TypeError, ValueError):
                 raw["agent_pid"] = None
-        # A deleted (tombstoned) session whose hooks keep firing must not stream
-        # phantom events — they'd rebuild a ghost row in the dashboard that the
-        # backend has no record of (so checkpoint/stop/etc. 404). Drop them here,
-        # before the ring buffer / SSE / sink. A SessionStart legitimately revives
-        # the key, so let that through (history.record lifts the tombstone).
+        # A deleted (tombstoned) session whose agent is still running keeps firing
+        # hooks. Drop ALL of its events here — including SessionStart — so a
+        # session you deleted stays gone: no phantom rows, no events leaking into
+        # the Pulse feed. Deleted means deleted. To bring a session back that you
+        # deleted by mistake, `rubberduck restart` (a fresh server has no
+        # tombstones, so still-running agents re-stream and reappear).
         key = raw.get("session_key") or raw.get("session_id")
-        if (
-            key
-            and raw.get("event_type") != "SessionStart"
-            and self.history.is_tombstoned(str(key))
-        ):
+        if key and self.history.is_tombstoned(str(key)):
             await _write_json(writer, 200, {"dropped": "session deleted"})
             return
         event = self.bus.publish(raw)

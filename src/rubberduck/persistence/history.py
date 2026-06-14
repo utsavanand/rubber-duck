@@ -181,11 +181,10 @@ class HistoryStore:
         published event (the EventBus sink)."""
         key = session_key_of(event)
         # A deleted session whose terminal is still alive keeps firing events.
-        # Don't let those resurrect the row. SessionEnd lifts the tombstone — the
-        # terminal is gone, so a future session reusing the key starts clean.
+        # Drop ALL of them — deleted stays deleted (no resurrection, even by a
+        # SessionEnd/SessionStart). `clear_tombstones()` (rubberduck restart) is
+        # the only way back, for a session deleted by mistake.
         if key is not None and self._is_tombstoned(key):
-            if event.get("event_type") == "SessionEnd":
-                self._lift_tombstone(key)
             return
         self._conn.execute(
             "INSERT OR IGNORE INTO events (id, session_key, event_type, ts, payload_json) "
@@ -217,6 +216,15 @@ class HistoryStore:
     def _lift_tombstone(self, key: str) -> None:
         self._conn.execute("DELETE FROM tombstones WHERE session_key = ?", (key,))
         self._conn.commit()
+
+    def clear_tombstones(self) -> int:
+        """Forget all deletions, so any still-running agent's events flow again
+        and its session reappears. `rubberduck restart` calls this — the escape
+        hatch for sessions deleted by mistake while their agent kept running.
+        Returns how many tombstones were cleared."""
+        cur = self._conn.execute("DELETE FROM tombstones")
+        self._conn.commit()
+        return cur.rowcount
 
     def _bump_metric(self, key: str, kind: str) -> None:
         self._conn.execute(

@@ -249,10 +249,13 @@ def test_deleted_session_is_not_resurrected_by_later_events(tmp_path: Path) -> N
     bus.publish({"event_type": "Notification", "session_key": "s1"})
     assert store.session("s1") is None
 
-    # SessionEnd lifts the tombstone; a brand-new session reusing the key may
-    # then appear again.
+    # Deleted stays deleted: not even SessionEnd/SessionStart resurrects it.
     bus.publish({"event_type": "SessionEnd", "session_key": "s1"})
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "cwd": "/repo"})
     assert store.session("s1") is None
+
+    # Only clearing the tombstone (rubberduck restart) brings it back.
+    store.clear_tombstones()
     bus.publish({"event_type": "SessionStart", "session_key": "s1", "cwd": "/repo"})
     assert store.session("s1") is not None
 

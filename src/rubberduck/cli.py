@@ -139,6 +139,13 @@ def _restart(host: str, port: int) -> int:
             return 1
     else:
         print(f"no server running on :{port}; starting one", file=sys.stderr)
+    # Forget deletions so any agent still running re-streams and reappears — the
+    # whole point of restart: recover sessions deleted by mistake while live.
+    from rubberduck.persistence.history import HistoryStore
+
+    cleared = HistoryStore().clear_tombstones()
+    if cleared:
+        print(f"cleared {cleared} deletion(s) — live agents will re-appear", file=sys.stderr)
     return _serve(host, port)
 
 
