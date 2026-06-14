@@ -1,6 +1,6 @@
 [project]
 name = "rubberduckhq"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local-first orchestrator for AI coding agents — one window over your fleet"
 readme = "README.md"
 requires-python = ">=3.11"

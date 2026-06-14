@@ -4,14 +4,11 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## 🚀 Release & ops
 
-- ★ **Publish to PyPI (0.3.0).** `main` is far ahead of the published 0.2.0;
-  nothing in "Shipped (unreleased)" reaches users until this ships. The security
-  gate makes it a breaking change — old hook scripts get 401'd until
-  `install-hooks` is re-run, so the changelog must say so.
-  - [ ] Bump 0.2.0 → 0.3.0 (pyproject.toml + `__init__.py`).
-  - [ ] `scripts/build_package.sh` (rebuild dashboard, bundle, build wheel).
-  - [ ] `twine upload` (PyPI token in ~/.pypirc).
-  - [ ] Changelog: re-run `install-hooks` after upgrade (token gate).
+- [x] **Publish to PyPI (0.3.1).** Shipped 0.3.1 with all of `main`'s work +
+  latest dashboard. (0.3.0 was uploaded mid-session before the day's fixes, so it
+  was stale and couldn't be overwritten — bumped to 0.3.1.) The security gate
+  makes upgrading a breaking change — old hook scripts get 401'd until
+  `install-hooks` is re-run.
 
 ## 🐛 Code fixes
 
@@ -59,14 +56,33 @@ Organized by type of work. `★` marks the current highest-leverage item.
     resume command; all three support native resume).
   - [ ] Cross-agent handoff: worktree + new agent seeded with a handoff summary
     from the checkpoint, distilling the agent's *actual responses* (now captured).
+- [ ] **`rubberduck launch` parity with the dashboard.** The CLI `launch` already
+  creates a real launched session (`launched=1`, opens a terminal tab in `--cwd`),
+  but exposes only `command`/`--cwd`/`--session-key`/`--prompt`. The
+  `/sessions/launch` endpoint supports more that the CLI doesn't surface:
+  - [ ] `--no-terminal` → `in_terminal: false` (headless/supervised, for CI).
+  - [ ] `--repo` / `--branch` / `--base` → auto-create a worktree+branch.
+  - [ ] `--terminal` (iterm/terminal) and `--name` / `--notes`.
 - [ ] **Discoverability**: `serve` startup hint when no agent hooks are installed.
-- [ ] **Per-session token count + compaction warning.** Show tokens used per
-  session and warn as it approaches the model's context limit (so you can fork
-  to a fresh agent before it auto-compacts). Each harness exposes usage
-  differently — Claude's hook payload / transcript carries usage, Codex and
-  Copilot have their own — so this lands behind the unified Harness contract:
-  add a `token_usage()` (or a usage field on the transcript read) per runtime,
-  surface a `(used / limit)` bar + amber/red warning in the agent row.
+- [ ] **Per-session token count + compaction warning.** Show context-window
+  occupancy per session and warn as it nears the limit (so you can fork to a
+  fresh agent before it auto-compacts). No hook event carries usage — it's read
+  from the transcript each harness already locates, behind a new
+  `context_tokens() -> int | None` on the Harness contract. Surface a
+  `(used / limit)` bar + amber ≥80% / red ≥90% in the agent row. Limits are
+  hard-coded constants (e.g. Claude 200K). Poll-based, not live: the number lags
+  until the transcript is re-read (lazily on render, or on PostToolUse/Stop).
+  Confirmed per-harness (2026-06):
+  - [ ] **Claude** ✅ — transcript JSONL, last `message.usage`; cumulative
+    occupancy = `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`.
+  - [ ] **Codex** ✅ — transcript JSONL, last `event_msg` of type `token_count`,
+    `info.total_token_usage.total_tokens` (a running total, used directly).
+  - [ ] **Copilot** ⚠️ — `~/.copilot/session-state/<id>/events.jsonl`. The full
+    `tokenDetails` (input/cache_read/cache_write/output) appears only in the
+    `session.shutdown` record — too late to warn. Mid-session, `assistant.message`
+    carries only per-turn `outputTokens`, not cumulative context size. So a live
+    Copilot bar would be a rough sum-of-output estimate, not real occupancy:
+    return None (no bar) until Copilot emits cumulative usage per turn.
 - [ ] **Fleet / multi-session "working together" view.** A visual where all your
   active sessions are shown side by side as a live fleet — a fun, at-a-glance way
   to watch several agents make progress at once (vs the current flat list).
