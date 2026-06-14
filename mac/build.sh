@@ -27,6 +27,12 @@ swiftc -O \
   Sources/Rubberduck/*.swift
 
 echo "==> bundling app icon"
+# Regenerate the icns from the dashboard duck so the app icon never drifts from
+# the brand mark. Skips if node/playwright isn't available (uses the checked-in
+# icns as-is). Needs web/node_modules (run `npm ci` in web/ once).
+if command -v node >/dev/null 2>&1 && [ -d ../web/node_modules/playwright ]; then
+  node make-icon.mjs || echo "   (icon regen failed; using existing AppIcon.icns)"
+fi
 cp Resources/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
 
 echo "==> writing Info.plist"
