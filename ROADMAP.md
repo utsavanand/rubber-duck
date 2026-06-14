@@ -24,6 +24,17 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## ✨ Features
 
+- [ ] **Approve / Deny from the dashboard (blocking, cross-harness).** Today the
+  permission hook is fire-and-forget and "Approve" injects keystrokes into the
+  terminal (fragile; misses many prompts). Make the pre-exec hook block and let
+  Rubberduck return the decision, so the dashboard is the real approval
+  authority. Per-harness: Claude Code + Copilot can route approval externally;
+  Codex is interactive-only (observe + jump-to-terminal). Behind the unified
+  Harness interface (`ApprovalSpec`). Design: `docs/approval-routing-design.md`.
+  - [ ] Server: decision store + `GET /approvals/:id/decision` (hook long-polls)
+    + repoint `/approvals/:id/decide` at it.
+  - [ ] `ApprovalSpec` on `Harness`; Claude + Copilot declare it, Codex = None.
+  - [ ] Hook script: block, long-poll, emit per-runtime decision JSON, fail-open.
 - [ ] **Session lifecycle: stop / resume / archive / delete.** Stop is a dead
   end today (kills the agent, row drops from Active, no way back). Make Stop
   *pause* a resumable session, add Archive as the declutter middle-ground, and
