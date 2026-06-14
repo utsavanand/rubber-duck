@@ -39,18 +39,25 @@ def open_in_terminal(
     app: str | None = None,
     env: dict[str, str] | None = None,
     heartbeat: tuple[str, str] | None = None,
+    title: str | None = None,
 ) -> bool:
     """Open a new terminal in `cwd` running `argv`. Returns True if a terminal
     was spawned, False if we could only fall back to printing the command.
     `env` is exported before the command (used to pass RUBBERDUCK_SESSION_KEY so
     the agent's hooks report under Rubberduck's session key). `heartbeat` is
     (url, session_key): the tab pings `url` every 20s while alive so Rubberduck
-    can tell a killed tab from a quiet one."""
+    can tell a killed tab from a quiet one. `title` names the tab (the user's
+    session name) so you can find it among other tabs."""
     exports = "".join(f"export {k}={_q(v)}; " for k, v in (env or {}).items())
     agent = " ".join(_q(a) for a in argv)
     if heartbeat is not None:
         agent = _with_heartbeat(agent, *heartbeat)
     command = f"cd {_q(cwd)} && {exports}{agent}"
+    if title:
+        # Set the tab title via an OSC sequence before the agent runs. (iTerm and
+        # Terminal also get an explicit custom title set via AppleScript below,
+        # which the agent can't override as it redraws.)
+        command = f"printf '\\033]0;%s\\007' {_q(title)}; {command}"
     system = platform.system()
 
     # Tests (and CI) set this so launching a session never opens a real terminal
@@ -61,9 +68,9 @@ def open_in_terminal(
 
     if system == "Darwin":
         choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
-        if choice == "iterm" and _open_iterm(command):
+        if choice == "iterm" and _open_iterm(command, title):
             return True
-        if _open_terminal(command):  # Terminal.app fallback
+        if _open_terminal(command, title):  # Terminal.app fallback
             return True
     elif system == "Linux":
         for term in available_terminals():
@@ -208,28 +215,39 @@ def _iterm_installed() -> bool:
     return Path("/Applications/iTerm.app").is_dir() or shutil.which("iterm2") is not None
 
 
-def _open_terminal(command: str) -> bool:
+def _open_terminal(command: str, title: str | None = None) -> bool:
     # Open as a new TAB in the front Terminal window if one exists (Cmd-T then
     # run); otherwise `do script` makes a fresh window. Activate to bring forward.
     esc = _esc(command)
+    # `custom title` sticks regardless of what the agent prints, so the tab keeps
+    # the session name. `set tt` captures the tab `do script` returns.
+    set_title = (
+        f'    set custom title of tt to "{_esc(title)}"\n' if title else ""
+    )
     script = (
         'tell application "Terminal"\n'
         "  activate\n"
         "  if (count of windows) > 0 then\n"
         '    tell application "System Events" to keystroke "t" using command down\n'
         "    delay 0.2\n"
-        f'    do script "{esc}" in front window\n'
+        f"    set tt to do script \"{esc}\" in front window\n"
         "  else\n"
-        f'    do script "{esc}"\n'
+        f'    set tt to do script "{esc}"\n'
         "  end if\n"
+        f"{set_title}"
         "end tell"
     )
     return _spawn(["osascript", "-e", script])
 
 
-def _open_iterm(command: str) -> bool:
+def _open_iterm(command: str, title: str | None = None) -> bool:
     # New TAB in the current iTerm window if one is open, else a new window.
     esc = _esc(command)
+    # Setting the session name (and locking it off auto-naming) keeps the tab
+    # titled with the session name even as the agent redraws.
+    set_title = (
+        f'    set name to "{_esc(title)}"\n' if title else ""
+    )
     script = (
         'tell application "iTerm"\n'
         "  activate\n"
@@ -240,6 +258,7 @@ def _open_iterm(command: str) -> bool:
         "  end if\n"
         "  tell current session of current window\n"
         f'    write text "{esc}"\n'
+        f"{set_title}"
         "  end tell\n"
         "end tell"
     )

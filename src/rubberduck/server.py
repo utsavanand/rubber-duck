@@ -470,6 +470,7 @@ class Server:
             app=req.get("terminal"),
             env={"RUBBERDUCK_SESSION_KEY": key},
             heartbeat=(_heartbeat_url(), key),
+            title=name or repo_name,
         )
         # Record a tracked row so the session shows up with its name/repo/branch.
         # The agent's hooks report under the same key (via RUBBERDUCK_SESSION_KEY)
@@ -555,6 +556,7 @@ class Server:
             app=req.get("terminal"),
             env={"RUBBERDUCK_SESSION_KEY": child_key},
             heartbeat=(_heartbeat_url(), child_key),
+            title=worktree.branch,
         )
         # Record a tracked row so the fork shows its lineage. The agent's hooks
         # report under child_key (via RUBBERDUCK_SESSION_KEY), updating this row.
@@ -668,8 +670,13 @@ class Server:
         cwd = str(parent.get("cwd") or ".")
         argv = ["claude", "--resume", session_id, "--fork-session"]
         child_key = f"convfork-{session_id[:8]}"
+        fork_title = f"{parent.get('source_app') or parent_key} (fork)"
         opened = open_in_terminal(
-            cwd, argv, app=req.get("terminal"), env={"RUBBERDUCK_SESSION_KEY": child_key}
+            cwd,
+            argv,
+            app=req.get("terminal"),
+            env={"RUBBERDUCK_SESSION_KEY": child_key},
+            title=fork_title,
         )
         # Record a row so the conversation fork shows its lineage.
         self.bus.publish(
@@ -1092,7 +1099,9 @@ class Server:
             return
         argv = restore_command_for(session)
         cwd = str(session.get("worktree_path") or session.get("cwd") or ".")
-        spawned = open_in_terminal(cwd, argv)
+        spawned = open_in_terminal(
+            cwd, argv, title=session.get("name") or session.get("source_app")
+        )
         await _write_json(writer, 200, {"restored": spawned, "command": " ".join(argv)})
 
     async def _stream(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

@@ -32,6 +32,29 @@ def test_focus_by_tty_is_noop_without_a_tty(monkeypatch) -> None:  # type: ignor
     assert focus_terminal_by_tty("") is False
 
 
+def test_open_in_terminal_titles_the_tab(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The user's session name should name the terminal tab: both via an OSC title
+    # escape in the command and the app's own title set in the opener.
+    monkeypatch.delenv("RUBBERDUCK_NO_TERMINAL", raising=False)
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(terminal, "_default_mac", lambda: "iterm")
+    monkeypatch.setattr(terminal, "_iterm_installed", lambda: True)
+    captured: dict = {}
+
+    def fake_iterm(command: str, title: str | None = None) -> bool:
+        captured["command"] = command
+        captured["title"] = title
+        return True
+
+    monkeypatch.setattr(terminal, "_open_iterm", fake_iterm)
+
+    assert open_in_terminal("/tmp", ["claude"], title="login refactor") is True
+    assert captured["title"] == "login refactor"
+    # OSC sequence carries the title so even plain shells show it.
+    assert "login refactor" in captured["command"]
+    assert "\\033]0;" in captured["command"]
+
+
 def test_no_terminal_env_skips_opening_a_window(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # Tests/CI set RUBBERDUCK_NO_TERMINAL so launching never spawns a real
     # terminal tab (which would leak past the run). It must not even reach _spawn.

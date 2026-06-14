@@ -87,10 +87,13 @@ def test_fork_conversation_opens_terminal_with_resume_command(
         *,
         app: str | None = None,
         env: dict | None = None,
+        heartbeat: tuple[str, str] | None = None,
+        title: str | None = None,
     ) -> bool:
         opened["cwd"] = cwd
         opened["argv"] = argv
         opened["env"] = env
+        opened["title"] = title
         return True
 
     monkeypatch.setattr("rubberduck.server.open_in_terminal", fake_open)
