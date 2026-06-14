@@ -1,0 +1,25 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Rubberduck">
+  <defs>
+    <linearGradient id="rd-body" x1="12" y1="10" x2="48" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD64A"/>
+      <stop offset="1" stop-color="#F4B412"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0d0f14"/>
+  <g fill="url(#rd-body)">
+    <!-- chunky low body -->
+    <ellipse cx="30" cy="42" rx="22" ry="14"/>
+    <!-- big round head, overlaps the body so they read as one duck -->
+    <circle cx="41" cy="26" r="13"/>
+  </g>
+  <!-- short flat rubber-duck bill -->
+  <path fill="#F47C16" d="M51 22.5c6 0 9.8 1.8 9.8 4.2S57 31 51 31c-1.5-2.8-1.5-5.7 0-8.5z"/>
+  <path d="M51.5 26.7h8.7" stroke="#D9620A" stroke-width="1.3" stroke-linecap="round" opacity="0.5"/>
+  <!-- wing: soft tucked curve -->
+  <path d="M20 41c5 5.5 16 5.5 22 .5" stroke="#E0950A" stroke-width="2.6" stroke-linecap="round" fill="none" opacity="0.5"/>
+  <!-- eye -->
+  <circle cx="43" cy="23" r="2.8" fill="#22242b"/>
+  <circle cx="44.1" cy="21.9" r="0.95" fill="#fff"/>
+  <!-- glossy highlight -->
+  <ellipse cx="34" cy="20" rx="5" ry="3" fill="#fff" opacity="0.26" transform="rotate(-24 34 20)"/>
+</svg>

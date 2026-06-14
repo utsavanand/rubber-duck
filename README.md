@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🦆 Rubberduck
+<img src="assets/duck.svg" width="72" height="72" alt="Rubberduck" />
+
+# Rubberduck
 
 ### One window over every AI coding agent you run.
 
