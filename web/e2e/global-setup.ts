@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Boot a real `rubberduck serve` for the E2E run, isolated from the dev's state:
 //   - RUBBERDUCK_HOME -> a throwaway temp dir (own db, own token)
