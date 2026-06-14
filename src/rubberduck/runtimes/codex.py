@@ -14,15 +14,24 @@ import re
 import shlex
 from pathlib import Path
 
-from rubberduck.runtimes.base import SessionState
+from rubberduck.agents.hooks_install import claude_style_build, claude_style_strip
+from rubberduck.runtimes.base import Harness, HookSpec, SessionState
 
 # Codex prints a spinner/working line while busy and a prompt glyph when idle.
 _WORKING = re.compile(r"(working|thinking|running|applying patch)", re.IGNORECASE)
 _WAITING = re.compile(r"(allow|approve|\(y/n\)|continue\?)", re.IGNORECASE)
 
 
-class CodexRuntime:
+class CodexRuntime(Harness):
     name = "codex"
+    # Codex's config is repo-local-unreliable upstream (openai/codex#17532), but
+    # the file shape is identical to Claude's, so it reuses the same build/strip.
+    hook_spec = HookSpec(
+        global_rel=Path(".codex") / "hooks.json",
+        repo_rel=Path(".codex") / "hooks.json",
+        build=claude_style_build,
+        strip=claude_style_strip,
+    )
 
     def __init__(self, command: str = "codex") -> None:
         self._argv = shlex.split(command)

@@ -20,5 +20,15 @@ def test_installable_agents_excludes_generic() -> None:
 
 
 def test_every_registry_entry_builds_a_runtime() -> None:
-    for name, spec in REGISTRY.items():
-        assert spec.runtime("x").name == name
+    for name, cls in REGISTRY.items():
+        assert cls("x").name == name
+
+
+def test_installable_agents_carry_a_hook_spec() -> None:
+    for name in installable_agents():
+        spec = REGISTRY[name].hook_spec
+        assert spec is not None
+        # build/strip round-trip: stripping a freshly built config removes
+        # exactly our entries, leaving nothing behind.
+        built = spec.build({}, "/path/to/rubberduck-hook.sh", name)
+        assert spec.strip(built) == {}

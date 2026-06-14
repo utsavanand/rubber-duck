@@ -17,13 +17,14 @@ import re
 import shlex
 from pathlib import Path
 
-from rubberduck.runtimes.base import SessionState
+from rubberduck.runtimes.base import Harness, SessionState
 
 _TOOL = re.compile(r"\[tool\]\s+(\S+)")
 
 
-class GenericRuntime:
+class GenericRuntime(Harness):
     name = "generic"
+    # hook_spec stays the base default (None): driven-only, never watched.
 
     def __init__(self, command: str) -> None:
         """`command` is the agent invocation, e.g. "claude" or

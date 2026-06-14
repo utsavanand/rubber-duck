@@ -10,14 +10,21 @@ import shlex
 import sqlite3
 from pathlib import Path
 
-from rubberduck.runtimes.base import SessionState
+from rubberduck.agents.hooks_install import copilot_build, copilot_strip
+from rubberduck.runtimes.base import Harness, HookSpec, SessionState
 
 _WORKING = re.compile(r"(working|thinking|running|generating)", re.IGNORECASE)
 _WAITING = re.compile(r"(allow|approve|\(y/n\)|continue\?)", re.IGNORECASE)
 
 
-class CopilotRuntime:
+class CopilotRuntime(Harness):
     name = "copilot"
+    hook_spec = HookSpec(
+        global_rel=Path(".copilot") / "hooks" / "rubberduck.json",
+        repo_rel=Path(".github") / "hooks" / "rubberduck.json",
+        build=copilot_build,
+        strip=copilot_strip,
+    )
 
     def __init__(self, command: str = "copilot") -> None:
         self._argv = shlex.split(command)

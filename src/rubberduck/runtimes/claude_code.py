@@ -20,11 +20,18 @@ import json
 import shlex
 from pathlib import Path
 
-from rubberduck.runtimes.base import SessionState
+from rubberduck.agents.hooks_install import claude_style_build, claude_style_strip
+from rubberduck.runtimes.base import Harness, HookSpec, SessionState
 
 
-class ClaudeCodeRuntime:
+class ClaudeCodeRuntime(Harness):
     name = "claude-code"
+    hook_spec = HookSpec(
+        global_rel=Path(".claude") / "settings.json",
+        repo_rel=Path(".claude") / "settings.json",
+        build=claude_style_build,
+        strip=claude_style_strip,
+    )
 
     def __init__(self, command: str = "claude") -> None:
         self._argv = shlex.split(command)

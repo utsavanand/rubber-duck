@@ -6,22 +6,24 @@ The same shipped hook script (`rubberduck-hook.sh`) is reused for every agent:
 each agent's hooks deliver the event JSON on stdin and pass the event type as
 $1, and the script POSTs it to the server.
 
-Supported agents (each is a Harness below):
+This module owns the JSON-merge logic shared across agents; each agent's own
+adapter (in runtimes/) declares which build/strip it uses and where its config
+lives, via a `HookSpec`. install/uninstall resolve that spec through the harness
+registry, so there's no per-agent table here.
+
+Hook config locations:
   - claude-code: ~/.claude/settings.json (or repo ./.claude/settings.json)
   - codex:       ~/.codex/hooks.json     (repo-local is unreliable upstream;
                  prefer --global — see openai/codex#17532)
   - copilot:     ~/.copilot/hooks/rubberduck.json (or repo .github/hooks/)
-
-All three use a JSON config and deliver event JSON on stdin, so the hook script
-is shared; only the config shape and event names differ per harness.
 """
 
 import json
-from collections.abc import Callable
-from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
+
+from rubberduck.runtimes.base import HookSpec
 
 # Canonical event set (Claude's names). Each harness maps these to its own.
 _EVENTS = [
@@ -44,28 +46,6 @@ def hook_script_path() -> Path:
     return Path(str(files("rubberduck").joinpath("hooks/rubberduck-hook.sh")))
 
 
-@dataclass(frozen=True)
-class Harness:
-    """One supported agent: where its hook config lives and how to merge/strip
-    Rubberduck's entries. `build` and `strip` operate on the parsed JSON config
-    so install/uninstall stay symmetric and idempotent.
-
-    `global_rel` is the config path relative to the user home; `repo_rel` is
-    relative to the project dir. Paths are resolved at call time (not import) so
-    Path.home() is read live — tests can monkeypatch it."""
-
-    name: str
-    global_rel: Path
-    repo_rel: Path
-    build: Callable[[dict[str, Any], str, str], dict[str, Any]]
-    strip: Callable[[dict[str, Any]], dict[str, Any]]
-
-    def path(self, *, global_scope: bool, project_dir: Path) -> Path:
-        if global_scope:
-            return Path.home() / self.global_rel
-        return project_dir / self.repo_rel
-
-
 def _is_ours(command: str) -> bool:
     return _MARKER in command
 
@@ -73,7 +53,7 @@ def _is_ours(command: str) -> bool:
 # ── claude-code & codex: identical {hooks: {Event: [{matcher, hooks:[…]}]}} ──
 
 
-def _claude_style_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
+def claude_style_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
     hooks: dict[str, Any] = config.setdefault("hooks", {})
     for event in _EVENTS:
         entries = hooks.setdefault(event, [])
@@ -98,7 +78,7 @@ def _claude_entry_is_ours(entry: dict[str, Any]) -> bool:
     return any(_is_ours(h.get("command", "")) for h in entry.get("hooks", []))
 
 
-def _claude_style_strip(config: dict[str, Any]) -> dict[str, Any]:
+def claude_style_strip(config: dict[str, Any]) -> dict[str, Any]:
     hooks: dict[str, Any] = config.get("hooks", {})
     for event in list(hooks):
         hooks[event] = [e for e in hooks[event] if not _claude_entry_is_ours(e)]
@@ -126,7 +106,7 @@ _COPILOT_EVENTS = {
 }
 
 
-def _copilot_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
+def copilot_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
     config.setdefault("version", 1)
     hooks: dict[str, Any] = config.setdefault("hooks", {})
     for canonical, cop_event in _COPILOT_EVENTS.items():
@@ -145,7 +125,7 @@ def _copilot_build(config: dict[str, Any], script: str, runtime: str) -> dict[st
     return config
 
 
-def _copilot_strip(config: dict[str, Any]) -> dict[str, Any]:
+def copilot_strip(config: dict[str, Any]) -> dict[str, Any]:
     hooks: dict[str, Any] = config.get("hooks", {})
     for event in list(hooks):
         hooks[event] = [
@@ -159,55 +139,40 @@ def _copilot_strip(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-HARNESSES: dict[str, Harness] = {
-    "claude-code": Harness(
-        name="claude-code",
-        global_rel=Path(".claude") / "settings.json",
-        repo_rel=Path(".claude") / "settings.json",
-        build=_claude_style_build,
-        strip=_claude_style_strip,
-    ),
-    "codex": Harness(
-        name="codex",
-        global_rel=Path(".codex") / "hooks.json",
-        repo_rel=Path(".codex") / "hooks.json",
-        build=_claude_style_build,
-        strip=_claude_style_strip,
-    ),
-    "copilot": Harness(
-        name="copilot",
-        global_rel=Path(".copilot") / "hooks" / "rubberduck.json",
-        repo_rel=Path(".github") / "hooks" / "rubberduck.json",
-        build=_copilot_build,
-        strip=_copilot_strip,
-    ),
-}
-
-
 def _load(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return json.loads(path.read_text())  # type: ignore[no-any-return]
 
 
+def _spec(agent: str) -> tuple[str, HookSpec]:
+    from rubberduck.harnesses import REGISTRY
+
+    runtime = REGISTRY[agent]
+    if runtime.hook_spec is None:
+        raise ValueError(f"agent {agent!r} has no hook system to install")
+    return runtime.name, runtime.hook_spec
+
+
 def settings_path(*, global_scope: bool, project_dir: Path, agent: str = "claude-code") -> Path:
-    return HARNESSES[agent].path(global_scope=global_scope, project_dir=project_dir)
+    _, spec = _spec(agent)
+    return spec.path(global_scope=global_scope, project_dir=project_dir)
 
 
 def install(*, global_scope: bool, project_dir: Path, agent: str = "claude-code") -> Path:
-    harness = HARNESSES[agent]
-    path = harness.path(global_scope=global_scope, project_dir=project_dir)
-    config = harness.build(_load(path), str(hook_script_path()), harness.name)
+    name, spec = _spec(agent)
+    path = spec.path(global_scope=global_scope, project_dir=project_dir)
+    config = spec.build(_load(path), str(hook_script_path()), name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(config, indent=2) + "\n")
     return path
 
 
 def uninstall(*, global_scope: bool, project_dir: Path, agent: str = "claude-code") -> Path:
-    harness = HARNESSES[agent]
-    path = harness.path(global_scope=global_scope, project_dir=project_dir)
+    _, spec = _spec(agent)
+    path = spec.path(global_scope=global_scope, project_dir=project_dir)
     if not path.exists():
         return path
-    config = harness.strip(_load(path))
+    config = spec.strip(_load(path))
     path.write_text(json.dumps(config, indent=2) + "\n")
     return path
