@@ -3,11 +3,11 @@ import { apiPost, seedSession } from "./helpers";
 
 // Open the Fork modal for a claude-code session that's on a branch, confirm it
 // offers both fork kinds, and submit a Conversation-only fork. A seeded session
-// has no real Claude session_id recorded, so /fork-conversation returns HTTP 400
-// ("no Claude session_id recorded for this session yet") — verified against the
-// live endpoint. The correct UI behavior is to surface that as an error toast,
-// which is what we assert. (For a real session with a recorded id, this would
-// open a forked conversation in a terminal instead.)
+// has no resumable Claude conversation (no recorded id, no transcript), so
+// /fork-conversation returns HTTP 400 — verified against the live endpoint. The
+// correct UI behavior is to surface that as an error toast, which is what we
+// assert. (For a real session with a resumable conversation, this would open a
+// forked conversation in a terminal instead.)
 test("fork modal offers both kinds; conversation fork surfaces the backend error", async ({
   page,
 }) => {
@@ -22,7 +22,7 @@ test("fork modal offers both kinds; conversation fork surfaces the backend error
   // Claude session_id is rejected — that's the case the UI must report.
   const res = await apiPost(`/sessions/${key}/fork-conversation`);
   expect(res.status).toBe(400);
-  expect(res.body.error).toContain("no Claude session_id recorded");
+  expect(res.body.error).toContain("resumable");
 
   await page.goto("/");
   await page.getByRole("button", { name: /^All \(/ }).click();

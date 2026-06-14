@@ -61,26 +61,26 @@ def _is_ours(command: str) -> bool:
 
 
 def claude_style_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
+    # Codex shares the file shape but does NOT support the `async` key — it skips
+    # any hook that has one ("async hooks are not supported yet"). So for codex we
+    # omit `async` entirely (its hooks run synchronously, bounded by `timeout`);
+    # codex also has no blocking-approval support, so there's no blocking event.
+    supports_async = runtime != "codex"
     hooks: dict[str, Any] = config.setdefault("hooks", {})
     for event in _EVENTS:
         entries = hooks.setdefault(event, [])
         entries[:] = [e for e in entries if not _claude_entry_is_ours(e)]
-        blocking = event == _BLOCKING_EVENT
-        entries.append(
-            {
-                "matcher": "*",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": f'"{script}" {event} {runtime}',
-                        # The permission event blocks (waits for the dashboard's
-                        # decision); everything else is fire-and-forget.
-                        "timeout": _BLOCKING_TIMEOUT if blocking else 5,
-                        "async": not blocking,
-                    }
-                ],
-            }
-        )
+        blocking = supports_async and event == _BLOCKING_EVENT
+        hook: dict[str, Any] = {
+            "type": "command",
+            "command": f'"{script}" {event} {runtime}',
+            "timeout": _BLOCKING_TIMEOUT if blocking else 5,
+        }
+        if supports_async:
+            # The permission event blocks (waits for the dashboard's decision);
+            # everything else is fire-and-forget.
+            hook["async"] = not blocking
+        entries.append({"matcher": "*", "hooks": [hook]})
     return config
 
 

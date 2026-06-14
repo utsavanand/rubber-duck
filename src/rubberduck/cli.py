@@ -46,6 +46,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="dev: restart the server when a source file changes (watches src/rubberduck)",
     )
 
+    restart = sub.add_parser(
+        "restart",
+        help="stop the running server and start a fresh one (re-watches live agents)",
+    )
+    restart.add_argument("--host", default=os.environ.get("RUBBERDUCK_HOST", DEFAULT_HOST))
+    restart.add_argument(
+        "--port", type=int, default=int(os.environ.get("RUBBERDUCK_PORT", DEFAULT_PORT))
+    )
+
     launch = sub.add_parser("launch", help="launch a supervised agent in a running server")
     launch.add_argument(
         "agent_command",
@@ -103,6 +112,34 @@ def _serve(host: str, port: int, reload: bool = False) -> int:
         _print_port_in_use(host, port)
         return 1
     return 0
+
+
+def _restart(host: str, port: int) -> int:
+    """Stop the running server (if any) and start a fresh one. Watched agents keep
+    running independently and re-stream into the new server as their hooks fire —
+    so this is how you get the dashboard watching live sessions again after a
+    server upgrade or crash."""
+    import subprocess
+    import time
+
+    if _rubberduck_responds(host, port):
+        print(f"stopping the server on :{port}…", file=sys.stderr)
+        # Kill whatever owns the port (our server). lsof is on macOS and Linux.
+        subprocess.run(
+            f"lsof -ti tcp:{port} -sTCP:LISTEN | xargs kill",
+            shell=True,
+            capture_output=True,
+        )
+        for _ in range(25):  # wait up to ~5s for the port to free
+            time.sleep(0.2)
+            if not _rubberduck_responds(host, port):
+                break
+        else:
+            print(f"server on :{port} didn't stop; free it manually", file=sys.stderr)
+            return 1
+    else:
+        print(f"no server running on :{port}; starting one", file=sys.stderr)
+    return _serve(host, port)
 
 
 def _print_listening(host: str, port: int) -> None:
@@ -242,6 +279,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "serve":
         return _serve(args.host, args.port, reload=args.reload)
+    if args.command == "restart":
+        return _restart(args.host, args.port)
     if args.command == "launch":
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
     if args.command == "snapshot":

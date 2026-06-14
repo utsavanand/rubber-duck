@@ -688,14 +688,19 @@ class Server:
                 writer, 400, {"error": "conversation fork is only for claude-code sessions"}
             )
             return
-        session_id = self.history.session_id_for(parent_key)
+        cwd = str(parent.get("cwd") or ".")
+        session_id = self._resumable_session_id(parent_key, cwd)
         if not session_id:
             await _write_json(
-                writer, 400, {"error": "no Claude session_id recorded for this session yet"}
+                writer,
+                400,
+                {
+                    "error": "no resumable Claude conversation found for this session "
+                    "(its transcript may be gone, or it never recorded one yet)"
+                },
             )
             return
         req = json.loads(body or b"{}")
-        cwd = str(parent.get("cwd") or ".")
         argv = ["claude", "--resume", session_id, "--fork-session"]
         child_key = f"convfork-{session_id[:8]}"
         fork_title = f"{parent.get('source_app') or parent_key} (fork)"
@@ -729,6 +734,28 @@ class Server:
                 "cwd": cwd,
             },
         )
+
+    def _resumable_session_id(self, parent_key: str, cwd: str) -> str | None:
+        """A Claude conversation id that can actually be `--resume`d. The id from
+        the latest event isn't always valid (a forked/transient id, or its
+        transcript was deleted), so verify the transcript file exists. If the
+        recorded id is dead, fall back to the newest real conversation in this
+        cwd. Returns None if there's nothing resumable."""
+        from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
+
+        rt = ClaudeCodeRuntime()
+        cwd_path = Path(cwd)
+        recorded = self.history.session_id_for(parent_key)
+        if recorded and rt.locate_transcript(cwd=cwd_path, session_id=recorded):
+            return recorded
+        # The recorded id has no transcript — use the most recent one for this
+        # project directory, if any.
+        slug = str(cwd_path.resolve()).replace("/", "-")
+        proj = Path.home() / ".claude" / "projects" / slug
+        if not proj.is_dir():
+            return None
+        transcripts = sorted(proj.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return transcripts[0].stem if transcripts else None
 
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         # An in-process supervised session has a PTY we can terminate directly.

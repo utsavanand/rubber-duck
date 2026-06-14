@@ -55,7 +55,10 @@ def test_fork_conversation_rejects_non_claude_session(tmp_path: Path) -> None:
     assert "claude-code" in body["error"]
 
 
-def test_fork_conversation_needs_a_claude_session_id(tmp_path: Path) -> None:
+def test_fork_conversation_needs_a_claude_session_id(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Isolate from the real ~/.claude so the fallback finds no transcript.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "empty-home"))
+
     async def scenario() -> tuple[int, dict]:
         store = HistoryStore(tmp_path / "db.sqlite")
         srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
@@ -72,7 +75,8 @@ def test_fork_conversation_needs_a_claude_session_id(tmp_path: Path) -> None:
 
     status, body = asyncio.run(scenario())
     assert status == 400
-    assert "session_id" in body["error"]
+    # No recorded id and no transcript -> nothing resumable.
+    assert "resumable" in body["error"]
 
 
 def test_fork_conversation_opens_terminal_with_resume_command(
@@ -97,6 +101,15 @@ def test_fork_conversation_opens_terminal_with_resume_command(
         return True
 
     monkeypatch.setattr("rubberduck.server.open_in_terminal", fake_open)
+
+    # _resumable_session_id verifies the conversation transcript exists before
+    # forking, so seed one for claude-xyz under a fake home.
+    fake_home = tmp_path / "home"
+    slug = str(Path("/work/repo").resolve()).replace("/", "-")
+    proj = fake_home / ".claude" / "projects" / slug
+    proj.mkdir(parents=True)
+    (proj / "claude-xyz.jsonl").write_text('{"role":"user","text":"hi"}\n')
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
     async def scenario() -> dict:
         store = HistoryStore(tmp_path / "db.sqlite")
@@ -126,3 +139,35 @@ def test_fork_conversation_opens_terminal_with_resume_command(
     # The fork's terminal carries Rubberduck's key so the agent's hooks report
     # under the same session and don't spawn a duplicate row.
     assert opened["env"] == {"RUBBERDUCK_SESSION_KEY": body["session_key"]}
+
+
+def test_fork_conversation_errors_when_no_resumable_transcript(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    # The reported bug: the recorded session_id has no Claude conversation file,
+    # so --resume would fail. Fork must refuse with a clear error instead of
+    # opening a doomed terminal.
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "empty-home"))
+
+    async def scenario() -> tuple[int, dict]:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            await asyncio.to_thread(
+                _post,
+                port,
+                "/events",
+                {
+                    "event_type": "SessionStart",
+                    "session_key": "c3",
+                    "runtime": "claude-code",
+                    "session_id": "ghost-id-no-transcript",
+                    "cwd": "/work/repo",
+                },
+            )
+            return await asyncio.to_thread(_post, port, "/sessions/c3/fork-conversation", {})
+
+    status, body = asyncio.run(scenario())
+    assert status == 400
+    assert "resumable" in body["error"]

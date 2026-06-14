@@ -22,3 +22,19 @@ def test_unknown_command_is_rejected(capsys: pytest.CaptureFixture[str]) -> None
     with pytest.raises(SystemExit) as exc:
         main(["does-not-exist"])
     assert exc.value.code != 0
+
+
+def test_restart_starts_a_server_when_none_is_running(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.cli as cli
+
+    # No server on the port -> restart should skip the stop and just serve.
+    monkeypatch.setattr(cli, "_rubberduck_responds", lambda h, p: False)
+    served: dict = {}
+
+    def fake_serve(host: str, port: int) -> int:
+        served["hp"] = (host, port)
+        return 0
+
+    monkeypatch.setattr(cli, "_serve", fake_serve)
+    assert main(["restart", "--port", "4321"]) == 0
+    assert served["hp"][1] == 4321
