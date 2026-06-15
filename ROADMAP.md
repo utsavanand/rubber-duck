@@ -124,6 +124,12 @@ Organized by type of work. `★` marks the current highest-leverage item.
   active sessions are shown side by side as a live fleet — a fun, at-a-glance way
   to watch several agents make progress at once (vs the current flat list).
   Likely a grid/canvas of session cards animating on each event.
+- [ ] **Working-style insights (`rubberduck insights`).** A stub exists
+  (`src/rubberduck/llm/insights.py`) with the design but no implementation:
+  analyze a user's own history to surface what workflows lead to good outcomes
+  and where rework happens, as a `rubberduck insights` report. Open design
+  questions in the stub: heuristics vs LLM pass, scope (per-repo/day/all-time),
+  storage. Deliberately not wired into server/CLI until designed.
 - [ ] **Native Mac app.** A real menubar/desktop app instead of a browser tab:
   launch `serve` on login, show fleet status in the menubar, native
   notifications when a session needs you, and one-click open of the dashboard.
