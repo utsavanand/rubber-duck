@@ -1442,9 +1442,33 @@ class Server:
         # resumable, restore_command_for falls back to a fresh launch.
         argv = restore_command_for(self._restore_session_with_resume_id(session))
         cwd = str(session.get("worktree_path") or session.get("cwd") or ".")
+        # Restore under the snapshot's original session_key so the relaunched
+        # agent re-attaches to its row (its hooks report under this key via the
+        # env var) instead of spawning an untracked session. Without the env +
+        # heartbeat + SessionStart, the restored agent ran but never showed up.
+        key = str(session["session_key"])
         spawned = open_in_terminal(
-            cwd, argv, title=session.get("name") or session.get("source_app")
+            cwd,
+            argv,
+            env={"RUBBERDUCK_SESSION_KEY": key},
+            heartbeat=(_heartbeat_url(), key),
+            title=session.get("name") or session.get("source_app"),
         )
+        if spawned:
+            self.history.mark_heartbeat(key)
+            self.bus.publish(
+                {
+                    "event_type": "SessionStart",
+                    "session_key": key,
+                    "name": session.get("name"),
+                    "runtime": session.get("runtime"),
+                    "cwd": session.get("cwd"),
+                    "worktree_path": session.get("worktree_path"),
+                    "branch": session.get("branch"),
+                    "source_app": session.get("source_app"),
+                    "launched": True,
+                }
+            )
         await _write_json(writer, 200, {"restored": spawned, "command": " ".join(argv)})
 
     async def _stream(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

@@ -111,3 +111,41 @@ def test_restore_marks_no_resume_when_no_conversation_id(tmp_path: Path) -> None
         {"runtime": "copilot", "session_key": "rd-key", "cwd": "/r"}
     )
     assert resolved.get("_no_resume") is True
+
+
+def test_restore_publishes_sessionstart_so_it_shows_up(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """Restoring must re-attach the session to the dashboard: open the terminal
+    under the original key and publish a SessionStart, or the agent runs but
+    never appears in the left panel."""
+    import rubberduck.server as server_mod
+    from rubberduck.core.eventbus import EventBus
+    from rubberduck.persistence.history import HistoryStore
+
+    # Pretend the terminal opened successfully so the restore registers the row.
+    monkeypatch.setattr(server_mod, "open_in_terminal", lambda *a, **k: True)
+
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = EventBus(sink=store.record)
+    # A WATCHED codex session (no id-resume needed; launched defaults to 0).
+    bus.publish(
+        {"event_type": "SessionStart", "session_key": "s1", "runtime": "codex", "cwd": "/repo"}
+    )
+    assert store.session("s1")["launched"] == 0  # starts watched
+    srv = Server(history=store)
+    snap_id = srv.snapshots.create(now_ms=1)
+
+    async def run() -> None:
+        server = await asyncio.start_server(srv.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            await asyncio.to_thread(_post, port, f"/snapshots/{snap_id}/sessions/s1/restore")
+
+    asyncio.run(run())
+
+    row = store.session("s1")
+    assert row is not None  # still tracked
+    # Restore opens a terminal Rubberduck owns, so it becomes a launched session
+    # (the SessionStart it publishes carries launched: True).
+    assert row["launched"] == 1
