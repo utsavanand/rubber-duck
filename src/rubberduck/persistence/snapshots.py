@@ -66,13 +66,21 @@ def restore_command_for(session: dict[str, Any]) -> list[str]:
     avoid a hard dependency from the snapshot core on every runtime."""
     from rubberduck.runtimes.claude_code import ClaudeCodeRuntime
     from rubberduck.runtimes.codex import CodexRuntime
+    from rubberduck.runtimes.copilot import CopilotRuntime
     from rubberduck.runtimes.generic import GenericRuntime
 
     runtime_name = session.get("runtime") or "generic"
     cwd = Path(str(session.get("worktree_path") or session.get("cwd") or "."))
     key = str(session["session_key"])
+    # No resumable conversation id -> launch the base agent fresh in its cwd.
+    if session.get("_no_resume"):
+        return {"claude-code": ["claude"], "copilot": ["copilot"], "codex": ["codex"]}.get(
+            runtime_name, ["true"]
+        )
     if runtime_name == "claude-code":
         return ClaudeCodeRuntime().restore_command(cwd=cwd, session_key=key)
     if runtime_name == "codex":
         return CodexRuntime().restore_command(cwd=cwd, session_key=key)
+    if runtime_name == "copilot":
+        return CopilotRuntime().restore_command(cwd=cwd, session_key=key)
     return GenericRuntime("true").restore_command(cwd=cwd, session_key=key)

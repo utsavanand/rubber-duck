@@ -78,7 +78,12 @@ export function SnapshotsModal({
           <option value="">— choose a snapshot to restore from —</option>
           {snaps.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.id}
+              {new Date(s.created_at).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
             </option>
           ))}
         </select>
