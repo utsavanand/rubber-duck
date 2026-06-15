@@ -319,10 +319,7 @@ function Dashboard() {
       {modal === "launch" && <LaunchModal onClose={() => setModal(null)} />}
       {modal === "compare" && <CompareModal onClose={() => setModal(null)} />}
       {modal === "snapshots" && (
-        <SnapshotsModal
-          sessionKeys={sessions.map((s) => s.key)}
-          onClose={() => setModal(null)}
-        />
+        <SnapshotsModal onClose={() => setModal(null)} />
       )}
       {modal === "folder" && (
         <NewFolderModal
