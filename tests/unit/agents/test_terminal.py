@@ -2,11 +2,11 @@ from rubberduck.agents import terminal
 from rubberduck.agents.terminal import (
     _close_iterm_by_tty,
     _close_terminal_by_tty,
-    _with_heartbeat,
     answer_prompt_by_tty,
     close_terminal_by_tty,
     focus_terminal_by_tty,
     open_in_terminal,
+    with_heartbeat,
 )
 
 
@@ -91,7 +91,7 @@ def test_no_terminal_env_skips_opening_a_window(monkeypatch) -> None:  # type: i
 
 
 def test_heartbeat_reports_tty_so_the_tab_can_be_found() -> None:
-    cmd = _with_heartbeat("claude", "http://127.0.0.1:4200/heartbeat", "sess-1")
+    cmd = with_heartbeat("claude", "http://127.0.0.1:4200/heartbeat", "sess-1")
     # The ping carries both the session key and the tab's tty via $(tty).
     assert "sess-1" in cmd
     assert "$(tty)" in cmd

@@ -68,10 +68,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser(
         "run",
-        help="run an agent in THIS terminal, tracked by Rubberduck (e.g. rubberduck run claude)",
+        help="run an agent in THIS terminal as a launched session "
+        "(e.g. rubberduck run --name login claude)",
     )
-    # Everything after the agent is passed through verbatim to it. REMAINDER
-    # stops argparse from trying to parse the agent's own flags (--resume, etc.).
+    # Rubberduck's own options come BEFORE the agent; everything after the agent
+    # name is passed through to it (REMAINDER keeps argparse from grabbing the
+    # agent's own flags like --resume).
+    run.add_argument("--name", default=None, help="a label for this session in the dashboard")
     run.add_argument("agent", help="the agent to run, e.g. claude / codex / copilot")
     run.add_argument("agent_args", nargs=argparse.REMAINDER, help="args passed to the agent")
 
@@ -213,20 +216,24 @@ def _launch(command: str, cwd: str, session_key: str | None, prompt: str) -> int
     return 0
 
 
-def _run(agent: str, agent_args: list[str]) -> int:
-    """Run an agent in the CURRENT terminal, tracked by Rubberduck. Pre-flights
-    the two things that make a session silently not appear — hooks installed and
-    the server reachable — then execs the agent so it owns the TTY natively
-    (signals, exit code, prompts all behave as if you ran it directly)."""
-    from rubberduck.server import infer_runtime
+def _run(agent: str, agent_args: list[str], name: str | None = None) -> int:
+    """Run an agent in the CURRENT terminal as a LAUNCHED Rubberduck session.
+    Registers the session (so it appears immediately, owned by Rubberduck), then
+    execs the agent wrapped with a heartbeat loop — the agent owns the TTY
+    natively (signals, exit code, prompts) and the row stays live while it runs.
+    A session is 'launched' purely from the SessionStart flag + heartbeat, not
+    from owning a new terminal — so no extra window is opened."""
+    import shlex
+
+    from rubberduck.agents.terminal import with_heartbeat
+    from rubberduck.helpers import security
+    from rubberduck.server import _heartbeat_url, infer_runtime
 
     if not shutil.which(agent):
         print(f"'{agent}' not found on PATH", file=sys.stderr)
         return 127
 
     runtime = infer_runtime(agent)
-    # Warn (don't block) on the two common "my session didn't show up" causes.
-    # 'generic' (an unrecognized command) has no Rubberduck hook, so skip that one.
     if runtime != "generic" and not _hook_installed(runtime):
         print(
             f"⚠ {runtime} hooks aren't installed, so this session won't appear in "
@@ -234,15 +241,66 @@ def _run(agent: str, agent_args: list[str]) -> int:
             f"  (then: rubberduck doctor)",
             file=sys.stderr,
         )
-    if not _rubberduck_responds(DEFAULT_HOST, DEFAULT_PORT):
+
+    cwd = os.getcwd()
+    key = security.new_session_key("run")
+    # Register a launched session up front so the row shows immediately. If the
+    # server is down, fall through to a plain exec (the agent still runs).
+    if _rubberduck_responds(DEFAULT_HOST, DEFAULT_PORT):
+        _register_run_session(key, agent, runtime, cwd, name)
+    else:
         print(
-            "⚠ no Rubberduck server on :4200 — events have nowhere to go.\n"
+            "⚠ no Rubberduck server on :4200 — running anyway, but it won't appear.\n"
             "  Start one in another terminal: rubberduck serve",
             file=sys.stderr,
         )
 
-    argv = [agent, *agent_args]
-    os.execvp(agent, argv)  # replaces this process; never returns on success
+    agent_cmd = " ".join(shlex.quote(a) for a in [agent, *agent_args])
+    # Wrap with the heartbeat loop (current tab's tty), under the session key the
+    # agent's hooks will also report against, then exec a shell so it owns the TTY.
+    wrapped = with_heartbeat(agent_cmd, _heartbeat_url(), key)
+    os.environ["RUBBERDUCK_SESSION_KEY"] = key
+    os.execvp("sh", ["sh", "-c", wrapped])  # replaces this process; doesn't return
+
+
+def _register_run_session(key: str, agent: str, runtime: str, cwd: str, name: str | None) -> None:
+    """POST a launched SessionStart (and the optional name) so the dashboard row
+    appears before the agent starts. Best-effort: a failure just means the row
+    shows up a beat later from the agent's own hooks."""
+    start = {
+        "event_type": "SessionStart",
+        "session_key": key,
+        "runtime": runtime,
+        "cwd": cwd,
+        "source_app": name or os.path.basename(cwd.rstrip("/")) or agent,
+        "launched": True,
+    }
+    try:
+        _post_json("/events", start)
+        if name:
+            _patch_json(f"/sessions/{key}", {"name": name})
+    except OSError:
+        pass
+
+
+def _post_json(path: str, payload: dict[str, object]) -> None:
+    req = urllib.request.Request(
+        f"{_server_url()}{path}",
+        data=json.dumps(payload).encode(),
+        headers=_auth_headers(),
+        method="POST",
+    )
+    urllib.request.urlopen(req, timeout=3).read()
+
+
+def _patch_json(path: str, payload: dict[str, object]) -> None:
+    req = urllib.request.Request(
+        f"{_server_url()}{path}",
+        data=json.dumps(payload).encode(),
+        headers=_auth_headers(),
+        method="PATCH",
+    )
+    urllib.request.urlopen(req, timeout=3).read()
 
 
 def _hook_installed(runtime: str) -> bool:
@@ -365,7 +423,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "launch":
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
     if args.command == "run":
-        return _run(args.agent, args.agent_args)
+        return _run(args.agent, args.agent_args, args.name)
     if args.command == "snapshot":
         return _snapshot()
     if args.command == "dashboard":

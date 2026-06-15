@@ -53,13 +53,17 @@ Watching a session you started in your own terminal needs two more things:
 
    Start the agent normally — its sessions now appear in the dashboard. Or
    launch it through Rubberduck, which runs the agent **in your current
-   terminal** and pre-checks that hooks + the server are ready:
+   terminal** as a **launched** session (no new window) and pre-checks that the
+   hooks are installed:
 
    ```sh
-   rubberduck run claude               # or: rubberduck run codex --resume <id>
+   rubberduck run claude                          # launched, in this terminal
+   rubberduck run --name "login refactor" claude  # give it a dashboard name
+   rubberduck run codex --resume <id>             # args after the agent pass through
    ```
 
-   Everything after the agent name is passed straight through to it.
+   Rubberduck's own options (like `--name`) go before the agent; everything
+   after the agent name is passed straight through to it.
 
 3. **Verify the setup** if a session doesn't show up:
 

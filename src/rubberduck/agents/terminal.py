@@ -51,7 +51,7 @@ def open_in_terminal(
     exports = "".join(f"export {k}={_q(v)}; " for k, v in (env or {}).items())
     agent = " ".join(_q(a) for a in argv)
     if heartbeat is not None:
-        agent = _with_heartbeat(agent, *heartbeat)
+        agent = with_heartbeat(agent, *heartbeat)
     command = f"cd {_q(cwd)} && {exports}{agent}"
     if title:
         # Set the tab title via an OSC sequence before the agent runs. (iTerm and
@@ -239,7 +239,7 @@ def _close_iterm_by_tty(tty: str) -> str:
     )
 
 
-def _with_heartbeat(agent: str, url: str, session_key: str) -> str:
+def with_heartbeat(agent: str, url: str, session_key: str) -> str:
     """Wrap the agent command so the tab pings `url` every 20s while alive and
     stops when the agent exits or the tab is killed. The trap kills the loop on
     EXIT; killing the tab takes the whole shell (loop included) down with it."""
