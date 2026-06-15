@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { api } from "./api";
 import { effectiveState } from "./sessions";
 import { SessionView } from "./types";
@@ -10,35 +10,196 @@ export function AgentTree({
   sessions,
   now,
   labels,
+  folders,
   onOpen,
   onFork,
   onDelete,
+  onFoldersChanged,
+  onSessionMoved,
 }: {
   sessions: SessionView[];
   now: number;
   labels: Record<string, string>;
+  folders: string[];
   onOpen: (key: string) => void;
   onFork: (key: string) => void;
   onDelete: (key: string) => Promise<boolean>;
+  onFoldersChanged: () => void;
+  onSessionMoved: (key: string, group: string) => void;
 }) {
+  const toast = useToast();
   const roots = buildForest(sessions);
-  if (sessions.length === 0) {
+
+  // Drop a session onto a folder header (or the ungrouped zone) to move it there.
+  async function moveToGroup(key: string, group: string) {
+    // Optimistically reflect the move so the row jumps folders immediately; the
+    // PATCH doesn't emit an SSE event, so without this the UI lags until refresh.
+    onSessionMoved(key, group);
+    try {
+      await api.setGroup(key, group);
+      toast(group ? `Moved to ${group}` : "Removed from folder");
+      onFoldersChanged();
+    } catch (e) {
+      toast(`Move failed: ${(e as Error).message}`, "err");
+    }
+  }
+
+  async function removeFolder(name: string) {
+    if (
+      !window.confirm(
+        `Delete folder "${name}"? Its sessions return to Ungrouped.`,
+      )
+    )
+      return;
+    // Optimistically ungroup the folder's sessions so they jump out immediately.
+    for (const s of sessions) {
+      if (s.group === name) onSessionMoved(s.key, "");
+    }
+    try {
+      await api.deleteFolder(name);
+      toast(`Deleted folder ${name}`);
+      onFoldersChanged();
+    } catch (e) {
+      toast(`Delete failed: ${(e as Error).message}`, "err");
+    }
+  }
+
+  // Group root sessions by their folder label; forks stay nested under their root.
+  const ungrouped: Node[] = [];
+  const byFolder = new Map<string, Node[]>();
+  for (const node of roots) {
+    const g = node.session.group;
+    if (g) (byFolder.get(g) ?? byFolder.set(g, []).get(g)!).push(node);
+    else ungrouped.push(node);
+  }
+
+  const renderNode = (node: Node) => (
+    <TreeRow
+      key={node.session.key}
+      node={node}
+      depth={0}
+      now={now}
+      labels={labels}
+      onOpen={onOpen}
+      onFork={onFork}
+      onDelete={onDelete}
+    />
+  );
+
+  const hasFolders = folders.length > 0;
+  if (sessions.length === 0 && !hasFolders) {
     return <p className="rd-panel-empty">No agents yet.</p>;
   }
+
   return (
     <div className="rd-tree">
-      {roots.map((node) => (
-        <TreeRow
-          key={node.session.key}
-          node={node}
-          depth={0}
-          now={now}
-          labels={labels}
-          onOpen={onOpen}
-          onFork={onFork}
-          onDelete={onDelete}
-        />
+      {/* All folders render (even empty ones) so you can create then fill them. */}
+      {folders.map((name) => (
+        <GroupHeader
+          key={name}
+          name={name}
+          count={(byFolder.get(name) ?? []).length}
+          onDropSession={moveToGroup}
+          onDelete={() => removeFolder(name)}
+        >
+          {(byFolder.get(name) ?? []).map(renderNode)}
+        </GroupHeader>
       ))}
+      {/* Ungrouped sessions sit at the root; dropping here clears the folder. */}
+      <DropZone group="" onDropSession={moveToGroup} active={hasFolders}>
+        {ungrouped.map(renderNode)}
+      </DropZone>
+    </div>
+  );
+}
+
+// A collapsible folder header that accepts dropped sessions.
+function GroupHeader({
+  name,
+  count,
+  onDropSession,
+  onDelete,
+  children,
+}: {
+  name: string;
+  onDelete: () => void;
+  count: number;
+  onDropSession: (key: string, group: string) => void;
+  children: ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [over, setOver] = useState(false);
+  return (
+    <div className={`rd-group${over ? " drop-over" : ""}`}>
+      <div
+        className="rd-group-head"
+        onClick={() => setCollapsed((c) => !c)}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("text/rd-session")) {
+            e.preventDefault();
+            setOver(true);
+          }
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          const key = e.dataTransfer.getData("text/rd-session");
+          if (key) onDropSession(key, name);
+        }}
+      >
+        <span className="rd-group-caret">{collapsed ? "▸" : "▾"}</span>
+        <span className="rd-group-name">{name}</span>
+        <span className="rd-group-count">{count}</span>
+        <button
+          className="rd-group-del"
+          title="Delete folder (sessions return to Ungrouped)"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      {!collapsed && <div className="rd-group-body">{children}</div>}
+    </div>
+  );
+}
+
+// The catch-all zone for ungrouped sessions. Only a visible drop target when
+// groups exist (otherwise it's just the plain list).
+function DropZone({
+  group,
+  onDropSession,
+  active,
+  children,
+}: {
+  group: string;
+  onDropSession: (key: string, group: string) => void;
+  active: boolean;
+  children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      className={`rd-dropzone${active ? " has-groups" : ""}${over ? " drop-over" : ""}`}
+      onDragOver={(e) => {
+        if (active && e.dataTransfer.types.includes("text/rd-session")) {
+          e.preventDefault();
+          setOver(true);
+        }
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const key = e.dataTransfer.getData("text/rd-session");
+        if (key) onDropSession(key, group);
+      }}
+    >
+      {active && <div className="rd-dropzone-label">Ungrouped</div>}
+      {children}
     </div>
   );
 }
@@ -223,6 +384,12 @@ function TreeRow({
       <div
         className={`rd-row${live ? "" : " terminated"}${notesOpen ? " expanded" : ""}`}
         style={{ paddingLeft: 12 + depth * 18 }}
+        // Only root sessions are draggable into groups; forks follow their parent.
+        draggable={depth === 0}
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/rd-session", s.key);
+          e.dataTransfer.effectAllowed = "move";
+        }}
       >
         <div className="rd-row-main">
           {hasChildren ? (

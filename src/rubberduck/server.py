@@ -183,6 +183,11 @@ _ROUTES: list[Route] = [
     Route("POST", "/sessions/compare", lambda s, r, w, h, b, seg: s._compare(w, b)),
     Route("POST", "/sessions/clear-terminated",
           lambda s, r, w, h, b, seg: s._clear_terminated(w)),
+    # ── left-panel folders ──
+    Route("GET", "/folders", lambda s, r, w, h, b, seg: s._list_folders(w)),
+    Route("POST", "/folders", lambda s, r, w, h, b, seg: s._create_folder(w, b)),
+    Route("DELETE", "", lambda s, r, w, h, b, seg: s._delete_folder(w, seg),
+          prefix="/folders/"),
     Route("PATCH", "", lambda s, r, w, h, b, seg: s._update_session(w, seg, b),
           prefix="/sessions/"),
     Route("DELETE", "", lambda s, r, w, h, b, seg: s._delete_session(w, seg, b),
@@ -1024,18 +1029,43 @@ class Server:
     async def _update_session(
         self, writer: asyncio.StreamWriter, session_key: str, body: bytes
     ) -> None:
-        """Set a user-given name and/or personal notes on a session (local)."""
+        """Set a user-given name, notes, and/or folder group on a session (local).
+        `group: ""` ungroups; omitting a field leaves it unchanged."""
         try:
             req: Any = json.loads(body or b"{}")
         except json.JSONDecodeError:
             await _write_json(writer, 400, {"error": "invalid JSON"})
             return
-        ok = self.history.set_meta(session_key, name=req.get("name"), notes=req.get("notes"))
+        ok = self.history.set_meta(
+            session_key,
+            name=req.get("name"),
+            notes=req.get("notes"),
+            group=req.get("group"),
+        )
         await _write_json(writer, 200 if ok else 404, {"updated": ok})
 
     async def _clear_terminated(self, writer: asyncio.StreamWriter) -> None:
         keys = self.history.clear_terminated()
         await _write_json(writer, 200, {"cleared": len(keys), "session_keys": keys})
+
+    async def _list_folders(self, writer: asyncio.StreamWriter) -> None:
+        await _write_json(writer, 200, {"folders": self.history.folders()})
+
+    async def _create_folder(self, writer: asyncio.StreamWriter, body: bytes) -> None:
+        try:
+            name = str(json.loads(body or b"{}").get("name", "")).strip()
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        if not name:
+            await _write_json(writer, 400, {"error": "name required"})
+            return
+        self.history.create_folder(name, now=int(time.time() * 1000))
+        await _write_json(writer, 200, {"created": name})
+
+    async def _delete_folder(self, writer: asyncio.StreamWriter, name: str) -> None:
+        self.history.delete_folder(urllib.parse.unquote(name))
+        await _write_json(writer, 200, {"deleted": urllib.parse.unquote(name)})
 
     async def _tree(self, writer: asyncio.StreamWriter) -> None:
         await _write_json(writer, 200, {"nodes": self.history.fork_tree()})

@@ -13,7 +13,8 @@ type InitFrame = { type: "init"; events: RubberduckEvent[] };
 type Action =
   | { kind: "seed"; sessions: PersistedSession[] }
   | { kind: "event"; event: RubberduckEvent }
-  | { kind: "remove"; keys: string[] };
+  | { kind: "remove"; keys: string[] }
+  | { kind: "patch"; key: string; fields: Partial<SessionView> };
 
 // The reducer tracks deleted keys so a still-firing watched session (whose hooks
 // keep streaming events) can't resurrect a row the user just deleted — mirrors
@@ -66,6 +67,15 @@ function reduce(state: State, action: Action): State {
     }
     return { sessions: next, tombstoned };
   }
+  // Optimistic local update for a metadata change (e.g. moving to a folder) that
+  // a PATCH made server-side but doesn't emit over SSE.
+  if (action.kind === "patch") {
+    const prev = state.sessions.get(action.key);
+    if (!prev) return state;
+    const next = new Map(state.sessions);
+    next.set(action.key, { ...prev, ...action.fields });
+    return { ...state, sessions: next };
+  }
   // A live event for a tombstoned (deleted) session must not resurrect it —
   // unless it's a SessionStart, which means the key is genuinely a new session.
   const key = sessionKeyOf(action.event);
@@ -83,6 +93,7 @@ export function useEventStream(): {
   connected: boolean;
   recentEvents: RubberduckEvent[];
   removeSessions: (keys: string[]) => void;
+  patchSession: (key: string, fields: Partial<SessionView>) => void;
 } {
   const [state, dispatch] = useReducer(reduce, {
     sessions: new Map<string, SessionView>(),
@@ -131,5 +142,13 @@ export function useEventStream(): {
     (a, b) => b.startedAt - a.startedAt || a.key.localeCompare(b.key),
   );
   const removeSessions = (keys: string[]) => dispatch({ kind: "remove", keys });
-  return { sessions: list, connected, recentEvents, removeSessions };
+  const patchSession = (key: string, fields: Partial<SessionView>) =>
+    dispatch({ kind: "patch", key, fields });
+  return {
+    sessions: list,
+    connected,
+    recentEvents,
+    removeSessions,
+    patchSession,
+  };
 }

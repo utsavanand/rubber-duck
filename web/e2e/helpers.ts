@@ -80,11 +80,12 @@ export async function seedSession(
     runtime: "claude-code",
     ...fields,
   });
-  // SessionStart doesn't set the display name; PATCH it like the dashboard does.
-  if (fields.name) {
+  // SessionStart doesn't set the display name or group; PATCH them like the
+  // dashboard does.
+  if (fields.name || fields.group) {
     await api(`/sessions/${key}`, {
       method: "PATCH",
-      body: JSON.stringify({ name: fields.name }),
+      body: JSON.stringify({ name: fields.name, group: fields.group }),
     });
   }
   return key;

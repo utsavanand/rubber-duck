@@ -137,6 +137,91 @@ code,
   padding: 9px 16px;
   cursor: pointer;
 }
+
+/* ── session groups (folders in the left panel) ── */
+.rd-group {
+  border-top: 1px solid var(--border);
+}
+.rd-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-soft);
+  user-select: none;
+}
+.rd-group-head:hover {
+  background: var(--hover);
+}
+.rd-group-caret {
+  width: 10px;
+  color: var(--muted);
+}
+.rd-group-name {
+  flex: 1;
+}
+.rd-group-count {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+.rd-group-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  opacity: 0;
+}
+.rd-group-head:hover .rd-group-del {
+  opacity: 1;
+}
+.rd-group-del:hover {
+  color: var(--danger, #e5484d);
+}
+.rd-modal-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 12px;
+}
+/* highlight a folder/zone while a session is dragged over it */
+.rd-group.drop-over,
+.rd-dropzone.drop-over,
+.rd-newgroup.drop-over {
+  outline: 2px dashed var(--accent, #f5821f);
+  outline-offset: -2px;
+  background: rgba(245, 130, 31, 0.06);
+}
+.rd-dropzone.has-groups {
+  border-top: 1px solid var(--border);
+}
+.rd-dropzone-label {
+  padding: 8px 14px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.rd-newgroup {
+  margin: 8px 14px 12px;
+  padding: 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.rd-row[draggable="true"] {
+  cursor: grab;
+}
 .rd-row:hover {
   background: var(--bg-soft);
 }

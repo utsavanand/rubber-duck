@@ -83,12 +83,31 @@ export const api = {
       `/sessions/${key}/promote`,
       opts,
     ),
-  updateSession: (key: string, meta: { name?: string; notes?: string }) =>
+  updateSession: (
+    key: string,
+    meta: { name?: string; notes?: string; group?: string },
+  ) =>
     fetch(`/sessions/${key}`, {
       method: "PATCH",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(meta),
     }).then((r) => r.json()),
+  // Move a session into a folder group; "" ungroups it.
+  setGroup: (key: string, group: string) =>
+    fetch(`/sessions/${key}`, {
+      method: "PATCH",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ group }),
+    }).then((r) => r.json() as Promise<{ updated: boolean }>),
+  // Left-panel folders (persist even when empty).
+  folders: () => get<{ folders: string[] }>("/folders"),
+  createFolder: (name: string) =>
+    post<{ created: string }>("/folders", { name }),
+  deleteFolder: (name: string) =>
+    fetch(`/folders/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    }).then((r) => r.json() as Promise<{ deleted: string }>),
   getSession: (key: string) =>
     get<{ notes?: string | null; name?: string | null }>(`/sessions/${key}`),
   fork: (

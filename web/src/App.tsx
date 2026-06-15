@@ -5,6 +5,7 @@ import { Approvals } from "./Approvals";
 import { CompareModal } from "./CompareModal";
 import { ForkModal } from "./ForkModal";
 import { LaunchModal } from "./LaunchModal";
+import { NewFolderModal } from "./NewFolderModal";
 import { Pulse } from "./Pulse";
 import { SessionDetail } from "./SessionDetail";
 import { SnapshotsModal } from "./SnapshotsModal";
@@ -30,7 +31,7 @@ type Lifecycle = "active" | "idle" | "archived" | "all";
 type Origin = "all" | "watched" | "launched";
 
 function Dashboard() {
-  const { sessions, connected, recentEvents, removeSessions } =
+  const { sessions, connected, recentEvents, removeSessions, patchSession } =
     useEventStream();
   const toast = useToast();
   const now = useNow(1000);
@@ -84,11 +85,23 @@ function Dashboard() {
 
   const [lifecycle, setLifecycle] = useState<Lifecycle>("active");
   const [origin, setOrigin] = useState<Origin>("all");
-  const [modal, setModal] = useState<"launch" | "compare" | "snapshots" | null>(
-    null,
-  );
+  const [modal, setModal] = useState<
+    "launch" | "compare" | "snapshots" | "folder" | null
+  >(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [forkKey, setForkKey] = useState<string | null>(null);
+
+  // Folders persist on the server (incl. empty ones). Refetch when sessions
+  // change, since moving a session can create/clear a folder.
+  const [folders, setFolders] = useState<string[]>([]);
+  const refreshFolders = () =>
+    api
+      .folders()
+      .then((d) => setFolders(d.folders))
+      .catch(() => undefined);
+  useEffect(() => {
+    refreshFolders();
+  }, [sessions.length]);
 
   const openSession = sessions.find((s) => s.key === openKey) ?? null;
   const forkSession = sessions.find((s) => s.key === forkKey) ?? null;
@@ -196,6 +209,13 @@ function Dashboard() {
           Snapshots
         </button>
         <button
+          className="rd-btn rd-btn-ghost rd-btn-sm"
+          onClick={() => setModal("folder")}
+          title="Create a folder to organize sessions"
+        >
+          New folder
+        </button>
+        <button
           className="rd-btn rd-btn-primary"
           onClick={() => setModal("launch")}
         >
@@ -245,9 +265,14 @@ function Dashboard() {
               sessions={shown}
               now={now}
               labels={labels}
+              folders={folders}
               onOpen={setOpenKey}
               onFork={setForkKey}
               onDelete={deleteSession}
+              onFoldersChanged={refreshFolders}
+              onSessionMoved={(key, group) =>
+                patchSession(key, { group: group || undefined })
+              }
             />
           )}
           {hasTerminated && lifecycle === "all" && (
@@ -297,6 +322,16 @@ function Dashboard() {
         <SnapshotsModal
           sessionKeys={sessions.map((s) => s.key)}
           onClose={() => setModal(null)}
+        />
+      )}
+      {modal === "folder" && (
+        <NewFolderModal
+          existing={folders}
+          onClose={() => setModal(null)}
+          onCreated={() => {
+            refreshFolders();
+            setModal(null);
+          }}
         />
       )}
       {forkSession && (
