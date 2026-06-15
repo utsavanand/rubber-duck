@@ -826,6 +826,28 @@ class Server:
         transcripts = sorted(proj.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
         return transcripts[0].stem if transcripts else None
 
+    def _restore_session_with_resume_id(self, session: dict[str, Any]) -> dict[str, Any]:
+        """Return a copy of a snapshot session whose `session_key` is the harness's
+        resumable conversation id (so `--resume` works), or has `_no_resume` set
+        when nothing is resumable (restore then launches fresh). Codex/generic are
+        unchanged — they don't resume by id."""
+        runtime = session.get("runtime") or "generic"
+        key = str(session.get("session_key", ""))
+        cwd = str(session.get("worktree_path") or session.get("cwd") or ".")
+        resume_id: str | None = None
+        if runtime == "claude-code":
+            resume_id = self._resumable_session_id(key, cwd)
+        elif runtime == "copilot":
+            resume_id = self.history.session_id_for(key)
+        else:
+            return session  # codex/generic: no id-based resume
+        out = dict(session)
+        if resume_id:
+            out["session_key"] = resume_id
+        else:
+            out["_no_resume"] = True  # restore_command_for -> fresh launch
+        return out
+
     async def _stop(self, writer: asyncio.StreamWriter, session_key: str) -> None:
         # An in-process supervised session has a PTY we can terminate directly.
         stopped = await self.orchestrator.stop(session_key)
@@ -1415,11 +1437,38 @@ class Server:
         if session is None:
             await _write_json(writer, 404, {"error": f"no session {session_key} in snapshot"})
             return
-        argv = restore_command_for(session)
+        # `--resume` needs the harness's OWN conversation id, not Rubberduck's
+        # session_key. Resolve it (same as conversation-fork); if there's nothing
+        # resumable, restore_command_for falls back to a fresh launch.
+        argv = restore_command_for(self._restore_session_with_resume_id(session))
         cwd = str(session.get("worktree_path") or session.get("cwd") or ".")
+        # Restore under the snapshot's original session_key so the relaunched
+        # agent re-attaches to its row (its hooks report under this key via the
+        # env var) instead of spawning an untracked session. Without the env +
+        # heartbeat + SessionStart, the restored agent ran but never showed up.
+        key = str(session["session_key"])
         spawned = open_in_terminal(
-            cwd, argv, title=session.get("name") or session.get("source_app")
+            cwd,
+            argv,
+            env={"RUBBERDUCK_SESSION_KEY": key},
+            heartbeat=(_heartbeat_url(), key),
+            title=session.get("name") or session.get("source_app"),
         )
+        if spawned:
+            self.history.mark_heartbeat(key)
+            self.bus.publish(
+                {
+                    "event_type": "SessionStart",
+                    "session_key": key,
+                    "name": session.get("name"),
+                    "runtime": session.get("runtime"),
+                    "cwd": session.get("cwd"),
+                    "worktree_path": session.get("worktree_path"),
+                    "branch": session.get("branch"),
+                    "source_app": session.get("source_app"),
+                    "launched": True,
+                }
+            )
         await _write_json(writer, 200, {"restored": spawned, "command": " ".join(argv)})
 
     async def _stream(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

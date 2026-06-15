@@ -7,16 +7,19 @@ interface Snap {
   created_at: number;
 }
 
-export function SnapshotsModal({
-  sessionKeys,
-  onClose,
-}: {
-  sessionKeys: string[];
-  onClose: () => void;
-}) {
+interface SnapSession {
+  session_key: string;
+  name?: string | null;
+  runtime?: string | null;
+}
+
+export function SnapshotsModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const [snaps, setSnaps] = useState<Snap[]>([]);
   const [selected, setSelected] = useState<string>("");
+  // The sessions captured in the selected snapshot — these (not the live
+  // dashboard's sessions) are what can be restored from it.
+  const [sessions, setSessions] = useState<SnapSession[]>([]);
 
   const refresh = () =>
     api
@@ -26,6 +29,18 @@ export function SnapshotsModal({
   useEffect(() => {
     refresh();
   }, []);
+
+  // When a snapshot is picked, load the sessions it actually contains.
+  useEffect(() => {
+    if (!selected) {
+      setSessions([]);
+      return;
+    }
+    api
+      .snapshotSessions(selected)
+      .then((d) => setSessions(d.sessions))
+      .catch(() => setSessions([]));
+  }, [selected]);
 
   async function takeSnapshot() {
     try {
@@ -38,10 +53,6 @@ export function SnapshotsModal({
   }
 
   async function restore(key: string) {
-    if (!selected) {
-      toast("Pick a snapshot first", "err");
-      return;
-    }
     try {
       const { command } = await api.restore(selected, key);
       toast(`Restoring: ${command}`);
@@ -78,7 +89,14 @@ export function SnapshotsModal({
           <option value="">— choose a snapshot to restore from —</option>
           {snaps.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.id}
+              {new Date(s.created_at).toLocaleString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
             </option>
           ))}
         </select>
@@ -87,23 +105,36 @@ export function SnapshotsModal({
       {selected && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 13, color: "#374151", marginBottom: 6 }}>
-            Restore a session
+            Sessions in this snapshot
           </div>
-          {sessionKeys.map((k) => (
-            <div
-              key={k}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "4px 0",
-              }}
-            >
-              <code style={{ fontSize: 13 }}>{k.slice(0, 14)}</code>
-              <Button size="sm" variant="ghost" onClick={() => restore(k)}>
-                Restore
-              </Button>
-            </div>
-          ))}
+          {sessions.length === 0 ? (
+            <p style={{ color: "#9ca3af", fontSize: 13 }}>
+              No sessions captured in this snapshot.
+            </p>
+          ) : (
+            sessions.map((s) => (
+              <div
+                key={s.session_key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "4px 0",
+                }}
+              >
+                <code style={{ fontSize: 13 }}>
+                  {s.name || s.session_key.slice(0, 14)}
+                </code>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => restore(s.session_key)}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))
+          )}
         </div>
       )}
     </Modal>

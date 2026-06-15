@@ -56,3 +56,20 @@ def test_restore_command_per_runtime() -> None:
 
     codex = restore_command_for({"runtime": "codex", "session_key": "k", "cwd": "/r"})
     assert codex == ["codex"]
+
+    # Copilot resumes via --resume=<id>; previously it fell through to a no-op.
+    copilot = restore_command_for({"runtime": "copilot", "session_key": "k", "cwd": "/r"})
+    assert copilot == ["copilot", "--resume=k"]
+
+
+def test_restore_command_falls_back_to_fresh_launch_without_resume_id() -> None:
+    # When no resumable conversation id exists, restore launches the base agent.
+    for runtime, expected in [
+        ("claude-code", ["claude"]),
+        ("copilot", ["copilot"]),
+        ("codex", ["codex"]),
+    ]:
+        cmd = restore_command_for(
+            {"runtime": runtime, "session_key": "k", "cwd": "/r", "_no_resume": True}
+        )
+        assert cmd == expected

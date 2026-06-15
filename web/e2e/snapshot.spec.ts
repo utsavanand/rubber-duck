@@ -28,4 +28,15 @@ test("snapshot all active sessions creates a snapshot in the backend", async ({
   const added = (await snapshotIds()).filter((id) => !before.includes(id));
   expect(added).toHaveLength(1);
   expect(added[0]).toMatch(/^snap-/);
+
+  // Selecting the new snapshot lists the sessions IT captured (read from its
+  // manifest), not the live dashboard's session list. Target the modal's select
+  // (the one with the "choose a snapshot" placeholder), not the Origin filter.
+  await page
+    .locator("select")
+    .filter({ has: page.locator('option[value=""]') })
+    .last()
+    .selectOption({ index: 1 });
+  await expect(page.getByText("Sessions in this snapshot")).toBeVisible();
+  await expect(page.locator("code", { hasText: "snap session" })).toBeVisible();
 });

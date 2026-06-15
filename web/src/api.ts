@@ -175,6 +175,17 @@ export const api = {
   snapshot: () => post<{ id: string }>("/snapshots"),
   snapshots: () =>
     get<{ snapshots: { id: string; created_at: number }[] }>("/snapshots"),
+  // The sessions captured IN a snapshot (these are what can be restored from it).
+  snapshotSessions: (id: string) =>
+    get<{
+      id: string;
+      created_at: number;
+      sessions: {
+        session_key: string;
+        name?: string | null;
+        runtime?: string | null;
+      }[];
+    }>(`/snapshots/${id}`),
   restore: (snapshotId: string, key: string) =>
     post<{ command: string }>(
       `/snapshots/${snapshotId}/sessions/${key}/restore`,
