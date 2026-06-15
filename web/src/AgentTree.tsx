@@ -425,7 +425,7 @@ function TreeRow({
               title={
                 s.launched
                   ? "Launched by Rubberduck — it owns this tab, so you can type to it and answer prompts here"
-                  : "Watched — you started this agent yourself; Rubberduck observes it but can't drive it"
+                  : "Watched only — not started via Rubberduck. It observes this agent but can't drive it."
               }
             >
               {s.launched ? "launched" : "watched"}
@@ -564,13 +564,19 @@ function TreeRow({
             className={`rd-btn rd-btn-sm rd-btn-danger${confirmDelete ? " armed" : ""}`}
             title={
               confirmDelete
-                ? "Click again to permanently delete this session and its history"
-                : "Remove this session from history"
+                ? "Click again to confirm"
+                : s.launched
+                  ? "Delete this session and its history"
+                  : "Stop watching — remove it from the dashboard (the agent keeps running in its own terminal)"
             }
             disabled={ending}
             onClick={requestDelete}
           >
-            {confirmDelete ? "Confirm delete?" : "Delete"}
+            {confirmDelete
+              ? "Confirm?"
+              : s.launched
+                ? "Delete"
+                : "Stop watching"}
           </button>
         </div>
         {notesOpen && (
