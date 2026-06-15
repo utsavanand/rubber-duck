@@ -38,6 +38,9 @@ $PY -m pytest -p no:cacheprovider
 step "slop check (docs/tests heuristics)"
 $PY scripts/slop_check.py
 
+step "Frontend unit tests (vitest)"
+( cd web && npm test --silent )
+
 if [[ $RUN_UI == 1 ]]; then
   step "UI tests (Playwright) — builds + serves the real dashboard"
   # The e2e server serves the bundled dashboard, so build + sync it first.

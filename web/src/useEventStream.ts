@@ -10,7 +10,7 @@ import {
 
 type InitFrame = { type: "init"; events: RubberduckEvent[] };
 
-type Action =
+export type Action =
   | { kind: "seed"; sessions: PersistedSession[] }
   | { kind: "event"; event: RubberduckEvent }
   | { kind: "remove"; keys: string[] }
@@ -19,7 +19,7 @@ type Action =
 // The reducer tracks deleted keys so a still-firing watched session (whose hooks
 // keep streaming events) can't resurrect a row the user just deleted — mirrors
 // the server's tombstone. A fresh SessionStart lifts the tombstone.
-interface State {
+export interface State {
   sessions: Map<string, SessionView>;
   tombstoned: Set<string>;
 }
@@ -40,7 +40,9 @@ function mergeDefined(base: SessionView, over: SessionView): SessionView {
   return out;
 }
 
-function reduce(state: State, action: Action): State {
+// Exported for unit tests — this is the pure heart of the event stream (seed,
+// event-merge, remove/tombstone, optimistic patch), independent of React.
+export function reduce(state: State, action: Action): State {
   if (action.kind === "seed") {
     const next = new Map(state.sessions);
     for (const s of action.sessions) {
