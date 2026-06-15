@@ -12,6 +12,21 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## 🐛 Code fixes
 
+- [ ] **Output tab / "drive from dashboard" only works for PTY-owned sessions.**
+  The Output tab appears only when `worktreePath` is set, and `/output` streams
+  nothing for terminal-launched sessions (the common case — Rubberduck opens a
+  real terminal it doesn't own a PTY for). So typing to the agent from the
+  dashboard is effectively unavailable for most sessions. Tied to the
+  "In-dashboard agent supervision (own the PTY)" feature below.
+- [ ] **Diff tab is partial.** Shows only uncommitted working-tree changes; a
+  full diff vs the base branch (including commits) is labeled "coming soon" in
+  the UI (`SessionDetail` DiffView).
+- [x] **Snapshot restore fixes (PR #11)** — Copilot fell through to a no-op;
+  `--resume` used the rd key not the harness conversation id; the restore list
+  showed the live dashboard's sessions not the snapshot's; the restored agent
+  never registered (no env/heartbeat/SessionStart) so it didn't appear.
+- [ ] **Site: removed the Compare button from the dashboard mockup** (`Live.tsx`)
+  — keep an eye that the site mockup stays in sync with the real toolbar.
 - [ ] **Worktree-test flakiness under concurrent git** — the git tests shell out
   to real git; they collided with git activity once during a hook run. The
   GIT_* env leak is fixed; watch for residual lock races.
@@ -109,6 +124,12 @@ Organized by type of work. `★` marks the current highest-leverage item.
   active sessions are shown side by side as a live fleet — a fun, at-a-glance way
   to watch several agents make progress at once (vs the current flat list).
   Likely a grid/canvas of session cards animating on each event.
+- [ ] **Working-style insights (`rubberduck insights`).** A stub exists
+  (`src/rubberduck/llm/insights.py`) with the design but no implementation:
+  analyze a user's own history to surface what workflows lead to good outcomes
+  and where rework happens, as a `rubberduck insights` report. Open design
+  questions in the stub: heuristics vs LLM pass, scope (per-repo/day/all-time),
+  storage. Deliberately not wired into server/CLI until designed.
 - [ ] **Native Mac app.** A real menubar/desktop app instead of a browser tab:
   launch `serve` on login, show fleet status in the menubar, native
   notifications when a session needs you, and one-click open of the dashboard.

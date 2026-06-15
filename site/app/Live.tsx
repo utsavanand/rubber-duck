@@ -125,7 +125,6 @@ export function Dashboard() {
           <span className="live-label">Live</span>
         </div>
         <div className="dash-actions">
-          <span className="dbtn">Compare</span>
           <span className="dbtn">Snapshots</span>
           <span className="dbtn dbtn-primary">New session</span>
         </div>
@@ -283,7 +282,6 @@ export function Walkthrough() {
             <span className="live-label">Live</span>
           </div>
           <div className="dash-actions">
-            <span className="dbtn">Compare</span>
             <span className="dbtn">Snapshots</span>
             <span
               className={`dbtn dbtn-primary ${step === "click" ? "press" : ""}`}
