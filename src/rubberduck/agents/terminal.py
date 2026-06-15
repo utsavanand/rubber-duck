@@ -51,7 +51,7 @@ def open_in_terminal(
     exports = "".join(f"export {k}={_q(v)}; " for k, v in (env or {}).items())
     agent = " ".join(_q(a) for a in argv)
     if heartbeat is not None:
-        agent = _with_heartbeat(agent, *heartbeat)
+        agent = with_heartbeat(agent, *heartbeat)
     command = f"cd {_q(cwd)} && {exports}{agent}"
     if title:
         # Set the tab title via an OSC sequence before the agent runs. (iTerm and
@@ -239,7 +239,7 @@ def _close_iterm_by_tty(tty: str) -> str:
     )
 
 
-def _with_heartbeat(agent: str, url: str, session_key: str) -> str:
+def with_heartbeat(agent: str, url: str, session_key: str) -> str:
     """Wrap the agent command so the tab pings `url` every 20s while alive and
     stops when the agent exits or the tab is killed. The trap kills the loop on
     EXIT; killing the tab takes the whole shell (loop included) down with it."""
@@ -255,15 +255,19 @@ def _with_heartbeat(agent: str, url: str, session_key: str) -> str:
     # Read the per-install token so the heartbeat POST passes the server's auth
     # gate. Same machine/user, so the 0600 file is readable.
     token_var = '__rd_tok=$(cat "${RUBBERDUCK_HOME:-$HOME/.rubberduck}/token" 2>/dev/null); '
+    # Capture the tty in the FOREGROUND, before backgrounding the loop. $(tty)
+    # inside the `( … ) &` subshell returns "not a tty" (the subshell's stdin
+    # isn't the terminal), so the device must be resolved here and reused.
+    tty_var = "__rd_tty=$(tty 2>/dev/null); "
     ping = (
         f"{key_var}{token_var}"
         "curl -s -X POST " + _q(url) + " -H 'Content-Type: application/json' "
         '-H "X-Rubberduck-Token: $__rd_tok" '
-        '-d "{\\"session_key\\":\\"$__rd_key\\",\\"tty\\":\\"$(tty)\\"}" '
+        '-d "{\\"session_key\\":\\"$__rd_key\\",\\"tty\\":\\"$__rd_tty\\"}" '
         ">/dev/null 2>&1"
     )
     return (
-        f"( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "
+        f"{tty_var}( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "
         f'trap "kill $__rd_hb 2>/dev/null" EXIT; {agent}'
     )
 

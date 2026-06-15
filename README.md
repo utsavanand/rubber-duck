@@ -51,7 +51,19 @@ Watching a session you started in your own terminal needs two more things:
    rubberduck install-hooks --global --agent claude-code   # or codex, copilot
    ```
 
-   Start the agent normally — its sessions now appear in the dashboard.
+   Start the agent normally — its sessions now appear in the dashboard. Or
+   launch it through Rubberduck, which runs the agent **in your current
+   terminal** as a **launched** session (no new window) and pre-checks that the
+   hooks are installed:
+
+   ```sh
+   rubberduck run claude                          # launched, in this terminal
+   rubberduck run --name "login refactor" claude  # give it a dashboard name
+   rubberduck run codex --resume <id>             # args after the agent pass through
+   ```
+
+   Rubberduck's own options (like `--name`) go before the agent; everything
+   after the agent name is passed straight through to it.
 
 3. **Verify the setup** if a session doesn't show up:
 
@@ -164,8 +176,11 @@ integrations above, but it works for anything.
 - **Watched** — you start the agent in your own terminal; its hooks report to
   Rubberduck. Rubberduck observes but doesn't own the process, so you drive it
   and answer its prompts in your terminal.
-- **Launched** — you click **New session**; Rubberduck opens a terminal tab,
-  runs the agent, and owns the process — so you can drive it and answer
-  permission requests from the dashboard.
+- **Launched** — Rubberduck owns the agent's process, so you can drive it and
+  answer permission requests from the dashboard. Two ways to start one:
+  - **From the dashboard** — click **New session**; it opens a terminal tab.
+  - **From the CLI** — `rubberduck run claude` runs the agent in your *current*
+    terminal (no new window) as a launched session. `--name` labels it; anything
+    after the agent name passes through (`rubberduck run codex --resume <id>`).
 
 State lives in `~/.rubberduck/` (override with `RUBBERDUCK_HOME`).
