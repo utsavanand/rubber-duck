@@ -120,6 +120,9 @@ _SESSIONS_COLUMNS = {
     "branch": "TEXT",
     "parent_session_key": "TEXT",
     "compare_group": "TEXT",
+    # A freeform folder label for organizing the left panel. NULL = ungrouped.
+    # Sessions sharing a grp string render under one collapsible header.
+    "grp": "TEXT",
     "intention": "TEXT",
     "outcome_summary": "TEXT",
     "name": "TEXT",
@@ -334,13 +337,27 @@ class HistoryStore:
         )
         self._conn.commit()
 
-    def set_meta(self, key: str, *, name: str | None = None, notes: str | None = None) -> bool:
-        """Set a user-given name and/or personal notes on a session (local only,
-        never sent anywhere). Returns whether the session exists."""
+    def set_meta(
+        self,
+        key: str,
+        *,
+        name: str | None = None,
+        notes: str | None = None,
+        group: str | None = None,
+    ) -> bool:
+        """Set a user-given name, personal notes, and/or folder group on a session
+        (local only, never sent anywhere). For `group`, an empty string clears it
+        (ungroups); None means "leave unchanged". Returns whether the session
+        exists."""
         if name is not None:
             self._conn.execute("UPDATE sessions SET name = ? WHERE session_key = ?", (name, key))
         if notes is not None:
             self._conn.execute("UPDATE sessions SET notes = ? WHERE session_key = ?", (notes, key))
+        if group is not None:
+            self._conn.execute(
+                "UPDATE sessions SET grp = ? WHERE session_key = ?",
+                (group or None, key),  # "" -> NULL so ungrouped is consistently NULL
+            )
         self._conn.commit()
         return self.session(key) is not None
 

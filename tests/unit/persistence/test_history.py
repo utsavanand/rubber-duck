@@ -302,3 +302,31 @@ def test_test_flag_is_sticky(tmp_path: Path) -> None:
     # A later event without the flag must not clear it.
     bus.publish({"event_type": "PreToolUse", "session_key": "s", "tool_name": "Read"})
     assert store.session("s")["test"] == 1
+
+
+def test_set_meta_group_assigns_changes_and_clears(tmp_path: Path) -> None:
+    """A session's folder group can be set, changed, and cleared. Empty string
+    ungroups (stores NULL); None leaves it unchanged."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s"})
+
+    assert store.session("s")["grp"] is None  # ungrouped by default
+
+    store.set_meta("s", group="payments")
+    assert store.session("s")["grp"] == "payments"
+
+    # Setting name/notes must not disturb the group.
+    store.set_meta("s", name="checkout")
+    assert store.session("s")["grp"] == "payments"
+
+    store.set_meta("s", group="auth")  # move folders
+    assert store.session("s")["grp"] == "auth"
+
+    store.set_meta("s", group="")  # ungroup -> NULL
+    assert store.session("s")["grp"] is None
+
+
+def test_set_meta_group_missing_session_returns_false(tmp_path: Path) -> None:
+    store = HistoryStore(tmp_path / "db.sqlite")
+    assert store.set_meta("nope", group="x") is False

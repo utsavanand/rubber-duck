@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { api } from "./api";
 import { effectiveState } from "./sessions";
 import { SessionView } from "./types";
@@ -21,24 +21,173 @@ export function AgentTree({
   onFork: (key: string) => void;
   onDelete: (key: string) => Promise<boolean>;
 }) {
+  const toast = useToast();
   const roots = buildForest(sessions);
   if (sessions.length === 0) {
     return <p className="rd-panel-empty">No agents yet.</p>;
   }
+
+  // Drop a session onto a group header (or the ungrouped zone) to move it there.
+  async function moveToGroup(key: string, group: string) {
+    try {
+      await api.setGroup(key, group);
+      toast(group ? `Moved to ${group}` : "Removed from group");
+    } catch (e) {
+      toast(`Move failed: ${(e as Error).message}`, "err");
+    }
+  }
+
+  // Partition the root sessions by group, preserving first-seen order. Forks stay
+  // nested under their root, so grouping only sorts the top level.
+  const ungrouped: Node[] = [];
+  const groups = new Map<string, Node[]>();
+  for (const node of roots) {
+    const g = node.session.group;
+    if (!g) ungrouped.push(node);
+    else (groups.get(g) ?? groups.set(g, []).get(g)!).push(node);
+  }
+
+  const renderNode = (node: Node) => (
+    <TreeRow
+      key={node.session.key}
+      node={node}
+      depth={0}
+      now={now}
+      labels={labels}
+      onOpen={onOpen}
+      onFork={onFork}
+      onDelete={onDelete}
+    />
+  );
+
   return (
     <div className="rd-tree">
-      {roots.map((node) => (
-        <TreeRow
-          key={node.session.key}
-          node={node}
-          depth={0}
-          now={now}
-          labels={labels}
-          onOpen={onOpen}
-          onFork={onFork}
-          onDelete={onDelete}
-        />
+      {[...groups.entries()].map(([name, nodes]) => (
+        <GroupHeader
+          key={name}
+          name={name}
+          count={nodes.length}
+          onDropSession={moveToGroup}
+        >
+          {nodes.map(renderNode)}
+        </GroupHeader>
       ))}
+      {/* Ungrouped sessions sit at the root; dropping here clears the group. */}
+      <DropZone group="" onDropSession={moveToGroup} active={groups.size > 0}>
+        {ungrouped.map(renderNode)}
+      </DropZone>
+      {/* Drop a session here to start a new folder (prompts for a name). */}
+      <NewGroupZone onCreate={moveToGroup} />
+    </div>
+  );
+}
+
+// Drop target that creates a new group: drop a session, name the folder.
+function NewGroupZone({
+  onCreate,
+}: {
+  onCreate: (key: string, group: string) => void;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      className={`rd-newgroup${over ? " drop-over" : ""}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("text/rd-session")) {
+          e.preventDefault();
+          setOver(true);
+        }
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const key = e.dataTransfer.getData("text/rd-session");
+        if (!key) return;
+        const name = window.prompt("New group name")?.trim();
+        if (name) onCreate(key, name);
+      }}
+    >
+      + Drag a session here to start a group
+    </div>
+  );
+}
+
+// A collapsible folder header that accepts dropped sessions.
+function GroupHeader({
+  name,
+  count,
+  onDropSession,
+  children,
+}: {
+  name: string;
+  count: number;
+  onDropSession: (key: string, group: string) => void;
+  children: ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [over, setOver] = useState(false);
+  return (
+    <div className={`rd-group${over ? " drop-over" : ""}`}>
+      <div
+        className="rd-group-head"
+        onClick={() => setCollapsed((c) => !c)}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("text/rd-session")) {
+            e.preventDefault();
+            setOver(true);
+          }
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          const key = e.dataTransfer.getData("text/rd-session");
+          if (key) onDropSession(key, name);
+        }}
+      >
+        <span className="rd-group-caret">{collapsed ? "▸" : "▾"}</span>
+        <span className="rd-group-name">{name}</span>
+        <span className="rd-group-count">{count}</span>
+      </div>
+      {!collapsed && <div className="rd-group-body">{children}</div>}
+    </div>
+  );
+}
+
+// The catch-all zone for ungrouped sessions. Only a visible drop target when
+// groups exist (otherwise it's just the plain list).
+function DropZone({
+  group,
+  onDropSession,
+  active,
+  children,
+}: {
+  group: string;
+  onDropSession: (key: string, group: string) => void;
+  active: boolean;
+  children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      className={`rd-dropzone${active ? " has-groups" : ""}${over ? " drop-over" : ""}`}
+      onDragOver={(e) => {
+        if (active && e.dataTransfer.types.includes("text/rd-session")) {
+          e.preventDefault();
+          setOver(true);
+        }
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const key = e.dataTransfer.getData("text/rd-session");
+        if (key) onDropSession(key, group);
+      }}
+    >
+      {active && <div className="rd-dropzone-label">Ungrouped</div>}
+      {children}
     </div>
   );
 }
@@ -223,6 +372,12 @@ function TreeRow({
       <div
         className={`rd-row${live ? "" : " terminated"}${notesOpen ? " expanded" : ""}`}
         style={{ paddingLeft: 12 + depth * 18 }}
+        // Only root sessions are draggable into groups; forks follow their parent.
+        draggable={depth === 0}
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/rd-session", s.key);
+          e.dataTransfer.effectAllowed = "move";
+        }}
       >
         <div className="rd-row-main">
           {hasChildren ? (

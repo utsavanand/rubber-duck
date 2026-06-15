@@ -51,6 +51,7 @@ export interface SessionView {
   notes?: string; // personal, local-only notes
   idleSince?: number; // ts of the last Stop; drives the idle settling grace
   launched?: boolean; // true if Rubberduck launched it (owns the tab); else watched
+  group?: string; // folder label for organizing the left panel; undefined = ungrouped
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -78,6 +79,7 @@ export interface PersistedSession {
   heartbeat?: number | null; // 1 if a launched tab is heartbeat-tracked (legacy)
   name?: string | null;
   notes?: string | null;
+  grp?: string | null;
 }
 
 // The repo label for a card. repo_path's basename is the repo name for a plain
@@ -120,6 +122,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     launched: s.launched === 1 || s.heartbeat === 1,
     parentKey: s.parent_session_key ?? undefined,
     notes: s.notes ?? undefined,
+    group: s.grp ?? undefined,
   };
 }
 

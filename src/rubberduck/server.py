@@ -1024,13 +1024,19 @@ class Server:
     async def _update_session(
         self, writer: asyncio.StreamWriter, session_key: str, body: bytes
     ) -> None:
-        """Set a user-given name and/or personal notes on a session (local)."""
+        """Set a user-given name, notes, and/or folder group on a session (local).
+        `group: ""` ungroups; omitting a field leaves it unchanged."""
         try:
             req: Any = json.loads(body or b"{}")
         except json.JSONDecodeError:
             await _write_json(writer, 400, {"error": "invalid JSON"})
             return
-        ok = self.history.set_meta(session_key, name=req.get("name"), notes=req.get("notes"))
+        ok = self.history.set_meta(
+            session_key,
+            name=req.get("name"),
+            notes=req.get("notes"),
+            group=req.get("group"),
+        )
         await _write_json(writer, 200 if ok else 404, {"updated": ok})
 
     async def _clear_terminated(self, writer: asyncio.StreamWriter) -> None:
