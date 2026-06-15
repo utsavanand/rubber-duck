@@ -143,12 +143,12 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## ✅ Testing
 
-- [ ] **Frontend unit tests (vitest).** There is no JS test runner today, so the
-  event-stream reducer, `applyEvent`, `viewFromPersisted`, and the client
-  tombstone logic can only be tested through Playwright (slow, indirect). Add
-  vitest + tests for the pure frontend logic — this is what would let us prove a
-  fix *fails without the fix* (the ghost-session fix could only be validated by
-  reading the reducer because there's no unit harness).
+- [x] **Frontend unit tests (vitest).** Added Vitest (reads vite.config), gating
+  in CI (`npm test`) and the local gate. 24 co-located `*.test.ts` cover the pure
+  logic: `applyEvent`/`effectiveState` (`sessions.test.ts`), `viewFromPersisted`/
+  `repoNameFrom`/`sessionKeyOf` (`types.test.ts`), and the event-stream `reduce`
+  (seed/event/remove-tombstone/optimistic-patch). The `reduce` fn was exported
+  for testing. Component-render tests stay deferred to Playwright e2e.
 - [ ] **More UI specs** for UI-only flows not yet covered: HITL approve/deny,
   pulse click-to-expand, collapse forks, drawer tabs (timeline/diff/notes).
 - [ ] Extend the **pytest runtime suite** for any API behavior still only
