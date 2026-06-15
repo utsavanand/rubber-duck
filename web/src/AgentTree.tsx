@@ -15,6 +15,7 @@ export function AgentTree({
   onFork,
   onDelete,
   onFoldersChanged,
+  onSessionMoved,
 }: {
   sessions: SessionView[];
   now: number;
@@ -24,12 +25,16 @@ export function AgentTree({
   onFork: (key: string) => void;
   onDelete: (key: string) => Promise<boolean>;
   onFoldersChanged: () => void;
+  onSessionMoved: (key: string, group: string) => void;
 }) {
   const toast = useToast();
   const roots = buildForest(sessions);
 
   // Drop a session onto a folder header (or the ungrouped zone) to move it there.
   async function moveToGroup(key: string, group: string) {
+    // Optimistically reflect the move so the row jumps folders immediately; the
+    // PATCH doesn't emit an SSE event, so without this the UI lags until refresh.
+    onSessionMoved(key, group);
     try {
       await api.setGroup(key, group);
       toast(group ? `Moved to ${group}` : "Removed from folder");
@@ -46,6 +51,10 @@ export function AgentTree({
       )
     )
       return;
+    // Optimistically ungroup the folder's sessions so they jump out immediately.
+    for (const s of sessions) {
+      if (s.group === name) onSessionMoved(s.key, "");
+    }
     try {
       await api.deleteFolder(name);
       toast(`Deleted folder ${name}`);

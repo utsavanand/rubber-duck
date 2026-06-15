@@ -31,7 +31,7 @@ type Lifecycle = "active" | "idle" | "archived" | "all";
 type Origin = "all" | "watched" | "launched";
 
 function Dashboard() {
-  const { sessions, connected, recentEvents, removeSessions } =
+  const { sessions, connected, recentEvents, removeSessions, patchSession } =
     useEventStream();
   const toast = useToast();
   const now = useNow(1000);
@@ -270,6 +270,9 @@ function Dashboard() {
               onFork={setForkKey}
               onDelete={deleteSession}
               onFoldersChanged={refreshFolders}
+              onSessionMoved={(key, group) =>
+                patchSession(key, { group: group || undefined })
+              }
             />
           )}
           {hasTerminated && lifecycle === "all" && (
