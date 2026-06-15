@@ -6,6 +6,7 @@ import asyncio
 import errno
 import json
 import os
+import shutil
 import sys
 import urllib.request
 from collections.abc import Sequence
@@ -64,6 +65,15 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--cwd", default=os.getcwd())
     launch.add_argument("--session-key", default=None)
     launch.add_argument("--prompt", default="")
+
+    run = sub.add_parser(
+        "run",
+        help="run an agent in THIS terminal, tracked by Rubberduck (e.g. rubberduck run claude)",
+    )
+    # Everything after the agent is passed through verbatim to it. REMAINDER
+    # stops argparse from trying to parse the agent's own flags (--resume, etc.).
+    run.add_argument("agent", help="the agent to run, e.g. claude / codex / copilot")
+    run.add_argument("agent_args", nargs=argparse.REMAINDER, help="args passed to the agent")
 
     sub.add_parser("snapshot", help="bundle recently-active sessions to disk")
     sub.add_parser("dashboard", help="build (if needed) and open the dashboard in a browser")
@@ -203,6 +213,49 @@ def _launch(command: str, cwd: str, session_key: str | None, prompt: str) -> int
     return 0
 
 
+def _run(agent: str, agent_args: list[str]) -> int:
+    """Run an agent in the CURRENT terminal, tracked by Rubberduck. Pre-flights
+    the two things that make a session silently not appear — hooks installed and
+    the server reachable — then execs the agent so it owns the TTY natively
+    (signals, exit code, prompts all behave as if you ran it directly)."""
+    from rubberduck.server import infer_runtime
+
+    if not shutil.which(agent):
+        print(f"'{agent}' not found on PATH", file=sys.stderr)
+        return 127
+
+    runtime = infer_runtime(agent)
+    # Warn (don't block) on the two common "my session didn't show up" causes.
+    # 'generic' (an unrecognized command) has no Rubberduck hook, so skip that one.
+    if runtime != "generic" and not _hook_installed(runtime):
+        print(
+            f"⚠ {runtime} hooks aren't installed, so this session won't appear in "
+            f"Rubberduck.\n  Fix: rubberduck install-hooks --agent {runtime} --global"
+            f"  (then: rubberduck doctor)",
+            file=sys.stderr,
+        )
+    if not _rubberduck_responds(DEFAULT_HOST, DEFAULT_PORT):
+        print(
+            "⚠ no Rubberduck server on :4200 — events have nowhere to go.\n"
+            "  Start one in another terminal: rubberduck serve",
+            file=sys.stderr,
+        )
+
+    argv = [agent, *agent_args]
+    os.execvp(agent, argv)  # replaces this process; never returns on success
+
+
+def _hook_installed(runtime: str) -> bool:
+    """True if Rubberduck's hook is wired into the agent's global settings."""
+    from rubberduck.agents.hooks_install import hook_script_path, settings_path
+
+    try:
+        path = settings_path(global_scope=True, project_dir=Path.cwd(), agent=runtime)
+    except (KeyError, ValueError):
+        return False  # unknown/generic runtime has no hook to install
+    return path.exists() and str(hook_script_path()) in path.read_text()
+
+
 def _snapshot() -> int:
     req = urllib.request.Request(
         f"{_server_url()}/snapshots", data=b"", headers=_auth_headers(False), method="POST"
@@ -311,6 +364,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _restart(args.host, args.port)
     if args.command == "launch":
         return _launch(args.agent_command, args.cwd, args.session_key, args.prompt)
+    if args.command == "run":
+        return _run(args.agent, args.agent_args)
     if args.command == "snapshot":
         return _snapshot()
     if args.command == "dashboard":

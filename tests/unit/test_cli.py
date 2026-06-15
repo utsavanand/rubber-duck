@@ -54,3 +54,40 @@ def test_restart_starts_a_server_when_none_is_running(monkeypatch) -> None:  # t
     monkeypatch.setattr(cli, "_serve", fake_serve)
     assert main(["restart", "--port", "4321"]) == 0
     assert served["hp"][1] == 4321
+
+
+def test_run_execs_the_agent_with_passthrough_args(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.cli as cli
+
+    monkeypatch.setattr(cli.shutil, "which", lambda a: "/usr/bin/" + a)
+    monkeypatch.setattr(cli, "_hook_installed", lambda r: True)
+    monkeypatch.setattr(cli, "_rubberduck_responds", lambda h, p: True)
+    execed: dict = {}
+    monkeypatch.setattr(cli.os, "execvp", lambda file, argv: execed.update(file=file, argv=argv))
+
+    main(["run", "claude", "--resume", "xyz"])
+
+    assert execed["file"] == "claude"
+    assert execed["argv"] == ["claude", "--resume", "xyz"]
+
+
+def test_run_warns_when_hooks_missing_then_still_execs(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.cli as cli
+
+    monkeypatch.setattr(cli.shutil, "which", lambda a: "/usr/bin/" + a)
+    monkeypatch.setattr(cli, "_hook_installed", lambda r: False)  # not installed
+    monkeypatch.setattr(cli, "_rubberduck_responds", lambda h, p: True)
+    monkeypatch.setattr(cli.os, "execvp", lambda file, argv: None)
+
+    main(["run", "claude"])
+
+    err = capsys.readouterr().err
+    assert "hooks aren't installed" in err
+    assert "install-hooks --agent claude-code" in err
+
+
+def test_run_missing_agent_returns_127(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import rubberduck.cli as cli
+
+    monkeypatch.setattr(cli.shutil, "which", lambda a: None)  # not on PATH
+    assert main(["run", "nope"]) == 127

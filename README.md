@@ -51,7 +51,15 @@ Watching a session you started in your own terminal needs two more things:
    rubberduck install-hooks --global --agent claude-code   # or codex, copilot
    ```
 
-   Start the agent normally — its sessions now appear in the dashboard.
+   Start the agent normally — its sessions now appear in the dashboard. Or
+   launch it through Rubberduck, which runs the agent **in your current
+   terminal** and pre-checks that hooks + the server are ready:
+
+   ```sh
+   rubberduck run claude               # or: rubberduck run codex --resume <id>
+   ```
+
+   Everything after the agent name is passed straight through to it.
 
 3. **Verify the setup** if a session doesn't show up:
 
