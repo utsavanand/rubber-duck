@@ -33,7 +33,10 @@ export default function Image() {
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
-        background: "#0d0d0d",
+        // Softer than flat black: a gentle dark gradient with a warm duck-orange
+        // glow in the corner so the card feels less heavy.
+        background:
+          "radial-gradient(900px circle at 82% 18%, rgba(245,130,31,0.16), transparent 60%), linear-gradient(135deg, #14161c 0%, #0f1116 100%)",
         padding: "0 90px",
         fontFamily: "sans-serif",
       }}
@@ -68,7 +71,7 @@ export default function Image() {
       <div
         style={{ fontSize: 34, color: "#9a9aa0", marginTop: 36, maxWidth: 940 }}
       >
-        One window over every AI coding agent you run — local-first.
+        One window over every AI coding agent you run. Local-first.
       </div>
       <div
         style={{

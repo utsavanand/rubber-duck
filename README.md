@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="assets/duck.svg" width="72" height="72" alt="Rubberduck" />
+<img src="assets/duck.svg" width="72" height="72" alt="RubberDuckHQ" />
 
-# Rubberduck
+# RubberDuckHQ
 
 ### One window over every AI coding agent you run.
 
