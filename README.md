@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="assets/duck.svg" width="72" height="72" alt="Rubberduck" />
-<img src="assets/duck-specs.svg" width="72" height="72" alt="Rubberduck reviewing" />
-<img src="assets/duck-notepad.svg" width="72" height="72" alt="Rubberduck taking notes" />
+<img src="assets/duck.svg" width="72" height="72" alt="RubberDuckHQ" />
 
 # RubberDuckHQ
 
