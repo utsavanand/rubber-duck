@@ -79,10 +79,12 @@ export function SnapshotsModal({
           {snaps.map((s) => (
             <option key={s.id} value={s.id}>
               {new Date(s.created_at).toLocaleString(undefined, {
+                year: "numeric",
                 month: "short",
                 day: "numeric",
-                hour: "numeric",
+                hour: "2-digit",
                 minute: "2-digit",
+                second: "2-digit",
               })}
             </option>
           ))}
