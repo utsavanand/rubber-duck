@@ -14,13 +14,11 @@ export const contentType = "image/png";
 const DUCK = `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="160" height="160">
     <g fill="#FFB020">
-      <ellipse cx="30" cy="42" rx="24" ry="13"/>
-      <ellipse cx="38" cy="33" rx="12" ry="11"/>
-      <path d="M8 36c-4-2-7-1-8 2 3 2 6 2 8 1z"/>
-      <circle cx="44" cy="22" r="12"/>
+      <ellipse cx="30" cy="42" rx="22" ry="14"/>
+      <circle cx="41" cy="26" r="13"/>
     </g>
-    <path d="M55 21c5-1 8 0 9 3-2 2-5 3-9 3-1-2-1-4 0-6z" fill="#F5821F"/>
-    <circle cx="46" cy="19" r="2.4" fill="#1a1a1a"/>
+    <path d="M51 22.5c6 0 9.8 1.8 9.8 4.2S57 31 51 31c-1.5-2.8-1.5-5.7 0-8.5z" fill="#F5821F"/>
+    <circle cx="43" cy="23" r="2.6" fill="#1a1a1a"/>
   </svg>`,
 )}`;
 
