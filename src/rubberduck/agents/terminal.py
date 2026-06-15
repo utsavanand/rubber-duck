@@ -255,15 +255,19 @@ def with_heartbeat(agent: str, url: str, session_key: str) -> str:
     # Read the per-install token so the heartbeat POST passes the server's auth
     # gate. Same machine/user, so the 0600 file is readable.
     token_var = '__rd_tok=$(cat "${RUBBERDUCK_HOME:-$HOME/.rubberduck}/token" 2>/dev/null); '
+    # Capture the tty in the FOREGROUND, before backgrounding the loop. $(tty)
+    # inside the `( … ) &` subshell returns "not a tty" (the subshell's stdin
+    # isn't the terminal), so the device must be resolved here and reused.
+    tty_var = "__rd_tty=$(tty 2>/dev/null); "
     ping = (
         f"{key_var}{token_var}"
         "curl -s -X POST " + _q(url) + " -H 'Content-Type: application/json' "
         '-H "X-Rubberduck-Token: $__rd_tok" '
-        '-d "{\\"session_key\\":\\"$__rd_key\\",\\"tty\\":\\"$(tty)\\"}" '
+        '-d "{\\"session_key\\":\\"$__rd_key\\",\\"tty\\":\\"$__rd_tty\\"}" '
         ">/dev/null 2>&1"
     )
     return (
-        f"( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "
+        f"{tty_var}( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "
         f'trap "kill $__rd_hb 2>/dev/null" EXIT; {agent}'
     )
 

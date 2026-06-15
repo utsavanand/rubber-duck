@@ -92,9 +92,13 @@ def test_no_terminal_env_skips_opening_a_window(monkeypatch) -> None:  # type: i
 
 def test_heartbeat_reports_tty_so_the_tab_can_be_found() -> None:
     cmd = with_heartbeat("claude", "http://127.0.0.1:4200/heartbeat", "sess-1")
-    # The ping carries both the session key and the tab's tty via $(tty).
+    # The ping carries both the session key and the tab's tty.
     assert "sess-1" in cmd
-    assert "$(tty)" in cmd
+    # tty must be captured in the FOREGROUND (before `( … ) &`), because $(tty)
+    # inside the backgrounded subshell returns "not a tty". The loop reuses the
+    # captured __rd_tty variable instead of calling $(tty) inside the loop.
+    assert cmd.index("__rd_tty=$(tty") < cmd.index("( while true")
+    assert '\\"tty\\":\\"$__rd_tty\\"' in cmd
     # The trap still tears down the heartbeat loop on exit.
     assert "trap" in cmd and "claude" in cmd
 
