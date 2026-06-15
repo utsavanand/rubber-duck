@@ -171,6 +171,26 @@ code,
   border-radius: 10px;
   padding: 1px 7px;
 }
+.rd-group-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  opacity: 0;
+}
+.rd-group-head:hover .rd-group-del {
+  opacity: 1;
+}
+.rd-group-del:hover {
+  color: var(--danger, #e5484d);
+}
+.rd-modal-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 12px;
+}
 /* highlight a folder/zone while a session is dragged over it */
 .rd-group.drop-over,
 .rd-dropzone.drop-over,

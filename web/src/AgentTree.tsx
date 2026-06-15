@@ -10,41 +10,58 @@ export function AgentTree({
   sessions,
   now,
   labels,
+  folders,
   onOpen,
   onFork,
   onDelete,
+  onFoldersChanged,
 }: {
   sessions: SessionView[];
   now: number;
   labels: Record<string, string>;
+  folders: string[];
   onOpen: (key: string) => void;
   onFork: (key: string) => void;
   onDelete: (key: string) => Promise<boolean>;
+  onFoldersChanged: () => void;
 }) {
   const toast = useToast();
   const roots = buildForest(sessions);
-  if (sessions.length === 0) {
-    return <p className="rd-panel-empty">No agents yet.</p>;
-  }
 
-  // Drop a session onto a group header (or the ungrouped zone) to move it there.
+  // Drop a session onto a folder header (or the ungrouped zone) to move it there.
   async function moveToGroup(key: string, group: string) {
     try {
       await api.setGroup(key, group);
-      toast(group ? `Moved to ${group}` : "Removed from group");
+      toast(group ? `Moved to ${group}` : "Removed from folder");
+      onFoldersChanged();
     } catch (e) {
       toast(`Move failed: ${(e as Error).message}`, "err");
     }
   }
 
-  // Partition the root sessions by group, preserving first-seen order. Forks stay
-  // nested under their root, so grouping only sorts the top level.
+  async function removeFolder(name: string) {
+    if (
+      !window.confirm(
+        `Delete folder "${name}"? Its sessions return to Ungrouped.`,
+      )
+    )
+      return;
+    try {
+      await api.deleteFolder(name);
+      toast(`Deleted folder ${name}`);
+      onFoldersChanged();
+    } catch (e) {
+      toast(`Delete failed: ${(e as Error).message}`, "err");
+    }
+  }
+
+  // Group root sessions by their folder label; forks stay nested under their root.
   const ungrouped: Node[] = [];
-  const groups = new Map<string, Node[]>();
+  const byFolder = new Map<string, Node[]>();
   for (const node of roots) {
     const g = node.session.group;
-    if (!g) ungrouped.push(node);
-    else (groups.get(g) ?? groups.set(g, []).get(g)!).push(node);
+    if (g) (byFolder.get(g) ?? byFolder.set(g, []).get(g)!).push(node);
+    else ungrouped.push(node);
   }
 
   const renderNode = (node: Node) => (
@@ -60,55 +77,29 @@ export function AgentTree({
     />
   );
 
+  const hasFolders = folders.length > 0;
+  if (sessions.length === 0 && !hasFolders) {
+    return <p className="rd-panel-empty">No agents yet.</p>;
+  }
+
   return (
     <div className="rd-tree">
-      {[...groups.entries()].map(([name, nodes]) => (
+      {/* All folders render (even empty ones) so you can create then fill them. */}
+      {folders.map((name) => (
         <GroupHeader
           key={name}
           name={name}
-          count={nodes.length}
+          count={(byFolder.get(name) ?? []).length}
           onDropSession={moveToGroup}
+          onDelete={() => removeFolder(name)}
         >
-          {nodes.map(renderNode)}
+          {(byFolder.get(name) ?? []).map(renderNode)}
         </GroupHeader>
       ))}
-      {/* Ungrouped sessions sit at the root; dropping here clears the group. */}
-      <DropZone group="" onDropSession={moveToGroup} active={groups.size > 0}>
+      {/* Ungrouped sessions sit at the root; dropping here clears the folder. */}
+      <DropZone group="" onDropSession={moveToGroup} active={hasFolders}>
         {ungrouped.map(renderNode)}
       </DropZone>
-      {/* Drop a session here to start a new folder (prompts for a name). */}
-      <NewGroupZone onCreate={moveToGroup} />
-    </div>
-  );
-}
-
-// Drop target that creates a new group: drop a session, name the folder.
-function NewGroupZone({
-  onCreate,
-}: {
-  onCreate: (key: string, group: string) => void;
-}) {
-  const [over, setOver] = useState(false);
-  return (
-    <div
-      className={`rd-newgroup${over ? " drop-over" : ""}`}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("text/rd-session")) {
-          e.preventDefault();
-          setOver(true);
-        }
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        const key = e.dataTransfer.getData("text/rd-session");
-        if (!key) return;
-        const name = window.prompt("New group name")?.trim();
-        if (name) onCreate(key, name);
-      }}
-    >
-      + Drag a session here to start a group
     </div>
   );
 }
@@ -118,9 +109,11 @@ function GroupHeader({
   name,
   count,
   onDropSession,
+  onDelete,
   children,
 }: {
   name: string;
+  onDelete: () => void;
   count: number;
   onDropSession: (key: string, group: string) => void;
   children: ReactNode;
@@ -149,6 +142,16 @@ function GroupHeader({
         <span className="rd-group-caret">{collapsed ? "▸" : "▾"}</span>
         <span className="rd-group-name">{name}</span>
         <span className="rd-group-count">{count}</span>
+        <button
+          className="rd-group-del"
+          title="Delete folder (sessions return to Ungrouped)"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          ✕
+        </button>
       </div>
       {!collapsed && <div className="rd-group-body">{children}</div>}
     </div>

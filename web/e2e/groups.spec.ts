@@ -26,3 +26,16 @@ test("a grouped session shows under its folder header and collapses", async ({
     page.locator(".rd-group-body .rd-row", { hasText: key }),
   ).toHaveCount(0);
 });
+
+// The "New folder" button creates an empty folder that persists and shows in the
+// left panel before any session is moved into it.
+test("New folder button creates an empty folder", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New folder" }).click();
+  const name = `Folder-${Date.now()}`;
+  await page.getByPlaceholder("e.g. payments").fill(name);
+  await page.getByRole("button", { name: "Create folder" }).click();
+
+  // It appears as a (empty) folder header in the left panel.
+  await expect(page.locator(".rd-group-head", { hasText: name })).toBeVisible();
+});

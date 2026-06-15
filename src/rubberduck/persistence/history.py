@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS tombstones (
     session_key TEXT PRIMARY KEY,
     deleted_at  INTEGER NOT NULL
 );
+-- Left-panel folders. Stored on their own so an empty folder (created before any
+-- session is moved into it) persists. Session membership lives in sessions.grp.
+CREATE TABLE IF NOT EXISTS folders (
+    name       TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL
+);
 """
 
 
@@ -358,8 +364,34 @@ class HistoryStore:
                 "UPDATE sessions SET grp = ? WHERE session_key = ?",
                 (group or None, key),  # "" -> NULL so ungrouped is consistently NULL
             )
+            if group:  # moving into a folder also ensures the folder exists
+                self.create_folder(group)
         self._conn.commit()
         return self.session(key) is not None
+
+    def folders(self) -> list[str]:
+        """Folder names: those explicitly created plus any referenced by a
+        session's group (so a folder never silently disappears)."""
+        rows = self._conn.execute("SELECT name FROM folders").fetchall()
+        used = self._conn.execute(
+            "SELECT DISTINCT grp FROM sessions WHERE grp IS NOT NULL AND grp != ''"
+        ).fetchall()
+        names = {r["name"] for r in rows} | {r["grp"] for r in used}
+        return sorted(names, key=str.lower)
+
+    def create_folder(self, name: str, *, now: int | None = None) -> None:
+        """Register a folder so an empty one persists. Idempotent."""
+        ts = now if now is not None else 0
+        self._conn.execute(
+            "INSERT OR IGNORE INTO folders (name, created_at) VALUES (?, ?)", (name, ts)
+        )
+        self._conn.commit()
+
+    def delete_folder(self, name: str) -> None:
+        """Remove a folder and ungroup its sessions (they return to Ungrouped)."""
+        self._conn.execute("DELETE FROM folders WHERE name = ?", (name,))
+        self._conn.execute("UPDATE sessions SET grp = NULL WHERE grp = ?", (name,))
+        self._conn.commit()
 
     def mark_heartbeat(self, key: str) -> None:
         """Flag a session as heartbeat-tracked (Rubberduck launched it in a tab
