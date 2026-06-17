@@ -1006,13 +1006,24 @@ class Server:
         # Close the terminal tab we opened (launched sessions only — never a
         # watched session's terminal, which the user started themselves). We
         # match by the tty the tab reported, which the agent can't clobber.
-        if row is not None and row.get("heartbeat") and row.get("tty"):
-            close_terminal_by_tty(str(row["tty"]))
+        # tab_closed is False when the session had a tab but we couldn't close it
+        # (Terminal.app can't auto-close) — the dashboard then nudges the user.
+        tab = row.get("tty") if row and row.get("heartbeat") else None
+        tab_closed = close_terminal_by_tty(str(tab)) if tab else False
+        had_tab = bool(tab)
         self._remove_worktree(row)
         deleted = self.history.delete_session(session_key, now=int(time.time() * 1000))
         self.approvals.drop_session(session_key)
         status = 200 if deleted else 404
-        await _write_json(writer, status, {"deleted": deleted, "session_key": session_key})
+        await _write_json(
+            writer,
+            status,
+            {
+                "deleted": deleted,
+                "session_key": session_key,
+                "tab_left_open": had_tab and not tab_closed,
+            },
+        )
 
     def _worktree_path_of(self, row: dict[str, Any] | None) -> Path | None:
         """The Rubberduck-managed worktree for a session, or None. Guards that we

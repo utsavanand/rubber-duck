@@ -1,7 +1,6 @@
 from rubberduck.agents import terminal
 from rubberduck.agents.terminal import (
     _close_iterm_by_tty,
-    _close_terminal_by_tty,
     answer_prompt_by_tty,
     close_terminal_by_tty,
     focus_terminal_by_tty,
@@ -103,10 +102,8 @@ def test_heartbeat_reports_tty_so_the_tab_can_be_found() -> None:
     assert "trap" in cmd and "claude" in cmd
 
 
-def test_close_scripts_match_on_tty() -> None:
-    term = _close_terminal_by_tty("/dev/ttys003")
+def test_close_iterm_script_targets_the_session_by_tty() -> None:
     iterm = _close_iterm_by_tty("/dev/ttys003")
-    assert "/dev/ttys003" in term and "close t" in term and "tty of t" in term
     assert "/dev/ttys003" in iterm and "close t" in iterm and "tty of s" in iterm
 
 
@@ -120,17 +117,27 @@ def test_close_by_tty_is_noop_without_a_tty(monkeypatch) -> None:  # type: ignor
     assert close_terminal_by_tty("") is False
 
 
-def test_close_by_tty_runs_osascript_on_macos(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_close_on_iterm_closes_the_tab(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # iTerm can close a tab via AppleScript, so close runs osascript and succeeds.
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(terminal, "_iterm_installed", lambda: True)
+    spawned: dict = {}
+    monkeypatch.setattr(terminal, "_spawn", lambda argv: spawned.update(argv=argv) or True)
+
+    assert close_terminal_by_tty("/dev/ttys009", app="iterm") is True
+    assert "iTerm" in spawned["argv"][-1] and "/dev/ttys009" in spawned["argv"][-1]
+
+
+def test_close_on_terminal_app_cannot_autoclose(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Terminal.app's dictionary can't close a tab (only windows, and a running
+    # process blocks it). So close returns False WITHOUT running a script that
+    # would lie or trigger the confirmation dialog — the caller nudges the user.
     monkeypatch.setattr(terminal.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(terminal, "_iterm_installed", lambda: False)
-    spawned: dict = {}
 
-    def fake_spawn(argv: list[str]) -> bool:
-        spawned["argv"] = argv
-        return True
+    def boom(_argv: list[str]) -> bool:
+        raise AssertionError("Terminal.app close must not run an osascript")
 
-    monkeypatch.setattr(terminal, "_spawn", fake_spawn)
+    monkeypatch.setattr(terminal, "_spawn", boom)
 
-    assert close_terminal_by_tty("/dev/ttys009", app="terminal") is True
-    assert spawned["argv"][0] == "osascript"
-    assert "/dev/ttys009" in spawned["argv"][-1]
+    assert close_terminal_by_tty("/dev/ttys009", app="terminal") is False

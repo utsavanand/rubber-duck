@@ -84,13 +84,19 @@ def open_in_terminal(
 def close_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
     """Close the terminal tab whose tty matches (e.g. /dev/ttys003). The tty is
     stable and not clobbered by the agent (unlike the tab title), so this is the
-    reliable way to find the tab Rubberduck launched. macOS only."""
+    reliable way to find the tab Rubberduck launched. macOS only.
+
+    Returns whether the tab was actually closed. iTerm can close a tab; Apple's
+    Terminal.app cannot — its dictionary only closes whole windows, and a window
+    with a live process pops a confirmation dialog we can't dismiss. So for
+    Terminal.app this returns False (the caller tells the user to close it), and
+    we don't run a script that would lie about success or trigger that dialog."""
     if platform.system() != "Darwin" or not tty:
         return False
     choice = (app or os.environ.get("RUBBERDUCK_TERMINAL") or _default_mac()).lower()
     if choice == "iterm" and _iterm_installed():
         return _spawn(["osascript", "-e", _close_iterm_by_tty(tty)])
-    return _spawn(["osascript", "-e", _close_terminal_by_tty(tty)])
+    return False  # Terminal.app: can't auto-close; caller surfaces a manual nudge
 
 
 def focus_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
@@ -199,22 +205,6 @@ def _focus_iterm_by_tty(tty: str) -> str:
         "          return\n"
         "        end if\n"
         "      end repeat\n"
-        "    end repeat\n"
-        "  end repeat\n"
-        "end tell"
-    )
-
-
-def _close_terminal_by_tty(tty: str) -> str:
-    esc = _esc(tty)
-    return (
-        'tell application "Terminal"\n'
-        "  repeat with w in windows\n"
-        "    repeat with t in tabs of w\n"
-        f'      if (tty of t as string) is "{esc}" then\n'
-        "        close t\n"
-        "        return\n"
-        "      end if\n"
         "    end repeat\n"
         "  end repeat\n"
         "end tell"

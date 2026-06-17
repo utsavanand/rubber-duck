@@ -153,6 +153,7 @@ export const api = {
         deleted?: boolean;
         unmerged_commits?: number;
         branch?: string | null;
+        tab_left_open?: boolean;
       }),
     })),
   clearTerminated: () =>

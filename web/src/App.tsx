@@ -51,7 +51,15 @@ function Dashboard() {
         res = await api.remove(key, true);
       }
       removeSessions([key]);
-      toast("Deleted");
+      // Terminal.app can't be auto-closed (Apple's AppleScript only closes
+      // windows, and a running process blocks it). Nudge the user to close it.
+      if (res.tab_left_open) {
+        toast(
+          "Deleted — close its Terminal tab yourself (iTerm closes automatically)",
+        );
+      } else {
+        toast("Deleted");
+      }
       return true;
     } catch (e) {
       toast(`Delete failed: ${(e as Error).message}`, "err");
