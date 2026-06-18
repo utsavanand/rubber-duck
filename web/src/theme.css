@@ -219,20 +219,24 @@ code,
   border: 1px solid var(--border);
   padding: 4px 8px;
 }
-.rd-msg-tool {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* The user prompt that started the latest reply (small, dim, sets context). */
+.rd-msg-prompt {
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+/* One compact line summarizing the tools an agent ran between prose — not a row
+   per tool call. */
+.rd-msg-tools {
   font-size: 11px;
   color: var(--muted);
-  background: var(--hover);
-  border-radius: 6px;
-  padding: 2px 8px;
-  margin: 2px 0;
-}
-.rd-msg-tool-name {
   font-family: ui-monospace, Menlo, monospace;
-  font-weight: 600;
+  margin: 6px 0 14px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
 }
 /* xterm fills the pane and scrolls its OWN buffer (xterm-viewport), so a long
    session scrolls inside the terminal instead of growing the page. */

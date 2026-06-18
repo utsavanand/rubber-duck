@@ -65,11 +65,13 @@ test("messages view renders structured conversation as HTML", async ({
   await page.locator(".rd-row-name", { hasText: "msg-agent" }).click();
   await page.locator(".rd-view-toggle button", { hasText: "Messages" }).click();
 
-  // The assistant's markdown rendered to HTML (heading + bold + list).
+  // The latest reply's markdown rendered to HTML (heading + bold + list).
   await expect(page.locator(".rd-msg-text strong")).toContainText("demo", {
     timeout: 8_000,
   });
   await expect(page.locator(".rd-msg-text li").first()).toContainText("one");
-  // The tool call shows as a chip.
-  await expect(page.locator(".rd-msg-tool-name")).toContainText("Bash");
+  // Tools the agent ran collapse into one compact line, not a row each.
+  await expect(page.locator(".rd-msg-tools")).toContainText("Bash");
+  // The prompt that started the turn shows as context.
+  await expect(page.locator(".rd-msg-prompt")).toContainText("tell me about");
 });

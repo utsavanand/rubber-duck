@@ -47,39 +47,78 @@ export function Messages({ sessionKey }: { sessionKey: string }) {
     };
   }, [sessionKey]);
 
-  if (loaded && messages.length === 0) {
+  // The LATEST agent reply: the prose since the last user prompt, rendered as
+  // clean HTML — a readable version of what the CLI just output. We don't dump
+  // the whole history; this is "the new message", made readable. Tools the agent
+  // ran in this turn collapse into one compact line.
+  const latest = latestReply(messages);
+
+  if (loaded && !latest) {
     return (
       <div className="rd-panel-empty">
-        No structured messages yet (claude-code sessions only).
+        No agent reply yet (claude-code sessions only).
       </div>
     );
   }
+  if (!latest) return <div className="rd-messages" />;
 
   return (
     <div className="rd-messages">
-      {messages.map((m) => (
-        <div key={m.id} className={`rd-msg rd-msg-${m.role}`}>
-          {m.blocks.map((b, i) => {
-            if (b.type === "text") {
-              return (
-                <div
-                  key={i}
-                  className="rd-msg-text"
-                  dangerouslySetInnerHTML={{ __html: html(b.text) }}
-                />
-              );
-            }
-            if (b.type === "tool_use") {
-              return (
-                <div key={i} className="rd-msg-tool">
-                  <span className="rd-msg-tool-name">{b.name}</span>
-                </div>
-              );
-            }
-            return null; // tool_result: hidden in the read-only view (context noise)
-          })}
-        </div>
+      {latest.prompt && <div className="rd-msg-prompt">{latest.prompt}</div>}
+      {latest.tools.length > 0 && (
+        <div className="rd-msg-tools">{summarizeTools(latest.tools)}</div>
+      )}
+      {latest.texts.map((t, i) => (
+        <div
+          key={i}
+          className="rd-msg-text"
+          dangerouslySetInnerHTML={{ __html: html(t) }}
+        />
       ))}
     </div>
   );
+}
+
+interface Reply {
+  prompt: string | null; // the user prompt that started this turn
+  texts: string[]; // assistant prose blocks in the turn
+  tools: string[]; // tool names the agent ran in the turn
+}
+
+// Walk back from the end to the most recent user prompt; everything after it is
+// the agent's latest reply.
+function latestReply(messages: Message[]): Reply | null {
+  let start = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (
+      messages[i].role === "user" &&
+      messages[i].blocks.some((b) => b.type === "text")
+    ) {
+      start = i;
+      break;
+    }
+  }
+  const turn = start >= 0 ? messages.slice(start) : messages;
+  const reply: Reply = { prompt: null, texts: [], tools: [] };
+  turn.forEach((m, idx) => {
+    for (const b of m.blocks) {
+      if (b.type === "text") {
+        if (m.role === "user" && idx === 0) reply.prompt = b.text;
+        else if (m.role === "assistant") reply.texts.push(b.text);
+      } else if (b.type === "tool_use") {
+        reply.tools.push(b.name);
+      }
+    }
+  });
+  return reply.texts.length || reply.prompt ? reply : null;
+}
+
+// "used Read ×8, Bash" — counts per tool, most-used first.
+function summarizeTools(tools: string[]): string {
+  const counts = new Map<string, number>();
+  for (const t of tools) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name));
+  return `used ${parts.join(", ")}`;
 }
