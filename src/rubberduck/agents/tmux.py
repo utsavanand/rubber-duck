@@ -94,6 +94,14 @@ def capture_pane(target: str) -> str:
     return out if ok else ""
 
 
+def capture_screen(target: str) -> bytes:
+    """The pane's CURRENT visible screen with colors/escapes (`-e`), as bytes —
+    for an attaching terminal to repaint the live state instantly instead of
+    replaying the whole scrollback. `-J` joins wrapped lines."""
+    ok, out = _tmux("capture-pane", "-t", target, "-p", "-e")
+    return out.encode(errors="replace") if ok else b""
+
+
 def kill_session(target: str) -> bool:
     ok, _ = _tmux("kill-session", "-t", target)
     return ok

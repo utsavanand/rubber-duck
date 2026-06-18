@@ -246,17 +246,33 @@ class SessionSupervisor:
 
     async def subscribe_bytes(self) -> AsyncGenerator[bytes, None]:
         """Yield raw PTY bytes as the agent emits them, for an xterm.js terminal.
-        Replays the recent byte tail first so a late-attaching terminal repaints
-        with context (the scrollback it missed)."""
+        On attach, repaint the CURRENT screen (not the whole scrollback): for
+        tmux, clear + capture-pane of the live pane; for a PTY, a small recent
+        tail. Replaying 2000 chunks of history made the terminal redraw its entire
+        backlog every time you (re)attached or switched tabs."""
         queue: asyncio.Queue[bytes] = asyncio.Queue()
-        for chunk in self._byte_tail:
-            queue.put_nowait(chunk)
+        snapshot = self._attach_snapshot()
+        if snapshot:
+            queue.put_nowait(snapshot)
         self._byte_subs.add(queue)
         try:
             while True:
                 yield await queue.get()
         finally:
             self._byte_subs.discard(queue)
+
+    def _attach_snapshot(self) -> bytes:
+        """The bytes to send a freshly-attached terminal so it shows the current
+        state without replaying all history."""
+        if self._tmux_target is not None and tmux.session_exists(self._tmux_target):
+            screen = tmux.capture_screen(self._tmux_target)
+            if screen:
+                # Clear + home, then paint the captured screen.
+                return b"\x1b[2J\x1b[H" + screen
+        # PTY (or tmux capture failed): a bounded recent tail — enough for
+        # context, not the whole backlog.
+        recent = list(self._byte_tail)[-40:]
+        return b"".join(recent)
 
     def resize(self, cols: int, rows: int) -> bool:
         """Resize the agent's terminal so its TUI reflows to the pane. PTY: set
