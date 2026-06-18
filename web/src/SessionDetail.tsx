@@ -170,10 +170,11 @@ export function SessionDetail({
                 ? (["diff"] as Tab[])
                 : []),
               // Terminal + Output both need a PTY Rubberduck owns (the
-              // in-process launch path). Terminal-launched and watched sessions
-              // run elsewhere, so there's nothing to attach to. Terminal is the
-              // real xterm view; output is the legacy line view.
-              ...(session.worktreePath
+              // in-process launch path: in_terminal:false, or a worktree
+              // launch). AppleScript-tab and watched sessions run elsewhere, so
+              // there's nothing to attach to. Terminal is the real xterm view;
+              // output is the legacy line view.
+              ...(session.ptyOwned || session.worktreePath
                 ? (["terminal", "output"] as Tab[])
                 : []),
               "checkpoints",

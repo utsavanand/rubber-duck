@@ -45,6 +45,21 @@ describe("viewFromPersisted", () => {
     ).toBe(false);
   });
 
+  it("marks an in-process PTY launch as ptyOwned, but not an AppleScript-tab launch", () => {
+    // In-process PTY: launched, no heartbeat tracking -> attachable terminal.
+    expect(
+      viewFromPersisted(persisted({ launched: 1, heartbeat: 0 })).ptyOwned,
+    ).toBe(true);
+    // AppleScript tab: launched but heartbeat-tracked, no PTY we own.
+    expect(
+      viewFromPersisted(persisted({ launched: 1, heartbeat: 1 })).ptyOwned,
+    ).toBe(false);
+    // Watched (not launched): never PTY-owned.
+    expect(
+      viewFromPersisted(persisted({ launched: 0, heartbeat: 0 })).ptyOwned,
+    ).toBe(false);
+  });
+
   it("backdates idleSince to 0 for an idle row so it reads idle immediately", () => {
     const v = viewFromPersisted(persisted({ state: "idle" }));
 

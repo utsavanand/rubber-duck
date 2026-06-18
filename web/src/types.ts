@@ -51,6 +51,7 @@ export interface SessionView {
   notes?: string; // personal, local-only notes
   idleSince?: number; // ts of the last Stop; drives the idle settling grace
   launched?: boolean; // true if Rubberduck launched it (owns the tab); else watched
+  ptyOwned?: boolean; // Rubberduck owns a live PTY (in-process launch) — terminal-attachable
   group?: string; // folder label for organizing the left panel; undefined = ungrouped
 }
 
@@ -120,6 +121,10 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     // The `launched` column is authoritative; fall back to the legacy heartbeat
     // flag for rows created before the column existed.
     launched: s.launched === 1 || s.heartbeat === 1,
+    // Rubberduck owns a live PTY only for the in-process launch path. The
+    // AppleScript "open in a terminal tab" path is heartbeat-tracked instead
+    // (heartbeat=1) and has no PTY we can attach to, so exclude it.
+    ptyOwned: s.launched === 1 && s.heartbeat !== 1,
     parentKey: s.parent_session_key ?? undefined,
     notes: s.notes ?? undefined,
     group: s.grp ?? undefined,
