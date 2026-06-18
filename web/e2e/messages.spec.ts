@@ -75,3 +75,48 @@ test("messages view renders structured conversation as HTML", async ({
   // The prompt that started the turn shows as context.
   await expect(page.locator(".rd-msg-prompt")).toContainText("tell me about");
 });
+
+test("annotating a span stores it and sends it back to the agent", async ({
+  page,
+}) => {
+  const cwd = join(homedir(), "rd-msg-e2e");
+  mkdirSync(cwd, { recursive: true });
+  seedTranscript(cwd);
+  const launch = await apiPost("/sessions/launch", {
+    command: "cat", // echoes the follow-up back, proving it reached stdin
+    cwd,
+    name: "annot-agent",
+    runtime: "claude-code",
+    in_terminal: false,
+    test: true,
+  });
+  const key = launch.body.session_key as string;
+
+  await page.goto(base());
+  await page.locator(".rd-row-name", { hasText: "annot-agent" }).click();
+  await page.locator(".rd-view-toggle button", { hasText: "Messages" }).click();
+  await expect(page.locator(".rd-msg-text strong")).toBeVisible({
+    timeout: 8_000,
+  });
+
+  // Select the bold word, which pops the annotation box.
+  await page.locator(".rd-msg-text strong").dblclick();
+  await expect(page.locator(".rd-annotate-pop")).toBeVisible();
+  await page.locator(".rd-annotate-pop textarea").fill("explain this");
+  await page.locator(".rd-annotate-actions button").click();
+
+  // Stored server-side.
+  await expect
+    .poll(async () => {
+      const res = await fetch(`${base()}/sessions/${key}/annotations`);
+      const d = await res.json();
+      return d.annotations?.length ?? 0;
+    })
+    .toBeGreaterThan(0);
+
+  // Sent to the agent: cat echoes the follow-up into the terminal.
+  await page.locator(".rd-view-toggle button", { hasText: "Terminal" }).click();
+  await expect(
+    page.locator(".rd-terminal-slot:visible .xterm-rows"),
+  ).toContainText("explain this", { timeout: 5_000 });
+});

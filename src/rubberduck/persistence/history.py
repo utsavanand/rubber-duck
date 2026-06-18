@@ -88,6 +88,18 @@ CREATE TABLE IF NOT EXISTS subagents (
     ended_at     INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_key);
+-- Annotations a user makes on an agent's rendered response (HTML-annotation
+-- mode): a quoted span + the user's note. Stored so they persist and so the
+-- note can be sent back to the agent as a follow-up. See
+-- docs/structured-render-design.md.
+CREATE TABLE IF NOT EXISTS annotations (
+    id          TEXT PRIMARY KEY,
+    session_key TEXT NOT NULL,
+    quote       TEXT NOT NULL,
+    note        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_session ON annotations(session_key);
 -- Left-panel folders. Stored on their own so an empty folder (created before any
 -- session is moved into it) persists. Session membership lives in sessions.grp.
 CREATE TABLE IF NOT EXISTS folders (
@@ -281,6 +293,23 @@ class HistoryStore:
         for r in rows:
             out.setdefault(r["session_key"], []).append(dict(r))
         return out
+
+    def add_annotation(self, ann_id: str, session_key: str, quote: str, note: str, ts: int) -> None:
+        self._conn.execute(
+            "INSERT INTO annotations (id, session_key, quote, note, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (ann_id, session_key, quote, note, ts),
+        )
+        self._conn.commit()
+
+    def annotations(self, session_key: str) -> list[dict[str, Any]]:
+        """A session's annotations, oldest first."""
+        rows = self._conn.execute(
+            "SELECT id, quote, note, created_at FROM annotations "
+            "WHERE session_key = ? ORDER BY created_at",
+            (session_key,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def is_tombstoned(self, key: str) -> bool:
         """Whether a session was deleted and not yet revived by a SessionStart."""

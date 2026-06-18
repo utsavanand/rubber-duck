@@ -184,6 +184,10 @@ _ROUTES: list[Route] = [
           **_mid("/sessions/", "/events")),
     Route("GET", "", lambda s, r, w, h, b, seg: s._messages(w, seg),
           **_mid("/sessions/", "/messages")),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._list_annotations(w, seg),
+          **_mid("/sessions/", "/annotations")),
+    Route("POST", "", lambda s, r, w, h, b, seg: s._add_annotation(w, seg, b),
+          **_mid("/sessions/", "/annotations")),
     Route("GET", "", lambda s, r, w, h, b, seg: s._list_checkpoints(w, seg),
           **_mid("/sessions/", "/checkpoints")),
     # ── control ──
@@ -478,6 +482,36 @@ class Server:
             if path is not None:
                 messages = parse_messages(path)
         await _write_json(writer, 200, {"messages": messages})
+
+    async def _list_annotations(self, writer: asyncio.StreamWriter, session_key: str) -> None:
+        await _write_json(writer, 200, {"annotations": self.history.annotations(session_key)})
+
+    async def _add_annotation(
+        self, writer: asyncio.StreamWriter, session_key: str, body: bytes
+    ) -> None:
+        """Store a {quote, note} annotation AND send it back to the agent as a
+        follow-up prompt, so the user's feedback on a response re-enters the
+        conversation. Requires a live supervisor (the agent's stdin)."""
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        quote = (req.get("quote") or "").strip()
+        note = (req.get("note") or "").strip()
+        if not note:
+            await _write_json(writer, 400, {"error": "note is required"})
+            return
+        ann_id = security.new_session_key("ann")
+        self.history.add_annotation(ann_id, session_key, quote, note, int(time.time() * 1000))
+        # Compose the follow-up and write it to the agent's stdin (the same path
+        # the terminal uses). Quote the span so the agent knows what it's about.
+        supervisor = self.orchestrator.get(session_key)
+        sent = False
+        if supervisor is not None:
+            prompt = f'Re: "{quote}" — {note}' if quote else note
+            sent = supervisor.write_bytes(prompt.encode() + b"\r")
+        await _write_json(writer, 200, {"id": ann_id, "sent": sent})
 
     async def _heartbeat(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         """A launched tab pings here while alive. Records last_seen so the sweep

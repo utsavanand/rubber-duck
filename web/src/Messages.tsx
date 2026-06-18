@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { authHeaders } from "./api";
+import { useToast } from "./ui";
 
-// Read-only structured view of an agent's conversation (step 1 of the
-// HTML-annotation / pagination foundation, docs/structured-render-design.md).
-// Renders assistant text blocks as HTML and tool calls/results as chips, from
-// GET /sessions/:key/messages. No annotation yet — that's the next step.
+// Structured view of an agent's latest reply (HTML-annotation mode,
+// docs/structured-render-design.md). Renders the response as HTML; select any
+// span to attach a note, which is stored AND sent back to the agent as a
+// follow-up prompt.
 
 type Block =
   | { type: "text"; text: string }
@@ -22,9 +24,56 @@ function html(md: string): string {
   return DOMPurify.sanitize(marked.parse(md, { async: false }) as string);
 }
 
+interface Selection {
+  quote: string;
+  x: number;
+  y: number;
+}
+
 export function Messages({ sessionKey }: { sessionKey: string }) {
+  const toast = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [sel, setSel] = useState<Selection | null>(null);
+  const [note, setNote] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Capture a text selection inside the messages and anchor a note popover to it.
+  const onMouseUp = () => {
+    const s = window.getSelection();
+    const text = s?.toString().trim();
+    if (!text || !s || s.rangeCount === 0) {
+      if (!note) setSel(null);
+      return;
+    }
+    const rect = s.getRangeAt(0).getBoundingClientRect();
+    const wrap = wrapRef.current?.getBoundingClientRect();
+    setSel({
+      quote: text,
+      x: rect.left - (wrap?.left ?? 0),
+      y: rect.bottom - (wrap?.top ?? 0) + (wrapRef.current?.scrollTop ?? 0),
+    });
+  };
+
+  async function submitAnnotation() {
+    if (!sel || !note.trim()) return;
+    try {
+      const res = await fetch(`/sessions/${sessionKey}/annotations`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ quote: sel.quote, note: note.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "failed");
+      toast(d.sent ? "Sent to the agent" : "Saved (agent not live)");
+    } catch (e) {
+      toast(`Annotation failed: ${(e as Error).message}`, "err");
+    } finally {
+      setSel(null);
+      setNote("");
+      window.getSelection()?.removeAllRanges();
+    }
+  }
 
   useEffect(() => {
     let live = true;
@@ -63,7 +112,7 @@ export function Messages({ sessionKey }: { sessionKey: string }) {
   if (!latest) return <div className="rd-messages" />;
 
   return (
-    <div className="rd-messages">
+    <div className="rd-messages" ref={wrapRef} onMouseUp={onMouseUp}>
       {latest.prompt && <div className="rd-msg-prompt">{latest.prompt}</div>}
       {latest.tools.length > 0 && (
         <div className="rd-msg-tools">{summarizeTools(latest.tools)}</div>
@@ -75,6 +124,34 @@ export function Messages({ sessionKey }: { sessionKey: string }) {
           dangerouslySetInnerHTML={{ __html: html(t) }}
         />
       ))}
+      {sel && (
+        <div
+          className="rd-annotate-pop"
+          style={{ left: sel.x, top: sel.y + 6 }}
+          onMouseUp={(e) => e.stopPropagation()}
+        >
+          <div className="rd-annotate-quote">“{sel.quote.slice(0, 80)}”</div>
+          <textarea
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="note to send back to the agent…"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                submitAnnotation();
+              if (e.key === "Escape") {
+                setSel(null);
+                setNote("");
+              }
+            }}
+          />
+          <div className="rd-annotate-actions">
+            <button onClick={submitAnnotation} disabled={!note.trim()}>
+              Send ⌘↵
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
