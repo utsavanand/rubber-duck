@@ -420,33 +420,11 @@ function TreeRow({
               </span>
             )}
             <span className="rd-row-name">{s.label}</span>
-            <span
-              className={`rd-origin ${s.launched ? "launched" : "watched"}`}
-              title={
-                s.launched
-                  ? "Launched by Rubberduck — it owns this tab, so you can type to it and answer prompts here"
-                  : "Watched only — not started via Rubberduck. It observes this agent but can't drive it."
-              }
-            >
-              {s.launched ? "launched" : "watched"}
-            </span>
             <span className={`rd-state st-${effState}`}>
               <span className="dot" />
               {stateLabel}
             </span>
           </span>
-          {s.launched && live && (
-            <button
-              className="rd-row-jump"
-              title="Jump to this session's terminal tab"
-              onClick={(e) => {
-                e.stopPropagation();
-                act("Opened terminal", () => api.focusTerminal(s.key));
-              }}
-            >
-              ↗
-            </button>
-          )}
         </div>
         <div className="rd-row-meta" onClick={() => onOpen(s.key)}>
           {s.branch ? `${s.repoName ?? "repo"} · ${s.branch}` : (s.cwd ?? "—")}
