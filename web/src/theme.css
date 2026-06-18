@@ -438,7 +438,9 @@ code,
 }
 .rd-row:hover .rd-row-actions,
 .rd-row.expanded .rd-row-actions {
-  max-height: 48px;
+  /* Fit two wrapped rows of action buttons (Fork/Notes/Checkpoint/Stop/
+     Archive/Delete) without clipping into the next agent row. */
+  max-height: 80px;
   opacity: 1;
 }
 .rd-row-notes-wrap {

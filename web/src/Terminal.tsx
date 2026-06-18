@@ -30,6 +30,25 @@ export function Terminal({ sessionKey }: { sessionKey: string }) {
     term.loadAddon(fit);
     term.open(host);
     fit.fit();
+    // Focus xterm's hidden input directly. term.focus() alone proved unreliable
+    // on mount (after selecting an agent, focus stayed on <body>, so keystrokes
+    // went nowhere and you had to click the terminal first). Targeting the
+    // helper textarea after the row-click settles makes the terminal typeable
+    // the moment you select an agent.
+    const focusTerm = () => {
+      const ta = host.querySelector<HTMLTextAreaElement>(
+        ".xterm-helper-textarea",
+      );
+      (ta ?? null)?.focus();
+      term.focus();
+    };
+    // Focus at several beats so it wins regardless of when the row-click event
+    // and React remount settle: now, next frame, and after the click bubbles.
+    focusTerm();
+    const raf = requestAnimationFrame(focusTerm);
+    const focusTimer = setTimeout(focusTerm, 60);
+    const focusOnClick = () => focusTerm();
+    host.addEventListener("mousedown", focusOnClick);
 
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(
@@ -45,6 +64,7 @@ export function Terminal({ sessionKey }: { sessionKey: string }) {
     ws.onopen = () => {
       fit.fit();
       sendResize();
+      focusTerm();
     };
     ws.onmessage = (ev) => {
       // Raw PTY bytes. xterm's write() takes a Uint8Array and decodes UTF-8
@@ -67,7 +87,10 @@ export function Terminal({ sessionKey }: { sessionKey: string }) {
     observer.observe(host);
 
     return () => {
+      clearTimeout(focusTimer);
+      cancelAnimationFrame(raf);
       observer.disconnect();
+      host.removeEventListener("mousedown", focusOnClick);
       onData.dispose();
       ws.close();
       term.dispose();

@@ -1492,6 +1492,11 @@ class Server:
         finally:
             outgoing.cancel()
             incoming.cancel()
+            # Await the cancelled output future before aclose(): you can't close
+            # an async generator while a __anext__() on it is still running
+            # ("asynchronous generator is already running").
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await outgoing
             await feed.aclose()
             with contextlib.suppress(OSError):
                 writer.write(close_frame())
