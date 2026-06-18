@@ -152,20 +152,33 @@ class SessionSupervisor:
         target = self._tmux_target
         path = Path(self._pipe_path)
         try:
-            with path.open("r", errors="replace") as fh:
+            # Read the pipe in BINARY so the terminal gets the pane's raw bytes
+            # verbatim — text mode would translate the CR-LF tmux writes into bare
+            # LF (universal newlines), and xterm.js needs the \r to return to
+            # column 0 (otherwise output marches diagonally down the screen).
+            with path.open("rb") as fh:
                 fh.seek(0, os.SEEK_END)
                 while True:
-                    line = fh.readline()
-                    if line:
-                        self._record_bytes(line.encode(errors="replace"))
-                        self._record_output(line)
-                        tool = self.runtime.tool_in(line)
-                        if tool is not None:
-                            self._emit("PreToolUse", tool_name=tool)
-                        new_state = self.runtime.detect_state(line)
-                        if new_state != self._state:
-                            self._state = new_state
-                            self._emit(_STATE_EVENT[new_state])
+                    chunk = fh.read(4096)
+                    if chunk:
+                        # Terminal gets the raw bytes (CR-LF intact).
+                        self._record_bytes(chunk)
+                        # The line view (state/tool detection, summaries, and the
+                        # legacy /output SSE) stays line-oriented: split the
+                        # decoded chunk on newlines so each record is one line,
+                        # as the PTY pump produces. \r is stripped — substring
+                        # checks don't care, and the SSE line view shouldn't show
+                        # carriage returns.
+                        for raw_line in chunk.decode(errors="replace").splitlines():
+                            line = raw_line + "\n"
+                            self._record_output(line)
+                            tool = self.runtime.tool_in(line)
+                            if tool is not None:
+                                self._emit("PreToolUse", tool_name=tool)
+                            new_state = self.runtime.detect_state(line)
+                            if new_state != self._state:
+                                self._state = new_state
+                                self._emit(_STATE_EVENT[new_state])
                         continue
                     if not tmux.session_exists(target):
                         break

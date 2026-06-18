@@ -79,3 +79,45 @@ def test_terminal_streams_raw_pty_bytes(tmp_path: Path, monkeypatch: pytest.Monk
 
     payload = asyncio.run(scenario())
     assert b"RUBBERDUCK_MARKER" in payload
+
+
+def test_tmux_path_preserves_cr_lf(tmp_path: Path) -> None:
+    # Regression: the tmux tail once read its pipe in text mode, which translated
+    # the pane's CR-LF into bare LF — so xterm.js rendered output marching
+    # diagonally down the screen (no carriage return). The terminal stream must
+    # carry \r\n verbatim. Needs tmux; skip where it isn't installed.
+    from rubberduck.agents import tmux
+
+    if not tmux.has_tmux():
+        import pytest
+
+        pytest.skip("tmux not installed")
+
+    async def scenario() -> bytes:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        server = Server(history=store)
+        orch = server.orchestrator
+        cmd = "sh -c 'for i in 1 2 3; do echo line-$i; sleep 0.1; done; sleep 1'"
+        await orch.launch(
+            runtime=GenericRuntime(cmd),
+            cwd=str(tmp_path),
+            session_key="TMUXK",
+        )
+        sup = orch.get("TMUXK")
+        assert sup is not None and sup._tmux_target is not None  # tmux-backed
+        got = bytearray()
+        gen = sup.subscribe_bytes()
+
+        async def collect() -> None:
+            async for chunk in gen:
+                got.extend(chunk)
+
+        task = asyncio.create_task(collect())
+        await asyncio.sleep(0.8)
+        task.cancel()
+        await orch.stop("TMUXK")
+        return bytes(got)
+
+    out = asyncio.run(scenario())
+    assert b"\r\n" in out, f"expected CR-LF in tmux output, got {out!r}"
+    assert b"line-" in out
