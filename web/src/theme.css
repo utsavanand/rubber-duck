@@ -142,9 +142,11 @@ code,
   padding: 0;
   min-height: 0;
 }
-.rd-terminal-pane > div {
-  flex: 1;
-  min-height: 0;
+/* The view toggle is a fixed-height bar; everything else (slots, messages) fills
+   the rest. (Don't blanket `> div { flex:1 }` — it stretched the toggle into a
+   tall box.) */
+.rd-terminal-pane > .rd-view-toggle {
+  flex: 0 0 auto;
 }
 /* One slot per kept-mounted terminal; only the selected one is display:flex. */
 .rd-terminal-slot {
