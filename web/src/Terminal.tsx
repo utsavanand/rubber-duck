@@ -39,14 +39,21 @@ export function Terminal({ sessionKey }: { sessionKey: string }) {
       const ta = host.querySelector<HTMLTextAreaElement>(
         ".xterm-helper-textarea",
       );
-      (ta ?? null)?.focus();
-      term.focus();
+      if (ta && document.activeElement !== ta) ta.focus();
     };
-    // Focus at several beats so it wins regardless of when the row-click event
-    // and React remount settle: now, next frame, and after the click bubbles.
+    // Keep the terminal focused so you can type the moment you select an agent.
+    // Two things fight us: (1) selecting an agent is a row click that settles
+    // focus on <body> after this remounts; (2) xterm re-renders on every output
+    // write, which blurs the helper textarea. So: focus now, and refocus whenever
+    // focus leaves the terminal back to <body>/the pane (but NOT when it moves to
+    // a real input, e.g. a modal — then leave it alone).
     focusTerm();
-    const raf = requestAnimationFrame(focusTerm);
-    const focusTimer = setTimeout(focusTerm, 60);
+    const refocusOnBlur = (e: FocusEvent) => {
+      const to = e.relatedTarget as HTMLElement | null;
+      const leftToNowhere = !to || to === document.body || host.contains(to);
+      if (leftToNowhere) setTimeout(focusTerm, 0);
+    };
+    host.addEventListener("focusout", refocusOnBlur);
     const focusOnClick = () => focusTerm();
     host.addEventListener("mousedown", focusOnClick);
 
@@ -87,9 +94,8 @@ export function Terminal({ sessionKey }: { sessionKey: string }) {
     observer.observe(host);
 
     return () => {
-      clearTimeout(focusTimer);
-      cancelAnimationFrame(raf);
       observer.disconnect();
+      host.removeEventListener("focusout", refocusOnBlur);
       host.removeEventListener("mousedown", focusOnClick);
       onData.dispose();
       ws.close();
