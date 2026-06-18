@@ -58,6 +58,11 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## ✨ Features
 
+> Both modes below share one foundation — see
+> [docs/structured-render-design.md](docs/structured-render-design.md) (tail
+> claude's JSONL transcript for structured records; render + annotate + send
+> feedback back via the existing stdin path).
+
 - [ ] **HTML-annotation mode (top-bar toggle).** Idea 2026-06-18. A flag at the
   top of the page; when enabled, agent responses in the terminal are rendered as
   rich, readable HTML (not raw terminal text), and the user can **annotate any
