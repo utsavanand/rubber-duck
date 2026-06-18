@@ -53,6 +53,7 @@ export interface SessionView {
   launched?: boolean; // true if Rubberduck launched it (owns the tab); else watched
   ptyOwned?: boolean; // Rubberduck owns a live PTY (in-process launch) — terminal-attachable
   group?: string; // folder label for organizing the left panel; undefined = ungrouped
+  subagents?: SubAgent[]; // sub-agents spawned via the Task tool, for the tree
 }
 
 /** A persisted session row from GET /sessions (SQLite, snake_case). */
@@ -81,6 +82,17 @@ export interface PersistedSession {
   name?: string | null;
   notes?: string | null;
   grp?: string | null;
+  subagents?: SubAgent[];
+}
+
+/** A sub-agent the session spawned via the Task tool (GET /sessions embeds these). */
+export interface SubAgent {
+  agent_id: string;
+  agent_type?: string | null;
+  agent_prompt?: string | null;
+  state: "running" | "done";
+  started_at: number;
+  ended_at?: number | null;
 }
 
 // The repo label for a card. repo_path's basename is the repo name for a plain
@@ -128,6 +140,7 @@ export function viewFromPersisted(s: PersistedSession): SessionView {
     parentKey: s.parent_session_key ?? undefined,
     notes: s.notes ?? undefined,
     group: s.grp ?? undefined,
+    subagents: s.subagents ?? undefined,
   };
 }
 

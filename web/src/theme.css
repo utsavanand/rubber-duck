@@ -380,6 +380,50 @@ code,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Sub-agents the agent spawned (Task tool), nested under its row. */
+.rd-subagents {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rd-subagent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+.rd-subagent-twig {
+  color: var(--border);
+}
+.rd-subagent .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.rd-subagent .dot.on {
+  background: var(--accent, #2563eb);
+}
+.rd-subagent.st-done {
+  opacity: 0.6;
+}
+.rd-subagent-type {
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.rd-subagent-task {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Actions stay hidden until you hover the row, so the resting state is a clean
    list — not a wall of buttons. */
 .rd-row-actions {

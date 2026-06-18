@@ -60,6 +60,25 @@ describe("viewFromPersisted", () => {
     ).toBe(false);
   });
 
+  it("carries embedded sub-agents through to the view", () => {
+    const v = viewFromPersisted(
+      persisted({
+        subagents: [
+          {
+            agent_id: "a1",
+            agent_type: "Explore",
+            agent_prompt: "map auth",
+            state: "running",
+            started_at: 1,
+          },
+        ],
+      }),
+    );
+    expect(v.subagents).toHaveLength(1);
+    expect(v.subagents?.[0].agent_type).toBe("Explore");
+    expect(v.subagents?.[0].state).toBe("running");
+  });
+
   it("backdates idleSince to 0 for an idle row so it reads idle immediately", () => {
     const v = viewFromPersisted(persisted({ state: "idle" }));
 

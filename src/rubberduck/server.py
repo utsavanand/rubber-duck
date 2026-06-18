@@ -466,7 +466,11 @@ class Server:
         await _write_json(writer, 200, {"ok": ok})
 
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
-        await _write_json(writer, 200, {"sessions": self.history.sessions()})
+        sessions = self.history.sessions()
+        subagents = self.history.subagents_by_session()
+        for s in sessions:
+            s["subagents"] = subagents.get(str(s.get("session_key") or ""), [])
+        await _write_json(writer, 200, {"sessions": sessions})
 
     async def _launch(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         try:

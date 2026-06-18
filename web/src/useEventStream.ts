@@ -133,6 +133,20 @@ export function useEventStream(): {
         const event = data as RubberduckEvent;
         dispatch({ kind: "event", event });
         setRecentEvents((prev) => [event, ...prev].slice(0, 100));
+        // Sub-agents are embedded in the /sessions payload, not folded in by
+        // applyEvent (which only tracks SessionStart). A sub-agent lifecycle
+        // event is infrequent, so just re-seed sessions to refresh the tree.
+        if (
+          event.event_type === "SubagentStart" ||
+          event.event_type === "SubagentStop"
+        ) {
+          fetch("/sessions")
+            .then((r) => r.json())
+            .then((d: { sessions: PersistedSession[] }) =>
+              dispatch({ kind: "seed", sessions: d.sessions }),
+            )
+            .catch(() => undefined);
+        }
       }
     };
     return () => source.close();

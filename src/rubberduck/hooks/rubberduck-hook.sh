@@ -45,7 +45,10 @@ if command -v jq >/dev/null 2>&1; then
       tool_input: (.tool_input // .toolInput),
       prompt: .prompt,
       runtime: $rt,
-      agent_pid: $apid
+      agent_pid: $apid,
+      agent_id: .agent_id,
+      agent_type: .agent_type,
+      agent_prompt: .agent_prompt
     } | with_entries(select(.value != null))' 2>/dev/null)
 fi
 

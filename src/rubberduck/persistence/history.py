@@ -74,6 +74,20 @@ CREATE TABLE IF NOT EXISTS tombstones (
     session_key TEXT PRIMARY KEY,
     deleted_at  INTEGER NOT NULL
 );
+-- Sub-agents an agent spawns via the Task tool. Keyed to the parent session by
+-- session_key (Claude shares the parent's session_id across sub-agent events;
+-- agent_id distinguishes each sub-agent). One row per sub-agent; state flips to
+-- 'done' on SubagentStop. Powers the per-parent sub-agent tree in the UI.
+CREATE TABLE IF NOT EXISTS subagents (
+    agent_id     TEXT PRIMARY KEY,
+    session_key  TEXT NOT NULL,
+    agent_type   TEXT,
+    agent_prompt TEXT,
+    state        TEXT NOT NULL DEFAULT 'running',
+    started_at   INTEGER NOT NULL,
+    ended_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_key);
 -- Left-panel folders. Stored on their own so an empty folder (created before any
 -- session is moved into it) persists. Session membership lives in sessions.grp.
 CREATE TABLE IF NOT EXISTS folders (
@@ -206,12 +220,67 @@ class HistoryStore:
                 json.dumps(event),
             ),
         )
+        etype = event.get("event_type")
+        if etype in ("SubagentStart", "SubagentStop"):
+            # A sub-agent event shares the parent's session_id, so it would
+            # otherwise fold into the PARENT's row. Record it as a sub-agent
+            # instead and don't touch the session table or metrics.
+            if key is not None:
+                self._record_subagent(key, event)
+            self._conn.commit()
+            return
         if key is not None:
             self._upsert_session(key, event)
             kind = classify(event)
             if kind is not None:
                 self._bump_metric(key, kind)
         self._conn.commit()
+
+    def _record_subagent(self, session_key: str, event: Event) -> None:
+        agent_id = event.get("agent_id")
+        if not agent_id:
+            return  # without an id we can't distinguish or update it
+        ts = int(event["_ts"])
+        if event.get("event_type") == "SubagentStart":
+            self._conn.execute(
+                "INSERT INTO subagents "
+                "(agent_id, session_key, agent_type, agent_prompt, state, started_at) "
+                "VALUES (?, ?, ?, ?, 'running', ?) "
+                "ON CONFLICT(agent_id) DO UPDATE SET "
+                "  agent_type = excluded.agent_type, agent_prompt = excluded.agent_prompt",
+                (
+                    str(agent_id),
+                    session_key,
+                    event.get("agent_type"),
+                    event.get("agent_prompt"),
+                    ts,
+                ),
+            )
+        else:  # SubagentStop
+            self._conn.execute(
+                "UPDATE subagents SET state = 'done', ended_at = ? WHERE agent_id = ?",
+                (ts, str(agent_id)),
+            )
+
+    def subagents(self, session_key: str) -> list[dict[str, Any]]:
+        """Sub-agents this session spawned, newest first."""
+        rows = self._conn.execute(
+            "SELECT agent_id, agent_type, agent_prompt, state, started_at, ended_at "
+            "FROM subagents WHERE session_key = ? ORDER BY started_at DESC",
+            (session_key,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def subagents_by_session(self) -> dict[str, list[dict[str, Any]]]:
+        """All sub-agents grouped by parent session_key, for one /sessions fetch."""
+        rows = self._conn.execute(
+            "SELECT session_key, agent_id, agent_type, agent_prompt, state, started_at, ended_at "
+            "FROM subagents ORDER BY started_at DESC"
+        ).fetchall()
+        out: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            out.setdefault(r["session_key"], []).append(dict(r))
+        return out
 
     def is_tombstoned(self, key: str) -> bool:
         """Whether a session was deleted and not yet revived by a SessionStart."""

@@ -58,6 +58,31 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## ✨ Features
 
+- [ ] **Rich side-panel for CLI output you can annotate / ask about (terminal-forward).**
+  Idea 2026-06-18. The CLI hands back a wall of text; instead, for certain
+  harnesses (especially a Rubberduck "default harness"), render structured output
+  in the in-app window where you can interact with it — not just read it. Two
+  modes:
+  - **Architecting/design**: the agent produces an actual HTML/visual artifact
+    in the side panel that you can annotate in place (mark up a design, leave
+    notes on a diagram) rather than describing changes back in prose.
+  - **Research/long output**: when the CLI returns a large block, surface it in
+    the window so you can select a section and ask a follow-up about *that part*,
+    instead of re-prompting against the whole wall of text.
+  Leans on the structured/event layer (not raw terminal bytes) and likely a
+  Rubberduck-provided harness that emits annotatable artifacts. Design TBD.
+
+- [x] **Sub-agent tree (lineage of Task-tool sub-agents).** Done 2026-06-18.
+  Each agent's sub-agents (spawned via the Task tool) show nested under it in the
+  left pane, with agent_type, a live/done dot, and the task prompt. Wired through
+  the existing hook → /events → SQLite path: hook now subscribes to
+  SubagentStart/SubagentStop and forwards agent_id/agent_type/agent_prompt; the
+  server records them against the PARENT session (they share its session_id) in a
+  `subagents` table and embeds them in /sessions. NOTE: Claude shares one
+  session_id across sub-agent events and has no parent_agent_id
+  (anthropics/claude-code#7881), so this is a two-level tree (parent → its
+  sub-agents); deeper nesting isn't distinguishable upstream yet.
+
 - [ ] **Approve / Deny from the dashboard (blocking, cross-harness).** Today the
   permission hook is fire-and-forget and "Approve" injects keystrokes into the
   terminal (fragile; misses many prompts). Make the pre-exec hook block and let

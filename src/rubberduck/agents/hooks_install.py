@@ -36,6 +36,10 @@ _EVENTS = [
     "Notification",
     "Stop",
     "SessionEnd",
+    # Sub-agent lifecycle: lets Rubberduck show the tree of sub-agents an agent
+    # spawns (via the Task tool). SubagentStart/Stop carry agent_id + agent_type.
+    "SubagentStart",
+    "SubagentStop",
 ]
 
 _MARKER = "rubberduck"  # present in our command string so we can find/remove it
