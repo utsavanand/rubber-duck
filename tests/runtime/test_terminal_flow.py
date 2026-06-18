@@ -19,6 +19,13 @@ def _client_handshake(key: str) -> bytes:
     ).encode()
 
 
+def _mask_frame(opcode: int, payload: bytes) -> bytes:
+    """A masked client->server frame, as a browser sends."""
+    mask = b"\x01\x02\x03\x04"
+    masked = bytes(b ^ mask[i & 3] for i, b in enumerate(payload))
+    return bytes([0x80 | opcode, 0x80 | len(payload)]) + mask + masked
+
+
 def _read_binary_payload(data: bytes) -> bytes:
     """Concatenate the payloads of all binary frames (0x2) in a server buffer,
     skipping ping frames (0x9). Server frames are unmasked."""
@@ -121,3 +128,39 @@ def test_tmux_path_preserves_cr_lf(tmp_path: Path) -> None:
     out = asyncio.run(scenario())
     assert b"\r\n" in out, f"expected CR-LF in tmux output, got {out!r}"
     assert b"line-" in out
+
+
+def test_terminal_input_reaches_agent_and_keeps_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression: typing once closed the connection. The output loop cancelled
+    # the in-flight feed.__anext__() on every input frame, which corrupted the
+    # async generator so the next read raised StopAsyncIteration -> close. Input
+    # must reach the agent's stdin AND the connection must stay open. `cat`
+    # echoes stdin back, so a keystroke we send should come back out.
+    monkeypatch.setattr("rubberduck.core.orchestrator.tmux.has_tmux", lambda: False)
+
+    async def scenario() -> bytes:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        server = Server(history=store)
+        await server.orchestrator.launch(
+            runtime=GenericRuntime("cat"), cwd=str(tmp_path), session_key="SKEY"
+        )
+        srv = await asyncio.start_server(server.handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(_client_handshake("dGhlIHNhbXBsZSBub25jZQ=="))
+            await writer.drain()
+            await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 3)
+            # Type a keystroke; cat echoes it back through the PTY.
+            writer.write(_mask_frame(0x2, b"PING-ME\n"))
+            await writer.drain()
+            await asyncio.sleep(0.5)
+            echoed = await asyncio.wait_for(reader.read(4096), 3)
+            writer.close()
+            await server.orchestrator.stop("SKEY")
+            return _read_binary_payload(echoed)
+
+    out = asyncio.run(scenario())
+    assert b"PING-ME" in out, f"input did not echo back: {out!r}"

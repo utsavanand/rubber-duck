@@ -1459,33 +1459,38 @@ class Server:
         await writer.drain()
 
         feed = supervisor.subscribe_bytes()
+        # Keep ONE pending future for each side across loop iterations. Never
+        # cancel the output future mid-flight: cancelling an in-flight
+        # `feed.__anext__()` corrupts the async generator, so the next call
+        # raises StopAsyncIteration and the connection dies the instant the user
+        # types. We re-create a side's future only after it actually completes.
+        outgoing = asyncio.ensure_future(feed.__anext__())
         incoming = asyncio.ensure_future(read_frame(reader))
         try:
             while True:
-                nxt = asyncio.ensure_future(feed.__anext__())
                 done, _ = await asyncio.wait(
-                    {nxt, incoming},
+                    {outgoing, incoming},
                     timeout=KEEPALIVE_SECONDS,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+                if not done:  # keepalive tick: nothing on either side
+                    writer.write(ping_frame())
+                    await writer.drain()
+                    continue
                 if incoming in done:
-                    nxt.cancel()
                     frame = incoming.result()
                     if frame is None or frame[0] == 0x8:  # EOF or client close
                         break
                     self._handle_terminal_frame(supervisor, frame)
                     incoming = asyncio.ensure_future(read_frame(reader))
-                    continue
-                if nxt not in done:
-                    nxt.cancel()
-                    writer.write(ping_frame())  # keepalive
+                if outgoing in done:
+                    writer.write(encode_binary_frame(outgoing.result()))
                     await writer.drain()
-                    continue
-                writer.write(encode_binary_frame(nxt.result()))
-                await writer.drain()
+                    outgoing = asyncio.ensure_future(feed.__anext__())
         except (StopAsyncIteration, OSError):
             pass
         finally:
+            outgoing.cancel()
             incoming.cancel()
             await feed.aclose()
             with contextlib.suppress(OSError):
