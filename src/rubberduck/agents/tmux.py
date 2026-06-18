@@ -37,7 +37,13 @@ def spawn(session_id: str, command: str, cwd: str) -> str:
     """Create a detached tmux session running `command` in `cwd`. Returns the
     tmux target name."""
     target = target_for(session_id)
-    _tmux("new-session", "-d", "-s", target, "-c", cwd, command)
+    # `-x/-y` set the initial size; a detached session otherwise defaults to
+    # 80x24, which mismatches the browser pane and garbles a TUI's wrapping.
+    _tmux("new-session", "-d", "-s", target, "-x", "120", "-y", "40", "-c", cwd, command)
+    # window-size manual: without it tmux sizes the window to the LARGEST/LATEST
+    # attached client (none, for a detached session), so resize-window from the
+    # browser is ignored. Manual makes our resize authoritative.
+    _tmux("set-option", "-t", target, "window-size", "manual")
     return target
 
 
