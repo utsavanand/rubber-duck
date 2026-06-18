@@ -101,13 +101,19 @@ No paginating a live-streaming response.
 | Pagination UI (arrow-step + per-section feedback) | ❌ new |
 | Two top-bar toggles + view switching | ❌ new |
 
-## Build order
+## Build order — ALL SHIPPED (2026-06-18)
 
-1. Foundation: structured reader + `/sessions/:key/messages` (read-only HTML
-   render of assistant text blocks; no annotation yet). Ship + look at it.
-2. Annotations store + send-back; wire selection→note→follow-up. (Mode 1 done.)
-3. Pagination view over the same records + per-section feedback. (Mode 2 done.)
-4. The two top-bar toggles + remember the choice.
+1. ✅ Foundation: structured reader (`parse_messages`) + `/sessions/:key/messages`
+   + read-only HTML render (Messages.tsx).
+2. ✅ Mode 1 — annotations: `annotations` table + `GET/POST
+   /sessions/:key/annotations`; select-a-span → note → stored AND sent back to
+   the agent's stdin (Messages.tsx popover).
+3. ✅ Mode 2 — pagination: Paginate.tsx groups turns, ← → steps them, per-section
+   feedback reuses the annotations send-back.
+4. ✅ View toggle: Terminal | Messages | Paginate at the top of the center pane.
+
+Tests: tests/runtime/test_messages.py, test_annotations.py; web/e2e/messages.spec
+covers all three views + both send-back flows against seeded transcripts.
 
 Each step is independently shippable and testable (Playwright e2e against a real
 claude session, like the terminal).
