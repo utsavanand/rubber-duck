@@ -6,6 +6,7 @@ import { Approvals } from "./Approvals";
 import { ContextPanel } from "./ContextPanel";
 import { ForkModal } from "./ForkModal";
 import { LaunchModal } from "./LaunchModal";
+import { Messages } from "./Messages";
 import { NewFolderModal } from "./NewFolderModal";
 import { Terminal } from "./Terminal";
 import { effectiveState } from "./sessions";
@@ -34,6 +35,7 @@ function Dashboard() {
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [forkKey, setForkKey] = useState<string | null>(null);
+  const [view, setView] = useState<"terminal" | "messages">("terminal");
 
   // Folders persist on the server (incl. empty ones); the left list groups by
   // them. Refetch when sessions change, since moving a session can create or
@@ -197,15 +199,40 @@ function Dashboard() {
         </section>
 
         <section className="rd-terminal-pane">
-          {/* Keep a terminal MOUNTED per PTY-owned agent and just show the
-              selected one. Re-mounting on every switch would reconnect the WS
-              and replay the whole buffer from scratch each time. */}
+          <div className="rd-view-toggle">
+            <button
+              className={view === "terminal" ? "active" : ""}
+              onClick={() => setView("terminal")}
+            >
+              Terminal
+            </button>
+            <button
+              className={view === "messages" ? "active" : ""}
+              onClick={() => setView("messages")}
+            >
+              Messages
+            </button>
+          </div>
+          {/* Messages view: structured HTML render of the conversation. */}
+          {view === "messages" && selected && (
+            <div className="rd-messages-wrap">
+              <Messages sessionKey={selected.key} />
+            </div>
+          )}
+          {/* Terminal view: keep a terminal MOUNTED per PTY-owned agent and just
+              show the selected one. Re-mounting on every switch would reconnect
+              the WS and replay the whole buffer from scratch each time. */}
           {terminalAgents.map((s) => (
             <div
               key={s.key}
               data-key={s.key}
               className="rd-terminal-slot"
-              style={{ display: s.key === selectedKey ? "flex" : "none" }}
+              style={{
+                display:
+                  view === "terminal" && s.key === selectedKey
+                    ? "flex"
+                    : "none",
+              }}
             >
               <Terminal sessionKey={s.key} />
             </div>

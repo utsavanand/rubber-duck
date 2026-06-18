@@ -152,6 +152,86 @@ code,
   min-height: 0;
   flex-direction: column;
 }
+/* Terminal | Messages view toggle at the top of the center pane. */
+.rd-view-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #0c0f16;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.rd-view-toggle button {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.rd-view-toggle button.active {
+  background: #1f2430;
+  color: #e5e7eb;
+}
+.rd-messages-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--card);
+}
+.rd-messages {
+  padding: 16px 20px;
+  max-width: 820px;
+}
+.rd-msg {
+  margin-bottom: 18px;
+}
+.rd-msg-user .rd-msg-text {
+  color: var(--muted);
+  font-style: italic;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+.rd-msg-text {
+  line-height: 1.6;
+  font-size: 14px;
+}
+.rd-msg-text pre {
+  background: #0c0f16;
+  color: #d1d5db;
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.rd-msg-text code {
+  font-size: 12.5px;
+}
+.rd-msg-text table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.rd-msg-text th,
+.rd-msg-text td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+}
+.rd-msg-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--hover);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin: 2px 0;
+}
+.rd-msg-tool-name {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 600;
+}
 /* xterm fills the pane and scrolls its OWN buffer (xterm-viewport), so a long
    session scrolls inside the terminal instead of growing the page. */
 .rd-terminal-pane .xterm,

@@ -82,10 +82,9 @@ Top-bar toggle. A long response is split into **sections** (one per
 - Same store + send-back path as Mode 1 — only the display differs (one section
   at a time vs. the full scroll).
 
-Open question (flagged by the user — resolve before building Mode 2): how this
-interacts with a STILL-STREAMING response. Proposal: paginate only completed
-turns; the in-flight turn shows in the terminal until it lands as a transcript
-record, then becomes a page.
+**Decided 2026-06-18:** paginate only COMPLETED turns. The in-flight response
+stays in the terminal until it lands as a transcript record, then becomes a page.
+No paginating a live-streaming response.
 
 ## What's reused vs new
 
@@ -119,5 +118,5 @@ claude session, like the terminal).
   Don't gate the whole feature on a generic abstraction (no harness #2 yet).
 - These modes **don't replace** the terminal; they're alternate views. The
   terminal remains the default and the universal fallback.
-- Mode 2's streaming interaction is the one genuinely unresolved design question;
-  Mode 1 and the foundation have no such unknown.
+- Mode 2 paginates only completed turns (decided) — no unresolved design
+  questions remain; the foundation and both modes are fully specified.
