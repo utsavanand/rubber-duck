@@ -73,6 +73,12 @@ class SessionSupervisor:
         self._pipe_path: str = ""  # tmux pane output file
         self._output = deque[str](maxlen=2000)  # recent output lines, for the UI
         self._output_subs: set[asyncio.Queue[str]] = set()
+        # Raw PTY bytes for the terminal (xterm.js): the undecoded stream with
+        # ANSI/cursor codes intact. A separate consumer from the line view above
+        # — _record_output feeds detect_state off decoded text; _record_bytes
+        # feeds the terminal off raw bytes. Same PTY, two views, no interference.
+        self._byte_tail = deque[bytes](maxlen=2000)  # recent raw chunks, for replay
+        self._byte_subs: set[asyncio.Queue[bytes]] = set()
 
     def _emit(self, event_type: str, **fields: object) -> None:
         self.bus.publish(
@@ -151,6 +157,7 @@ class SessionSupervisor:
                 while True:
                     line = fh.readline()
                     if line:
+                        self._record_bytes(line.encode(errors="replace"))
                         self._record_output(line)
                         tool = self.runtime.tool_in(line)
                         if tool is not None:
@@ -176,6 +183,7 @@ class SessionSupervisor:
         )
         try:
             async for raw in reader:
+                self._record_bytes(raw)
                 line = raw.decode(errors="replace")
                 self._record_output(line)
                 tool = self.runtime.tool_in(line)
@@ -212,6 +220,52 @@ class SessionSupervisor:
                 yield await queue.get()
         finally:
             self._output_subs.discard(queue)
+
+    def _record_bytes(self, chunk: bytes) -> None:
+        self._byte_tail.append(chunk)
+        for queue in self._byte_subs:
+            queue.put_nowait(chunk)
+
+    async def subscribe_bytes(self) -> AsyncGenerator[bytes, None]:
+        """Yield raw PTY bytes as the agent emits them, for an xterm.js terminal.
+        Replays the recent byte tail first so a late-attaching terminal repaints
+        with context (the scrollback it missed)."""
+        queue: asyncio.Queue[bytes] = asyncio.Queue()
+        for chunk in self._byte_tail:
+            queue.put_nowait(chunk)
+        self._byte_subs.add(queue)
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            self._byte_subs.discard(queue)
+
+    def resize(self, cols: int, rows: int) -> bool:
+        """Resize the agent's terminal so its TUI reflows to the pane. PTY: set
+        the window size on the master fd (TIOCSWINSZ). tmux: resize the window."""
+        if self._tmux_target is not None and self.running:
+            return tmux.resize_window(self._tmux_target, cols, rows)
+        if self._primary_fd is not None and self.running:
+            import fcntl
+            import struct
+            import termios
+
+            winsize = struct.pack("HHHH", rows, cols, 0, 0)
+            fcntl.ioctl(self._primary_fd, termios.TIOCSWINSZ, winsize)
+            return True
+        return False
+
+    def write_bytes(self, data: bytes) -> bool:
+        """Write raw bytes to the agent's stdin — the terminal path. Unlike
+        write_input (line/key semantics for the approval flow), this passes
+        keystrokes through verbatim so the agent's TUI sees exactly what was
+        typed (arrow keys, ctrl chars, partial input)."""
+        if self._tmux_target is not None and self.running:
+            return tmux.send_raw(self._tmux_target, data)
+        if self._primary_fd is not None and self.running:
+            os.write(self._primary_fd, data)
+            return True
+        return False
 
     def write_input(self, text: str) -> bool:
         """Write to the agent's stdin (terminal-attach / approvals). Routes to

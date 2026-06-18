@@ -72,6 +72,23 @@ def send_special(target: str, key: str) -> bool:
     return ok
 
 
+def send_raw(target: str, data: bytes) -> bool:
+    """Send raw keystroke bytes to the pane verbatim (terminal path). `-H` sends
+    hex byte values, so control chars / escape sequences (arrows, ctrl-C) pass
+    through exactly as typed instead of being interpreted as key names."""
+    hex_bytes = [f"{b:02x}" for b in data]
+    if not hex_bytes:
+        return True
+    ok, _ = _tmux("send-keys", "-t", target, "-H", *hex_bytes)
+    return ok
+
+
+def resize_window(target: str, cols: int, rows: int) -> bool:
+    """Resize the tmux window so the agent's TUI reflows to the browser pane."""
+    ok, _ = _tmux("resize-window", "-t", target, "-x", str(cols), "-y", str(rows))
+    return ok
+
+
 def capture_pane(target: str) -> str:
     ok, out = _tmux("capture-pane", "-t", target, "-p")
     return out if ok else ""

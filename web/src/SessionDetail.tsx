@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, CheckpointRecord, RawEvent } from "./api";
 import { LiveOutput } from "./LiveOutput";
+import { Terminal } from "./Terminal";
 import { SessionView } from "./types";
 import { useToast } from "./ui";
 
-type Tab = "timeline" | "output" | "diff" | "checkpoints" | "notes";
+type Tab =
+  | "timeline"
+  | "terminal"
+  | "output"
+  | "diff"
+  | "checkpoints"
+  | "notes";
 
 export function SessionDetail({
   session,
@@ -162,10 +169,13 @@ export function SessionDetail({
               ...(session.worktreePath || session.branch
                 ? (["diff"] as Tab[])
                 : []),
-              // Output streams a PTY Rubberduck owns. Only the in-process
-              // worktree-launch path has one; terminal-launched and watched
-              // sessions run elsewhere, so there's nothing to stream.
-              ...(session.worktreePath ? (["output"] as Tab[]) : []),
+              // Terminal + Output both need a PTY Rubberduck owns (the
+              // in-process launch path). Terminal-launched and watched sessions
+              // run elsewhere, so there's nothing to attach to. Terminal is the
+              // real xterm view; output is the legacy line view.
+              ...(session.worktreePath
+                ? (["terminal", "output"] as Tab[])
+                : []),
               "checkpoints",
               "notes",
             ] as Tab[]
@@ -191,6 +201,7 @@ export function SessionDetail({
 
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
           {tab === "timeline" && <Timeline events={events} />}
+          {tab === "terminal" && <Terminal sessionKey={session.key} />}
           {tab === "output" && <LiveOutput sessionKey={session.key} />}
           {tab === "diff" && <DiffView diff={diff} />}
           {tab === "checkpoints" && (

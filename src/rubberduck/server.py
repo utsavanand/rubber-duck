@@ -18,6 +18,7 @@
     POST /sessions/:key/spotlight     apply worktree changes onto the main checkout
     GET  /sessions/:key/diff          git diff of the session's worktree
     GET  /sessions/:key/output        SSE: live agent output (PTY) lines
+    GET  /sessions/:key/terminal      WebSocket: raw PTY bytes <-> keystrokes/resize (xterm.js)
     POST /sessions/:key/input         write to the agent's stdin (terminal-attach)
     POST /snapshots           bundle recently-active sessions to disk
     GET  /snapshots           list snapshots
@@ -77,8 +78,11 @@ from rubberduck.transport.httpio import write_response as _write_response
 from rubberduck.transport.httpio import write_sse as _write_sse
 from rubberduck.transport.websocket import (
     close_frame,
+    encode_binary_frame,
     encode_text_frame,
     handshake_response,
+    ping_frame,
+    read_frame,
     read_frame_opcode,
 )
 
@@ -223,6 +227,8 @@ _ROUTES: list[Route] = [
     # ── streams ──
     Route("GET", "", lambda s, r, w, h, b, seg: s._output(r, w, seg),
           **_mid("/sessions/", "/output")),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._terminal(r, w, h, seg),
+          **_mid("/sessions/", "/terminal")),
     Route("GET", "/stream", lambda s, r, w, h, b, seg: s._stream(r, w)),
     Route("GET", "/ws", lambda s, r, w, h, b, seg: s._websocket(r, w, h)),
     # ── single session (prefix-only; AFTER /sessions/:key/* sub-routes) ──
@@ -1387,6 +1393,81 @@ class Server:
         finally:
             disconnect.cancel()
             await feed.aclose()
+
+    async def _terminal(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        headers: dict[str, str],
+        session_key: str,
+    ) -> None:
+        """WebSocket terminal attach for a launched session. Streams raw PTY
+        bytes to the browser as binary frames (xterm.js renders them) and reads
+        client frames back: binary = keystrokes to the agent's stdin, text =
+        a JSON control message {"resize": {"cols", "rows"}}.
+
+        Only works for a session Rubberduck launched (it owns the PTY/tmux).
+        Additive — leaves /ws (events) and /output (SSE line view) untouched."""
+        supervisor = self.orchestrator.get(session_key)
+        if supervisor is None:
+            await _write_json(writer, 404, {"error": "no live session to attach"})
+            return
+        key = headers.get("sec-websocket-key")
+        if not key:
+            await _write_response(writer, 400, "expected a WebSocket upgrade")
+            return
+        writer.write(handshake_response(key))
+        await writer.drain()
+
+        feed = supervisor.subscribe_bytes()
+        incoming = asyncio.ensure_future(read_frame(reader))
+        try:
+            while True:
+                nxt = asyncio.ensure_future(feed.__anext__())
+                done, _ = await asyncio.wait(
+                    {nxt, incoming},
+                    timeout=KEEPALIVE_SECONDS,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if incoming in done:
+                    nxt.cancel()
+                    frame = incoming.result()
+                    if frame is None or frame[0] == 0x8:  # EOF or client close
+                        break
+                    self._handle_terminal_frame(supervisor, frame)
+                    incoming = asyncio.ensure_future(read_frame(reader))
+                    continue
+                if nxt not in done:
+                    nxt.cancel()
+                    writer.write(ping_frame())  # keepalive
+                    await writer.drain()
+                    continue
+                writer.write(encode_binary_frame(nxt.result()))
+                await writer.drain()
+        except (StopAsyncIteration, OSError):
+            pass
+        finally:
+            incoming.cancel()
+            await feed.aclose()
+            with contextlib.suppress(OSError):
+                writer.write(close_frame())
+                await writer.drain()
+
+    @staticmethod
+    def _handle_terminal_frame(supervisor: Any, frame: tuple[int, bytes]) -> None:
+        opcode, payload = frame
+        if opcode == 0x2:  # binary: raw keystrokes
+            supervisor.write_bytes(payload)
+        elif opcode == 0x1:  # text: a JSON control message
+            try:
+                msg = json.loads(payload)
+            except json.JSONDecodeError:
+                return
+            resize = msg.get("resize")
+            if isinstance(resize, dict):
+                cols, rows = resize.get("cols"), resize.get("rows")
+                if isinstance(cols, int) and isinstance(rows, int):
+                    supervisor.resize(cols, rows)
 
     async def _compare(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         try:
