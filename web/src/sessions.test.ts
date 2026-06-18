@@ -42,6 +42,17 @@ describe("applyEvent", () => {
     expect(after.get("s1")!.launched).toBe(true);
   });
 
+  it("marks a launched session ptyOwned so its terminal shows before the first seed", () => {
+    // Regression: a freshly launched session arrives via live events before the
+    // next /sessions seed. applyEvent must derive ptyOwned (it once didn't), or
+    // the terminal pane is hidden with "isn't running in a terminal we own".
+    const after = applyEvent(
+      empty(),
+      ev({ event_type: "SessionStart", launched: true }),
+    );
+    expect(after.get("s1")!.ptyOwned).toBe(true);
+  });
+
   it("does not rename the session from source_app on later events", () => {
     const first = applyEvent(
       empty(),

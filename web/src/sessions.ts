@@ -107,6 +107,14 @@ export function applyEvent(
     // Sticky: once a session is known launched, stay launched — a later watched
     // hook event for the same key can't downgrade it.
     launched: prev?.launched || e.launched === true,
+    // In-process launches (the default now) emit launched:true and Rubberduck
+    // owns their PTY. Live events don't carry the heartbeat flag that would mark
+    // a legacy AppleScript-tab launch, so derive optimistically from launched
+    // and let the authoritative /sessions seed (viewFromPersisted, which checks
+    // heartbeat) correct the rare external-tab case. Without this, a freshly
+    // launched session — which arrives via live events before the next seed —
+    // shows no terminal even though Rubberduck owns its PTY.
+    ptyOwned: prev?.ptyOwned || e.launched === true,
     startedAt: prev?.startedAt ?? e._ts,
     updatedAt: e._ts,
     eventCount: (prev?.eventCount ?? 0) + 1,
