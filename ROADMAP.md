@@ -136,7 +136,15 @@ Organized by type of work. `★` marks the current highest-leverage item.
   A Swift package is scaffolded under `mac/` (SwiftUI wrapping the local
   server + dashboard). Decide: ship the dashboard in a WKWebView shell first,
   or build native panels against the existing HTTP/SSE API.
-- [ ] **In-dashboard agent supervision (own the PTY).** Today a "launched"
+- [ ] **★ In-dashboard agent supervision (own the PTY) — terminal-forward.**
+  Designed 2026-06-17, see [docs/terminal-forward-design.md](docs/terminal-forward-design.md).
+  Render launched sessions as a real terminal (xterm.js) over a raw PTY byte
+  stream, with the hook/event layer (approvals, state, sub-agent tree) beside it.
+  Three load-bearing changes: (1) stream raw bytes not lines, (2) WebSocket
+  binary + bidirectional + keepalive (first justified dependency), (3) xterm.js
+  front-end. Build in a browser first, then the existing `WKWebView`.
+
+  Today a "launched"
   session is opened in a real terminal tab (`open_in_terminal`) and the agent
   runs there — Rubberduck observes via hooks but doesn't own the process. The
   in-process PTY path (`orchestrator.launch` + `_supervisors`) exists but isn't

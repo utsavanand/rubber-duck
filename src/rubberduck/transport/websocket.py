@@ -1,9 +1,17 @@
 """Minimal RFC 6455 WebSocket over the hand-rolled asyncio server. Zero
 dependencies — just the handshake and text-frame encoding we need to push events
-to a browser bidirectionally.
+to a browser.
 
 We only send text frames (JSON events) and read incoming frames enough to honor
 ping/close. This is a thin sibling to the SSE stream, not a general WS library.
+
+LIMITATION (relevant to terminal-forward, docs/terminal-forward-design.md): this
+is text-only and server->client only — `read_frame_opcode` reads and DISCARDS
+every incoming client payload. A real terminal needs binary frames (opcode 0x2),
+client->server payloads (keystrokes + resize), and ping/pong keepalive. That is
+the first justified runtime dependency: a terminal is a bidirectional binary
+protocol with masking/fragmentation/backpressure that a hand-roll gets subtly
+wrong. Replace this module with a vetted WS library when the terminal lands.
 """
 
 import asyncio

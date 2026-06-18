@@ -1,5 +1,12 @@
 # Architecture: a harness-agnostic core with per-harness adapters
 
+> **Direction note (2026-06-17):** Rubberduck is moving **terminal-forward** —
+> launched sessions render as a real terminal (xterm.js) over a raw PTY byte
+> stream, with the hook/event layer as the structured intelligence beside it.
+> Watched (hooks-only) sessions are **legacy and on the deprecation path**. See
+> [terminal-forward-design.md](./terminal-forward-design.md). The harness-adapter
+> model below still holds; the changes are noted inline.
+
 ## The principle
 Rubberduck's core knows nothing about any specific agent. It speaks one
 vocabulary (sessions + events + transcripts), and every agent — Claude Code,
@@ -53,6 +60,14 @@ When Rubberduck launches an agent itself, the adapter declares (today:
 - `detect_state` — read state from its output.
 - `read_transcript` — parse its native transcript (JSONL, SQLite, …) into
   `{role, text}`.
+
+**Terminal-forward note:** a launched session exposes **two views of the same
+PTY**: (1) the **raw byte stream** — sent to the browser as binary, rendered by
+xterm.js (the terminal the user types into); and (2) a **derived line view** — a
+decoded rolling buffer the core reads for `detect_state` / `tool_in` / summaries.
+These are independent consumers of one PTY, so streaming raw bytes to the
+terminal does not disturb state detection. See
+[terminal-forward-design.md](./terminal-forward-design.md).
 
 ## The gap (what this doc is driving toward)
 These two responsibilities live in **two unconnected places** — `runtimes/` and
