@@ -156,8 +156,13 @@ class SessionSupervisor:
             # verbatim — text mode would translate the CR-LF tmux writes into bare
             # LF (universal newlines), and xterm.js needs the \r to return to
             # column 0 (otherwise output marches diagonally down the screen).
+            # Read from the START of the pipe, not seek-to-end. The pipe is
+            # truncated fresh when the session spawns, so reading from byte 0
+            # captures the agent's STARTUP output (a TUI's whole initial screen).
+            # Seeking to end dropped everything printed before this tail loop got
+            # going — for a fast-starting agent like claude that's the entire
+            # interface, leaving the browser a blank, unusable terminal.
             with path.open("rb") as fh:
-                fh.seek(0, os.SEEK_END)
                 while True:
                     chunk = fh.read(4096)
                     if chunk:

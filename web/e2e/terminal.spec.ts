@@ -7,10 +7,11 @@ import { apiPost, base } from "./helpers";
 // curl-level tests miss.
 
 async function launchCat(name: string): Promise<string> {
-  // `cat` echoes stdin back through the PTY — so a keystroke we type should
-  // appear in the terminal. in_terminal:false => Rubberduck owns the PTY.
+  // Print a READY banner, then `cat` (which echoes stdin back through the PTY).
+  // The banner lets the test wait until the terminal is connected before typing,
+  // so it isn't racing a not-yet-attached WS.
   const r = await apiPost("/sessions/launch", {
-    command: "cat",
+    command: "sh -c 'echo READY_CAT; exec cat'",
     cwd: "/tmp",
     name,
     in_terminal: false,
@@ -18,6 +19,16 @@ async function launchCat(name: string): Promise<string> {
   });
   expect(r.status).toBe(200);
   return r.body.session_key as string;
+}
+
+async function waitTerminalReady(page: import("@playwright/test").Page) {
+  const term = page.locator(".rd-terminal-pane .xterm");
+  await expect(term).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
+    "READY_CAT",
+    { timeout: 8_000 },
+  );
+  return term;
 }
 
 test("terminal: typing reaches the agent and echoes back", async ({ page }) => {
@@ -29,9 +40,8 @@ test("terminal: typing reaches the agent and echoes back", async ({ page }) => {
   await expect(row).toBeVisible({ timeout: 10_000 });
   await row.click();
 
-  // The xterm terminal mounts in the center pane.
-  const term = page.locator(".rd-terminal-pane .xterm");
-  await expect(term).toBeVisible({ timeout: 10_000 });
+  // Wait until the terminal is connected (READY banner rendered) before typing.
+  await waitTerminalReady(page);
 
   // Type WITHOUT an explicit terminal click first — selecting the agent should
   // leave the terminal focused so you can type immediately (the real flow).
@@ -53,9 +63,7 @@ test("terminal: switching agents shows the other agent's terminal", async ({
 
   // Select the first, type a unique marker so its buffer is identifiable.
   await page.locator(".rd-row-name", { hasText: "cat-one" }).click();
-  const term = page.locator(".rd-terminal-pane .xterm");
-  await expect(term).toBeVisible({ timeout: 10_000 });
-  await term.click();
+  await waitTerminalReady(page);
   await page.keyboard.type("MARKER_ONE");
   await page.keyboard.press("Enter");
   await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
@@ -66,7 +74,7 @@ test("terminal: switching agents shows the other agent's terminal", async ({
   // Switch to the second agent. Its terminal must NOT show the first's marker
   // (i.e. the pane actually re-mounted for the new session).
   await page.locator(".rd-row-name", { hasText: "cat-two" }).click();
-  await term.click();
+  await waitTerminalReady(page);
   await page.keyboard.type("MARKER_TWO");
   await page.keyboard.press("Enter");
   await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
