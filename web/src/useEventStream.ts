@@ -102,7 +102,7 @@ export function useEventStream(): {
     tombstoned: new Set<string>(),
   });
   const [connected, setConnected] = useState(false);
-  // Rolling buffer of the newest events, newest first, for the Pulse ticker.
+  // Rolling buffer of the newest events, newest first (live activity feed).
   const [recentEvents, setRecentEvents] = useState<RubberduckEvent[]>([]);
 
   useEffect(() => {

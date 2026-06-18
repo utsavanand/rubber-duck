@@ -172,6 +172,8 @@ _ROUTES: list[Route] = [
     Route("GET", "/tree", lambda s, r, w, h, b, seg: s._tree(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._browse(w, seg), prefix="/browse"),
     Route("GET", "", lambda s, r, w, h, b, seg: s._branches(w, seg), prefix="/branches"),
+    Route("GET", "", lambda s, r, w, h, b, seg: s._read_agents_md(w, seg), prefix="/agents-md"),
+    Route("POST", "/agents-md", lambda s, r, w, h, b, seg: s._write_agents_md(w, b)),
     Route("GET", "/approvals", lambda s, r, w, h, b, seg: s._list_approvals(w)),
     Route("GET", "", lambda s, r, w, h, b, seg: s._approval_decision(w, seg),
           **_mid("/approvals/", "/decision")),
@@ -1128,6 +1130,39 @@ class Server:
         query = urllib.parse.urlparse("/browse" + seg).query
         path = urllib.parse.parse_qs(query).get("path", [None])[0]
         await _write_json(writer, 200, browse.listing(path))
+
+    async def _read_agents_md(self, writer: asyncio.StreamWriter, seg: str) -> None:
+        """Read the AGENTS.md for a folder (?dir=…). Returns the file's text, or
+        empty if it doesn't exist yet (so the editor can create it). One file per
+        folder — the shared, cross-agent instructions for work in that dir."""
+        query = urllib.parse.urlparse("/agents-md" + seg).query
+        directory = urllib.parse.parse_qs(query).get("dir", [None])[0]
+        if not directory:
+            await _write_json(writer, 400, {"error": "dir required"})
+            return
+        path = Path(directory) / "AGENTS.md"
+        text = path.read_text() if path.is_file() else ""
+        await _write_json(writer, 200, {"dir": directory, "text": text, "exists": path.is_file()})
+
+    async def _write_agents_md(self, writer: asyncio.StreamWriter, body: bytes) -> None:
+        """Write the AGENTS.md for a folder: {dir, text}. Creates the file if it
+        doesn't exist. The dir must already exist (it's an agent's working dir)."""
+        try:
+            req: Any = json.loads(body or b"{}")
+        except json.JSONDecodeError:
+            await _write_json(writer, 400, {"error": "invalid JSON"})
+            return
+        directory = req.get("dir")
+        text = req.get("text")
+        if not directory or not isinstance(text, str):
+            await _write_json(writer, 400, {"error": "dir and text are required"})
+            return
+        base = Path(directory)
+        if not base.is_dir():
+            await _write_json(writer, 400, {"error": f"no such directory: {directory}"})
+            return
+        (base / "AGENTS.md").write_text(text)
+        await _write_json(writer, 200, {"dir": directory, "written": True})
 
     async def _branches(self, writer: asyncio.StreamWriter, seg: str) -> None:
         """Branches in the repo at ?path=, for the 'base off' picker. Fetches

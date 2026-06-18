@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { AgentsMdModal } from "./AgentsMdModal";
 import { AgentTree } from "./AgentTree";
 import { api } from "./api";
 import { Approvals } from "./Approvals";
-import { CompareModal } from "./CompareModal";
+import { ContextPanel } from "./ContextPanel";
 import { ForkModal } from "./ForkModal";
 import { LaunchModal } from "./LaunchModal";
 import { NewFolderModal } from "./NewFolderModal";
-import { Pulse } from "./Pulse";
-import { SessionDetail } from "./SessionDetail";
-import { SnapshotsModal } from "./SnapshotsModal";
+import { Terminal } from "./Terminal";
 import { effectiveState } from "./sessions";
-import { SessionView } from "./types";
 import { ToastProvider, useToast } from "./ui";
 import { useEventStream } from "./useEventStream";
 import { useTheme } from "./useTheme";
@@ -24,83 +22,22 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-// Two orthogonal axes: lifecycle (where a session is in its life) and origin
-// (whether Rubberduck launched it or is just watching). They combine — e.g.
-// "active" + "watched" shows active sessions you started yourself.
-type Lifecycle = "active" | "idle" | "archived" | "all";
-type Origin = "all" | "watched" | "launched";
-
 function Dashboard() {
-  const { sessions, connected, recentEvents, removeSessions, patchSession } =
+  const { sessions, connected, removeSessions, patchSession } =
     useEventStream();
   const toast = useToast();
   const now = useNow(1000);
   const { theme, cycle: cycleTheme } = useTheme();
 
-  async function deleteSession(key: string): Promise<boolean> {
-    try {
-      let res = await api.remove(key);
-      // 409: the worktree branch has commits not in main — deleting drops that
-      // agent work. Confirm before forcing.
-      if (res.status === 409 && res.unmerged_commits) {
-        const ok = window.confirm(
-          `Branch ${res.branch} has ${res.unmerged_commits} commit(s) not merged into main. ` +
-            `Delete anyway and discard that work?`,
-        );
-        if (!ok) return false;
-        res = await api.remove(key, true);
-      }
-      removeSessions([key]);
-      // Terminal.app can't be auto-closed (Apple's AppleScript only closes
-      // windows, and a running process blocks it). Nudge the user to close it.
-      if (res.tab_left_open) {
-        toast(
-          "Deleted — close its Terminal tab yourself (iTerm closes automatically)",
-        );
-      } else {
-        toast("Deleted");
-      }
-      return true;
-    } catch (e) {
-      toast(`Delete failed: ${(e as Error).message}`, "err");
-      return false;
-    }
-  }
-
-  async function clearTerminated(terminatedKeys: string[]) {
-    const n = terminatedKeys.length;
-    // Double-confirm: this permanently drops terminated sessions from history.
-    if (
-      !window.confirm(
-        `Clear ${n} terminated session${n === 1 ? "" : "s"} from history?`,
-      )
-    )
-      return;
-    if (
-      !window.confirm("This permanently deletes their history. Are you sure?")
-    )
-      return;
-    try {
-      const r = await api.clearTerminated();
-      removeSessions(terminatedKeys);
-      toast(
-        `Cleared ${r.cleared} terminated session${r.cleared === 1 ? "" : "s"}`,
-      );
-    } catch (e) {
-      toast(`Clear failed: ${(e as Error).message}`, "err");
-    }
-  }
-
-  const [lifecycle, setLifecycle] = useState<Lifecycle>("active");
-  const [origin, setOrigin] = useState<Origin>("all");
-  const [modal, setModal] = useState<
-    "launch" | "compare" | "snapshots" | "folder" | null
-  >(null);
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [modal, setModal] = useState<"launch" | "agentsmd" | "folder" | null>(
+    null,
+  );
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [forkKey, setForkKey] = useState<string | null>(null);
 
-  // Folders persist on the server (incl. empty ones). Refetch when sessions
-  // change, since moving a session can create/clear a folder.
+  // Folders persist on the server (incl. empty ones); the left list groups by
+  // them. Refetch when sessions change, since moving a session can create or
+  // clear a folder.
   const [folders, setFolders] = useState<string[]>([]);
   const refreshFolders = () =>
     api
@@ -111,71 +48,53 @@ function Dashboard() {
     refreshFolders();
   }, [sessions.length]);
 
-  const openSession = sessions.find((s) => s.key === openKey) ?? null;
+  async function deleteSession(key: string): Promise<boolean> {
+    try {
+      let res = await api.remove(key);
+      if (res.status === 409 && res.unmerged_commits) {
+        const ok = window.confirm(
+          `Branch ${res.branch} has ${res.unmerged_commits} commit(s) not merged into main. ` +
+            `Delete anyway and discard that work?`,
+        );
+        if (!ok) return false;
+        res = await api.remove(key, true);
+      }
+      removeSessions([key]);
+      if (selectedKey === key) setSelectedKey(null);
+      toast("Deleted");
+      return true;
+    } catch (e) {
+      toast(`Delete failed: ${(e as Error).message}`, "err");
+      return false;
+    }
+  }
+
+  // Every agent runs inside Rubberduck now — one flat list, no lifecycle/origin
+  // filters. Terminated sessions stay out of the live list.
+  const agents = useMemo(
+    () => sessions.filter((s) => effectiveState(s, now) !== "archived"),
+    [sessions, now],
+  );
+
+  // Default the selection to the first agent so the center pane isn't empty.
+  useEffect(() => {
+    if (selectedKey && sessions.some((s) => s.key === selectedKey)) return;
+    setSelectedKey(agents[0]?.key ?? null);
+  }, [agents, selectedKey, sessions]);
+
+  const selected = sessions.find((s) => s.key === selectedKey) ?? null;
   const forkSession = sessions.find((s) => s.key === forkKey) ?? null;
 
   const labels = useMemo(
     () => Object.fromEntries(sessions.map((s) => [s.key, s.label])),
     [sessions],
   );
-  // Which session keys have a row — Pulse/Approvals rows are clickable only for
-  // these, since the detail drawer reads from the live session list.
   const knownKeys = useMemo(
     () => new Set(sessions.map((s) => s.key)),
     [sessions],
   );
-
-  const isActive = (s: SessionView) => {
-    const st = effectiveState(s, now);
-    return st === "busy" || st === "waiting";
-  };
-  const isIdle = (s: SessionView) => effectiveState(s, now) === "idle";
-  const isArchived = (s: SessionView) => effectiveState(s, now) === "archived";
-  // Origin narrows first: it's the dimension that crosses every lifecycle.
-  const matchesOrigin = (s: SessionView) =>
-    origin === "all" || (origin === "launched" ? !!s.launched : !s.launched);
-  const inOrigin = sessions.filter(matchesOrigin);
-  // Archived sessions are put away — they only show under the Archived tab,
-  // never in active/idle/all.
-  const live = inOrigin.filter((s) => !isArchived(s));
-
-  // Lifecycle tab counts reflect the current origin selection, so the numbers
-  // always match what the tab would show.
-  const LIFECYCLES: { key: Lifecycle; label: string; count: number }[] = [
-    { key: "active", label: "Active", count: live.filter(isActive).length },
-    { key: "idle", label: "Idle", count: live.filter(isIdle).length },
-    {
-      key: "archived",
-      label: "Archived",
-      count: inOrigin.filter(isArchived).length,
-    },
-    { key: "all", label: "All", count: live.length },
-  ];
-  // Origin counts are over all non-archived sessions, independent of lifecycle.
-  const notArchived = sessions.filter((s) => !isArchived(s));
-  const ORIGINS: { key: Origin; label: string; count: number }[] = [
-    { key: "all", label: "All", count: notArchived.length },
-    {
-      key: "watched",
-      label: "Watched",
-      count: notArchived.filter((s) => !s.launched).length,
-    },
-    {
-      key: "launched",
-      label: "Launched",
-      count: notArchived.filter((s) => !!s.launched).length,
-    },
-  ];
-
-  const shown =
-    lifecycle === "active"
-      ? live.filter(isActive)
-      : lifecycle === "idle"
-        ? live.filter(isIdle)
-        : lifecycle === "archived"
-          ? inOrigin.filter(isArchived)
-          : live;
-  const hasTerminated = sessions.some((s) => s.state === "terminated");
+  // The selected agent's working directory anchors AGENTS.md (per-folder file).
+  const agentsMdDir = selected?.worktreePath ?? selected?.cwd ?? null;
 
   return (
     <div className="rd-app">
@@ -197,6 +116,18 @@ function Dashboard() {
         <span className="rd-spacer" />
         <button
           className="rd-btn rd-btn-ghost rd-btn-sm"
+          onClick={() => setModal("agentsmd")}
+          disabled={!agentsMdDir}
+          title={
+            agentsMdDir
+              ? "Edit the AGENTS.md for this agent's folder"
+              : "Select an agent to edit its AGENTS.md"
+          }
+        >
+          AGENTS.md
+        </button>
+        <button
+          className="rd-btn rd-btn-ghost rd-btn-sm"
           title={`Theme: ${theme} (click to change)`}
           onClick={cycleTheme}
           aria-label="Toggle theme"
@@ -205,21 +136,8 @@ function Dashboard() {
         </button>
         <button
           className="rd-btn rd-btn-ghost rd-btn-sm"
-          onClick={() => setModal("compare")}
-          title="Run one prompt across multiple agents"
-        >
-          Compare
-        </button>
-        <button
-          className="rd-btn rd-btn-ghost rd-btn-sm"
-          onClick={() => setModal("snapshots")}
-        >
-          Snapshots
-        </button>
-        <button
-          className="rd-btn rd-btn-ghost rd-btn-sm"
           onClick={() => setModal("folder")}
-          title="Create a folder to organize sessions"
+          title="Create a folder to group agents"
         >
           New folder
         </button>
@@ -231,50 +149,22 @@ function Dashboard() {
         </button>
       </header>
 
-      <div className="rd-panels">
+      <div className="rd-panels-3">
         <section className="rd-agents">
-          <div className="rd-panel-head rd-panel-head-stacked">
+          <div className="rd-panel-head">
             <span>Agents</span>
-            <div className="rd-filters">
-              <div className="rd-segment">
-                {LIFECYCLES.map((f) => (
-                  <button
-                    key={f.key}
-                    className={lifecycle === f.key ? "active" : ""}
-                    onClick={() => setLifecycle(f.key)}
-                  >
-                    {f.label} ({f.count})
-                  </button>
-                ))}
-              </div>
-              <label className="rd-origin">
-                <span>Origin</span>
-                <select
-                  value={origin}
-                  onChange={(e) => setOrigin(e.target.value as Origin)}
-                >
-                  {ORIGINS.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label} ({o.count})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
           </div>
-          {shown.length === 0 ? (
+          {agents.length === 0 ? (
             <p className="rd-panel-empty">
-              {sessions.length === 0
-                ? "No agents yet. Launch one, or run Claude Code in a hooked repo."
-                : "Nothing here. Switch to All to see terminated agents."}
+              No agents yet. Click New session to start one.
             </p>
           ) : (
             <AgentTree
-              sessions={shown}
+              sessions={agents}
               now={now}
               labels={labels}
               folders={folders}
-              onOpen={setOpenKey}
+              onOpen={setSelectedKey}
               onFork={setForkKey}
               onDelete={deleteSession}
               onFoldersChanged={refreshFolders}
@@ -283,33 +173,33 @@ function Dashboard() {
               }
             />
           )}
-          {hasTerminated && lifecycle === "all" && (
-            <button
-              className="rd-btn rd-btn-sm rd-btn-ghost"
-              style={{ margin: 12 }}
-              title="Delete all terminated sessions from history"
-              onClick={() =>
-                clearTerminated(
-                  sessions
-                    .filter((s) => s.state === "terminated")
-                    .map((s) => s.key),
-                )
-              }
-            >
-              Clear terminated
-            </button>
+        </section>
+
+        <section className="rd-terminal-pane">
+          {selected ? (
+            selected.ptyOwned || selected.worktreePath ? (
+              <Terminal key={selected.key} sessionKey={selected.key} />
+            ) : (
+              <div className="rd-panel-empty">
+                This agent isn’t running in a terminal Rubberduck owns.
+              </div>
+            )
+          ) : (
+            <div className="rd-panel-empty">
+              Select an agent to see its terminal.
+            </div>
           )}
         </section>
 
-        <section className="rd-attention">
+        <section className="rd-context-pane">
           <div className="rd-panel-head">
-            <span>Needs human</span>
+            <span>{selected ? selected.label : "Context"}</span>
           </div>
-          <div className="rd-attention-body">
+          <div className="rd-context-body">
             <Approvals
               labels={labels}
               pollKey={sessions.length}
-              onOpen={setOpenKey}
+              onOpen={setSelectedKey}
               knownKeys={knownKeys}
               waiting={sessions.filter(
                 (s) => effectiveState(s, now) === "waiting",
@@ -318,16 +208,17 @@ function Dashboard() {
                 new Set(sessions.filter((s) => s.launched).map((s) => s.key))
               }
             />
+            {selected && <ContextPanel session={selected} />}
           </div>
         </section>
-
-        <Pulse events={recentEvents} labels={labels} />
       </div>
 
       {modal === "launch" && <LaunchModal onClose={() => setModal(null)} />}
-      {modal === "compare" && <CompareModal onClose={() => setModal(null)} />}
-      {modal === "snapshots" && (
-        <SnapshotsModal onClose={() => setModal(null)} />
+      {modal === "agentsmd" && agentsMdDir && (
+        <AgentsMdModal dir={agentsMdDir} onClose={() => setModal(null)} />
+      )}
+      {forkSession && (
+        <ForkModal session={forkSession} onClose={() => setForkKey(null)} />
       )}
       {modal === "folder" && (
         <NewFolderModal
@@ -338,12 +229,6 @@ function Dashboard() {
             setModal(null);
           }}
         />
-      )}
-      {forkSession && (
-        <ForkModal session={forkSession} onClose={() => setForkKey(null)} />
-      )}
-      {openSession && (
-        <SessionDetail session={openSession} onClose={() => setOpenKey(null)} />
       )}
     </div>
   );

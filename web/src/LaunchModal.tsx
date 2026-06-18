@@ -22,8 +22,6 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
   const [prompt, setPrompt] = useState("");
   const [picked, setPicked] = useState<BrowseResult | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const [terminals, setTerminals] = useState<string[]>([]);
-  const [terminal, setTerminal] = useState<string>("");
   const [busy, setBusy] = useState(false);
   // For a git folder: run in the folder as-is, or branch off into an isolated
   // worktree. No default — the user picks.
@@ -31,16 +29,6 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
   const [branches, setBranches] = useState<string[]>([]);
   const [base, setBase] = useState("");
   const [newBranch, setNewBranch] = useState("");
-
-  useEffect(() => {
-    api
-      .terminals()
-      .then((d) => {
-        setTerminals(d.terminals);
-        setTerminal(d.terminals[0] ?? "");
-      })
-      .catch(() => undefined);
-  }, []);
 
   const path = picked?.path;
   const isGit = picked?.is_git ?? false;
@@ -74,11 +62,13 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
       // Worktree mode → repo_path (+ branch/base) so the server branches off.
       // In-place (or a plain folder) → cwd, touching nothing.
       const worktree = isGit && mode === "worktree";
-      const r = await api.launch({
+      // Run the agent in a PTY Rubberduck owns (in_terminal:false) so it renders
+      // in the in-app terminal — no external iTerm/Terminal tab.
+      await api.launch({
         command,
         name: name || undefined,
         prompt: prompt || undefined,
-        terminal: terminal || undefined,
+        in_terminal: false,
         ...(worktree
           ? {
               repo_path: path,
@@ -87,11 +77,7 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
             }
           : { cwd: path }),
       });
-      if (r.opened_in_terminal === false) {
-        toast(`Couldn't open a terminal — run it yourself: ${command}`, "err");
-      } else {
-        toast(`Opened ${name || "session"} in ${terminal || "a terminal"}`);
-      }
+      toast(`Started ${name || "session"}`);
       onClose();
     } catch (e) {
       toast(`Launch failed: ${(e as Error).message}`, "err");
@@ -249,22 +235,6 @@ export function LaunchModal({ onClose }: { onClose: () => void }) {
           placeholder="add a healthcheck endpoint"
         />
       </Field>
-
-      {terminals.length > 0 && (
-        <Field label="Open in (a new tab in this terminal)">
-          <select
-            style={inputStyle}
-            value={terminal}
-            onChange={(e) => setTerminal(e.target.value)}
-          >
-            {terminals.map((t) => (
-              <option key={t} value={t}>
-                {t === "iterm" ? "iTerm" : t === "terminal" ? "Terminal" : t}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
 
       <div
         style={{
