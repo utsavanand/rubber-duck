@@ -8,6 +8,7 @@ import { ForkModal } from "./ForkModal";
 import { LaunchModal } from "./LaunchModal";
 import { Messages } from "./Messages";
 import { NewFolderModal } from "./NewFolderModal";
+import { Paginate } from "./Paginate";
 import { Terminal } from "./Terminal";
 import { effectiveState } from "./sessions";
 import { ToastProvider, useToast } from "./ui";
@@ -35,7 +36,9 @@ function Dashboard() {
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [forkKey, setForkKey] = useState<string | null>(null);
-  const [view, setView] = useState<"terminal" | "messages">("terminal");
+  const [view, setView] = useState<"terminal" | "messages" | "paginate">(
+    "terminal",
+  );
 
   // Folders persist on the server (incl. empty ones); the left list groups by
   // them. Refetch when sessions change, since moving a session can create or
@@ -212,11 +215,23 @@ function Dashboard() {
             >
               Messages
             </button>
+            <button
+              className={view === "paginate" ? "active" : ""}
+              onClick={() => setView("paginate")}
+            >
+              Paginate
+            </button>
           </div>
-          {/* Messages view: structured HTML render of the conversation. */}
+          {/* Messages view: structured HTML render of the latest reply. */}
           {view === "messages" && selected && (
             <div className="rd-messages-wrap">
               <Messages sessionKey={selected.key} />
+            </div>
+          )}
+          {/* Paginate view: step through completed turns with per-section feedback. */}
+          {view === "paginate" && selected && (
+            <div className="rd-messages-wrap">
+              <Paginate sessionKey={selected.key} />
             </div>
           )}
           {/* Terminal view: keep a terminal MOUNTED per PTY-owned agent and just

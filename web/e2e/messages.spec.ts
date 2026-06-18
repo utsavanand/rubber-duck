@@ -43,6 +43,30 @@ function seedTranscript(cwd: string): void {
   );
 }
 
+function seedMultiTurn(cwd: string): void {
+  const slug = cwd.replace(/[^a-zA-Z0-9]/g, "-");
+  const dir = join(homedir(), ".claude", "projects", slug);
+  mkdirSync(dir, { recursive: true });
+  const u = (t: string) => ({
+    type: "user",
+    message: { role: "user", content: t },
+  });
+  const a = (t: string) => ({
+    type: "assistant",
+    message: { role: "assistant", content: [{ type: "text", text: t }] },
+  });
+  const lines = [
+    u("first question"),
+    a("FIRST_ANSWER about the project"),
+    u("second question"),
+    a("SECOND_ANSWER with more detail"),
+  ];
+  writeFileSync(
+    join(dir, "multi-turn.jsonl"),
+    lines.map((l) => JSON.stringify(l)).join("\n"),
+  );
+}
+
 test("messages view renders structured conversation as HTML", async ({
   page,
 }) => {
@@ -119,4 +143,51 @@ test("annotating a span stores it and sends it back to the agent", async ({
   await expect(
     page.locator(".rd-terminal-slot:visible .xterm-rows"),
   ).toContainText("explain this", { timeout: 5_000 });
+});
+
+test("paginate steps through turns and sends per-section feedback", async ({
+  page,
+}) => {
+  const cwd = join(homedir(), "rd-paginate-e2e");
+  mkdirSync(cwd, { recursive: true });
+  seedMultiTurn(cwd);
+  const launch = await apiPost("/sessions/launch", {
+    command: "cat", // echoes the feedback back, proving it reached stdin
+    cwd,
+    name: "paginate-agent",
+    runtime: "claude-code",
+    in_terminal: false,
+    test: true,
+  });
+  const key = launch.body.session_key as string;
+
+  await page.goto(base());
+  await page.locator(".rd-row-name", { hasText: "paginate-agent" }).click();
+  await page.locator(".rd-view-toggle button", { hasText: "Paginate" }).click();
+
+  // Two completed turns; the position indicator reflects it.
+  await expect(page.locator(".rd-paginate-pos")).toContainText("/ 2", {
+    timeout: 8_000,
+  });
+  // Defaults to the latest turn.
+  await expect(page.locator(".rd-msg-text")).toContainText("SECOND_ANSWER");
+
+  // Step back to the first turn.
+  await page.locator(".rd-paginate-nav button", { hasText: "←" }).click();
+  await expect(page.locator(".rd-paginate-pos")).toContainText("1 / 2");
+  await expect(page.locator(".rd-msg-text")).toContainText("FIRST_ANSWER");
+
+  // Per-section feedback is sent back to the agent.
+  await page
+    .locator(".rd-paginate-feedback textarea")
+    .fill("clarify the first answer");
+  await page.locator(".rd-paginate-feedback button").click();
+  await page.locator(".rd-view-toggle button", { hasText: "Terminal" }).click();
+  await expect(
+    page.locator(".rd-terminal-slot:visible .xterm-rows"),
+  ).toContainText("clarify the first answer", { timeout: 5_000 });
+
+  // Annotation stored too.
+  const res = await fetch(`${base()}/sessions/${key}/annotations`);
+  expect((await res.json()).annotations.length).toBeGreaterThan(0);
 });
