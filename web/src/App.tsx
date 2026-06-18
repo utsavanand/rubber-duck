@@ -84,6 +84,27 @@ function Dashboard() {
 
   const selected = sessions.find((s) => s.key === selectedKey) ?? null;
   const forkSession = sessions.find((s) => s.key === forkKey) ?? null;
+  // Agents whose terminal we keep mounted (PTY Rubberduck owns). Switching
+  // between them is then instant — no WS reconnect, no buffer replay.
+  const terminalAgents = useMemo(
+    () => agents.filter((s) => s.ptyOwned || s.worktreePath),
+    [agents],
+  );
+
+  // Terminals stay mounted, so switching agents only flips which slot is shown —
+  // the Terminal's own mount-focus doesn't fire. Focus the newly-visible slot's
+  // input so you can type into it right after switching.
+  useEffect(() => {
+    if (!selectedKey) return;
+    const focus = () => {
+      const ta = document.querySelector<HTMLTextAreaElement>(
+        `.rd-terminal-slot[data-key="${selectedKey}"] .xterm-helper-textarea`,
+      );
+      ta?.focus();
+    };
+    const t = setTimeout(focus, 0);
+    return () => clearTimeout(t);
+  }, [selectedKey]);
 
   const labels = useMemo(
     () => Object.fromEntries(sessions.map((s) => [s.key, s.label])),
@@ -176,15 +197,25 @@ function Dashboard() {
         </section>
 
         <section className="rd-terminal-pane">
-          {selected ? (
-            selected.ptyOwned || selected.worktreePath ? (
-              <Terminal key={selected.key} sessionKey={selected.key} />
-            ) : (
-              <div className="rd-panel-empty">
-                This agent isn’t running in a terminal Rubberduck owns.
-              </div>
-            )
-          ) : (
+          {/* Keep a terminal MOUNTED per PTY-owned agent and just show the
+              selected one. Re-mounting on every switch would reconnect the WS
+              and replay the whole buffer from scratch each time. */}
+          {terminalAgents.map((s) => (
+            <div
+              key={s.key}
+              data-key={s.key}
+              className="rd-terminal-slot"
+              style={{ display: s.key === selectedKey ? "flex" : "none" }}
+            >
+              <Terminal sessionKey={s.key} />
+            </div>
+          ))}
+          {selected && !selected.ptyOwned && !selected.worktreePath && (
+            <div className="rd-panel-empty">
+              This agent isn’t running in a terminal Rubberduck owns.
+            </div>
+          )}
+          {!selected && (
             <div className="rd-panel-empty">
               Select an agent to see its terminal.
             </div>

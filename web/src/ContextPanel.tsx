@@ -6,7 +6,9 @@ import { SessionView } from "./types";
 // not, show the folder it's running in. (Approvals render above this in App.)
 export function ContextPanel({ session }: { session: SessionView }) {
   const [diff, setDiff] = useState<string>("");
+  const [branches, setBranches] = useState<string[]>([]);
   const onBranch = !!session.branch;
+  const dir = session.worktreePath ?? session.cwd ?? null;
 
   useEffect(() => {
     if (!onBranch) return;
@@ -18,6 +20,15 @@ export function ContextPanel({ session }: { session: SessionView }) {
       )
       .catch(() => setDiff(""));
   }, [session.key, onBranch]);
+
+  useEffect(() => {
+    if (!onBranch || !dir) return;
+    setBranches([]);
+    fetch(`/branches?path=${encodeURIComponent(dir)}`)
+      .then((r) => r.json())
+      .then((d: { branches?: string[] }) => setBranches(d.branches ?? []))
+      .catch(() => setBranches([]));
+  }, [dir, onBranch]);
 
   return (
     <div className="rd-context">
@@ -50,6 +61,28 @@ export function ContextPanel({ session }: { session: SessionView }) {
               <span className="k">repo</span>
               <span className="v mono">{session.repoName}</span>
             </div>
+          )}
+          {branches.length > 0 && (
+            <>
+              <div className="rd-context-section-title">Branches</div>
+              <ul className="rd-branch-list">
+                {branches
+                  .filter((b) => !b.startsWith("origin"))
+                  .map((b) => (
+                    <li
+                      key={b}
+                      className={
+                        b === session.branch ? "rd-branch current" : "rd-branch"
+                      }
+                    >
+                      <span className="rd-branch-mark">
+                        {b === session.branch ? "●" : "○"}
+                      </span>
+                      <span className="mono">{b}</span>
+                    </li>
+                  ))}
+              </ul>
+            </>
           )}
           <div className="rd-context-section-title">Working-tree diff</div>
           <pre className="rd-context-diff">

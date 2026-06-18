@@ -21,14 +21,19 @@ async function launchCat(name: string): Promise<string> {
   return r.body.session_key as string;
 }
 
+// Terminals for every PTY agent stay mounted; only the selected slot is shown.
+// Scope assertions to the VISIBLE slot.
+function visibleRows(page: import("@playwright/test").Page) {
+  return page.locator(".rd-terminal-slot:visible .xterm-rows");
+}
+
 async function waitTerminalReady(page: import("@playwright/test").Page) {
-  const term = page.locator(".rd-terminal-pane .xterm");
-  await expect(term).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
-    "READY_CAT",
-    { timeout: 8_000 },
-  );
-  return term;
+  await expect(page.locator(".rd-terminal-slot:visible .xterm")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(visibleRows(page)).toContainText("READY_CAT", {
+    timeout: 8_000,
+  });
 }
 
 test("terminal: typing reaches the agent and echoes back", async ({ page }) => {
@@ -48,7 +53,7 @@ test("terminal: typing reaches the agent and echoes back", async ({ page }) => {
   await page.keyboard.type("HELLO_RUBBERDUCK");
   await page.keyboard.press("Enter");
 
-  await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
+  await expect(visibleRows(page)).toContainText(
     "HELLO_RUBBERDUCK",
     { timeout: 5_000 },
   );
@@ -66,7 +71,7 @@ test("terminal: switching agents shows the other agent's terminal", async ({
   await waitTerminalReady(page);
   await page.keyboard.type("MARKER_ONE");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
+  await expect(visibleRows(page)).toContainText(
     "MARKER_ONE",
     { timeout: 5_000 },
   );
@@ -77,11 +82,11 @@ test("terminal: switching agents shows the other agent's terminal", async ({
   await waitTerminalReady(page);
   await page.keyboard.type("MARKER_TWO");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".rd-terminal-pane .xterm-rows")).toContainText(
+  await expect(visibleRows(page)).toContainText(
     "MARKER_TWO",
     { timeout: 5_000 },
   );
-  await expect(page.locator(".rd-terminal-pane .xterm-rows")).not.toContainText(
+  await expect(visibleRows(page)).not.toContainText(
     "MARKER_ONE",
   );
 });

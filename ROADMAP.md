@@ -58,6 +58,38 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## ✨ Features
 
+- [ ] **HTML-annotation mode (top-bar toggle).** Idea 2026-06-18. A flag at the
+  top of the page; when enabled, agent responses in the terminal are rendered as
+  rich, readable HTML (not raw terminal text), and the user can **annotate any
+  section** of a response (highlight/select + comment). The annotated content
+  goes **back to the LLM** as the next input. Needs the structured/event layer
+  (parse the agent's messages as data, render HTML, map annotations back to
+  text) — not the raw terminal bytes. The terminal stays available; this is an
+  alternate view for response-heavy work (design, research). Related to the
+  annotatable-artifact idea below.
+
+- [ ] **Pagination mode (top-bar toggle).** Idea 2026-06-18. When enabled, a long
+  LLM response is split into small sections you step through with arrow keys
+  (next/prev), and you can **add feedback per section**. Makes a wall-of-text
+  response reviewable piece by piece, with section-level notes fed back to the
+  agent. (User flagged this may be non-trivial — open design questions: where to
+  split sections, how feedback is collected and sent back, how it interacts with
+  a streaming response.)
+
+- [ ] **OpenCode harness support.** Add OpenCode as a supported agent (launch +
+  watch). HumanLayer already ships an opencode-go SDK with stream-json parsing —
+  reference for the event mapping. One harness adapter per docs/architecture.md.
+
+- [ ] **One place to show all skills.** A view listing every skill available
+  across agents/harnesses (and Rubberduck's own), so you can see and invoke them
+  from the dashboard instead of remembering slash commands per agent.
+
+- [ ] **Add custom harnesses (the contract, made usable).** Let a user register a
+  custom CLI agent as a first-class harness from the UI/config — implements the
+  `Harness` contract (launch/resume/detect_state/transcript + optional hooks) and
+  then shows up everywhere (picker, terminal, sub-agent tree). See
+  docs/architecture.md "Onboarding a new harness".
+
 - [ ] **Rich side-panel for CLI output you can annotate / ask about (terminal-forward).**
   Idea 2026-06-18. The CLI hands back a wall of text; instead, for certain
   harnesses (especially a Rubberduck "default harness"), render structured output

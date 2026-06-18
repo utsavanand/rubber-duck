@@ -67,9 +67,13 @@ code,
 }
 
 .rd-app {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 0 28px 40px;
+  /* Fill the viewport exactly: topbar + the three panes, no page scroll. The
+     panes scroll internally (the terminal scrolls its own buffer). */
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 28px;
 }
 
 /* ── three-panel layout: three columns split by vertical dividers, each a
@@ -114,7 +118,8 @@ code,
   display: grid;
   grid-template-columns: minmax(240px, 0.9fr) minmax(420px, 2fr) minmax(280px, 1fr);
   align-items: stretch;
-  height: calc(100vh - 56px);
+  flex: 1; /* fill the space below the topbar exactly */
+  min-height: 0;
 }
 @media (max-width: 1100px) {
   .rd-panels-3 {
@@ -135,10 +140,27 @@ code,
 .rd-terminal-pane {
   background: #0c0f16;
   padding: 0;
+  min-height: 0;
 }
 .rd-terminal-pane > div {
   flex: 1;
   min-height: 0;
+}
+/* One slot per kept-mounted terminal; only the selected one is display:flex. */
+.rd-terminal-slot {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+/* xterm fills the pane and scrolls its OWN buffer (xterm-viewport), so a long
+   session scrolls inside the terminal instead of growing the page. */
+.rd-terminal-pane .xterm,
+.rd-terminal-pane .terminal {
+  height: 100% !important;
+  padding: 6px 8px;
+}
+.rd-terminal-pane .xterm-viewport {
+  overflow-y: auto !important;
 }
 .rd-context-pane .rd-context-body {
   overflow-y: auto;
@@ -176,6 +198,29 @@ code,
 .rd-context-path {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 12px;
+}
+.rd-branch-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rd-branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.rd-branch.current {
+  color: var(--text);
+  font-weight: 600;
+}
+.rd-branch-mark {
+  color: var(--accent, #2563eb);
+  font-size: 9px;
 }
 .rd-context-diff {
   font-family: ui-monospace, Menlo, monospace;
@@ -229,12 +274,12 @@ code,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 9px 14px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-soft);
+  letter-spacing: 0.01em;
+  color: var(--text);
   user-select: none;
 }
 .rd-group-head:hover {

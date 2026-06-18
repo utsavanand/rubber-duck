@@ -103,10 +103,13 @@ export function Terminal({ sessionKey }: { sessionKey: string }) {
     };
   }, [sessionKey]);
 
+  // height:0 + flex:1 makes the host fill the pane with a DEFINITE height, so
+  // xterm scrolls its buffer internally instead of growing the page. (A
+  // min-height here would let it expand and scroll the whole dashboard.)
   return (
     <div
       ref={hostRef}
-      style={{ flex: 1, minHeight: 320, background: "#0c0f16" }}
+      style={{ flex: 1, height: 0, minHeight: 0, background: "#0c0f16" }}
     />
   );
 }
