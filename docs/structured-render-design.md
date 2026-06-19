@@ -108,9 +108,10 @@ No paginating a live-streaming response.
 2. ✅ Mode 1 — annotations: `annotations` table + `GET/POST
    /sessions/:key/annotations`; select-a-span → note → stored AND sent back to
    the agent's stdin (Messages.tsx popover).
-3. ✅ Mode 2 — pagination: Paginate.tsx groups turns, ← → steps them, per-section
-   feedback reuses the annotations send-back.
-4. ✅ View toggle: Terminal | Messages | Paginate at the top of the center pane.
+3. ✗ Mode 2 — pagination: built, then REMOVED (2026-06-18). Redundant with the
+   Messages + annotation view — the same readable HTML and send-back, without a
+   second navigation model. Dropped to keep the toggle to Terminal | Messages.
+4. ✅ View toggle: Terminal | Messages at the top of the center pane.
 
 Tests: tests/runtime/test_messages.py, test_annotations.py; web/e2e/messages.spec
 covers all three views + both send-back flows against seeded transcripts.
