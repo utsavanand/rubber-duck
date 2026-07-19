@@ -30,6 +30,22 @@ describe("viewFromPersisted", () => {
     ).toBe("abcdef12");
   });
 
+  it("labels with the terminal tab title over the folder, but a rename wins", () => {
+    expect(
+      viewFromPersisted(
+        persisted({
+          terminal_title: "Entourage Sprint 7/18",
+          source_app: "railway-deploy",
+        }),
+      ).label,
+    ).toBe("Entourage Sprint 7/18");
+    expect(
+      viewFromPersisted(
+        persisted({ name: "My name", terminal_title: "Tab title" }),
+      ).label,
+    ).toBe("My name");
+  });
+
   it("maps the grp column to the group field, leaving ungrouped as undefined", () => {
     expect(viewFromPersisted(persisted({ grp: "payments" })).group).toBe(
       "payments",

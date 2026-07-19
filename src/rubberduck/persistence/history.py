@@ -507,8 +507,8 @@ class HistoryStore:
                 "(session_key, runtime, repo_path, worktree_path, branch, "
                 " parent_session_key, compare_group, state, source_app, cwd, "
                 " last_event_type, last_tool, event_count, started_at, updated_at, ended_at, "
-                " last_seen, launched, test, agent_pid) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
+                " last_seen, launched, test, agent_pid, tty) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
@@ -529,6 +529,7 @@ class HistoryStore:
                     1 if event.get("launched") else 0,
                     1 if event.get("test") else 0,
                     event.get("agent_pid"),
+                    event.get("tty"),
                 ),
             )
         else:
@@ -554,8 +555,10 @@ class HistoryStore:
                 # downgrade a launched session to watched.
                 "launched = MAX(launched, ?), "
                 "test = MAX(test, ?), "
-                "agent_pid = COALESCE(?, agent_pid) "
-                "WHERE session_key = ?",
+                "agent_pid = COALESCE(?, agent_pid), "
+                # Newest tty wins (an agent resumed in a different tab should
+                # relabel), but a tty-less event never clears a known one.
+                "tty = COALESCE(?, tty) " "WHERE session_key = ?",
                 (
                     event.get("runtime"),
                     event.get("repo_path"),
@@ -573,6 +576,7 @@ class HistoryStore:
                     1 if event.get("launched") else 0,
                     1 if event.get("test") else 0,
                     event.get("agent_pid"),
+                    event.get("tty"),
                     key,
                 ),
             )

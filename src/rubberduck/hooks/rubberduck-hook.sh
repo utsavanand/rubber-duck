@@ -29,12 +29,21 @@ URL="${RUBBERDUCK_URL:-http://127.0.0.1:4200}"
 # a duplicate session under Claude's own id. Empty for self-started sessions.
 SESSION_KEY="${RUBBERDUCK_SESSION_KEY:-}"
 
+# The agent's controlling terminal (macOS: "ttys003" -> /dev/ttys003). Lets the
+# dashboard label the session with its terminal tab's title and jump to the
+# right tab. "??" means no tty (headless `claude -p`, CI) — send nothing.
+AGENT_TTY=$(ps -o tty= -p $PPID 2>/dev/null | tr -d ' ')
+case "$AGENT_TTY" in
+  tty*) AGENT_TTY="/dev/$AGENT_TTY" ;;
+  *) AGENT_TTY="" ;;
+esac
+
 if command -v jq >/dev/null 2>&1; then
   # Field names differ across agents: Claude/Codex use snake_case (session_id,
   # tool_name); Copilot uses camelCase (sessionId, toolName). Accept either.
   PAYLOAD=$(printf '%s' "$INPUT" | jq -c \
     --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" --arg rt "$RUNTIME" \
-    --argjson apid "$PPID" '
+    --arg atty "$AGENT_TTY" --argjson apid "$PPID" '
     {
       event_type: $etype,
       session_key: (if $skey == "" then null else $skey end),
@@ -45,7 +54,8 @@ if command -v jq >/dev/null 2>&1; then
       tool_input: (.tool_input // .toolInput),
       prompt: .prompt,
       runtime: $rt,
-      agent_pid: $apid
+      agent_pid: $apid,
+      tty: (if $atty == "" then null else $atty end)
     } | with_entries(select(.value != null))' 2>/dev/null)
 fi
 
