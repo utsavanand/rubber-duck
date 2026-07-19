@@ -81,6 +81,51 @@ def open_in_terminal(
     return False
 
 
+def terminal_titles() -> dict[str, str]:
+    """tty -> tab title for every open iTerm session, in one AppleScript
+    round-trip. Used to label watched sessions with the tab name the user set
+    (e.g. "Entourage Sprint 7/18") instead of the cwd folder name. iTerm only:
+    that's where users name tabs; everything else falls back to folder names.
+    Empty dict when unavailable (not macOS, no iTerm, osascript failed)."""
+    if platform.system() != "Darwin" or not _iterm_installed():
+        return {}
+    if os.environ.get("RUBBERDUCK_NO_TERMINAL"):
+        return {}
+    script = (
+        'tell application "iTerm"\n'
+        '  set out to ""\n'
+        "  repeat with w in windows\n"
+        "    repeat with t in tabs of w\n"
+        "      repeat with s in sessions of t\n"
+        '        set out to out & (tty of s as string) & "|" & (name of s as string) & linefeed\n'
+        "      end repeat\n"
+        "    end repeat\n"
+        "  end repeat\n"
+        "  return out\n"
+        "end tell"
+    )
+    try:
+        proc = subprocess.run(
+            ["osascript", "-e", script], capture_output=True, text=True, timeout=3
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if proc.returncode != 0:
+        return {}
+    return _parse_titles(proc.stdout)
+
+
+def _parse_titles(out: str) -> dict[str, str]:
+    """Parse the "tty|title" lines the titles AppleScript emits. Splits on the
+    FIRST pipe only — titles may themselves contain pipes."""
+    titles: dict[str, str] = {}
+    for line in out.splitlines():
+        tty, sep, title = line.partition("|")
+        if sep and tty.startswith("/dev/") and title.strip():
+            titles[tty.strip()] = title.strip()
+    return titles
+
+
 def close_terminal_by_tty(tty: str, *, app: str | None = None) -> bool:
     """Close the terminal tab whose tty matches (e.g. /dev/ttys003). The tty is
     stable and not clobbered by the agent (unlike the tab title), so this is the

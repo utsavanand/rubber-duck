@@ -134,3 +134,22 @@ def test_close_by_tty_runs_osascript_on_macos(monkeypatch) -> None:  # type: ign
     assert close_terminal_by_tty("/dev/ttys009", app="terminal") is True
     assert spawned["argv"][0] == "osascript"
     assert "/dev/ttys009" in spawned["argv"][-1]
+
+
+def test_parse_titles_maps_tty_to_title() -> None:
+    out = (
+        "/dev/ttys003|Entourage Sprint 7/18\n"
+        "/dev/ttys011|Rubber Duck | main loop\n"  # titles may contain pipes
+        "not-a-tty|ignored\n"
+        "/dev/ttys020|   \n"  # blank title -> no entry (fallback to folder name)
+        "\n"
+    )
+    assert terminal._parse_titles(out) == {
+        "/dev/ttys003": "Entourage Sprint 7/18",
+        "/dev/ttys011": "Rubber Duck | main loop",
+    }
+
+
+def test_terminal_titles_empty_off_macos(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(terminal.platform, "system", lambda: "Linux")
+    assert terminal.terminal_titles() == {}

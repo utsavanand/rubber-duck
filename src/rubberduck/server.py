@@ -50,6 +50,7 @@ from rubberduck.agents.terminal import (
     close_terminal_by_tty,
     focus_terminal_by_tty,
     open_in_terminal,
+    terminal_titles,
 )
 from rubberduck.core.approvals import ApprovalRegistry
 from rubberduck.core.eventbus import EventBus
@@ -247,6 +248,10 @@ class Server:
         self.snapshots = SnapshotManager(self.history)
         self.approvals = ApprovalRegistry(self.orchestrator.inject_key)
         self.token = security.load_or_create_token()
+        # iTerm tab titles by tty, for labeling watched sessions (see
+        # _terminal_titles). Stale-start so the first /sessions pays the lookup.
+        self._titles: dict[str, str] = {}
+        self._titles_at = float("-inf")
 
     # Activity that means a session moved past an *earlier* permission prompt:
     # any of these arriving AFTER a request means it was answered and the agent
@@ -383,6 +388,10 @@ class Server:
                 raw["agent_pid"] = pid if pid > 0 else None
             except (TypeError, ValueError):
                 raw["agent_pid"] = None
+        # tty is hook-supplied and later matched/injected into AppleScript —
+        # same /dev/tty… constraint as the heartbeat's.
+        if "tty" in raw and not security.valid_tty(raw.get("tty")):
+            raw["tty"] = None
         # A deleted (tombstoned) session whose agent is still running keeps firing
         # hooks. Drop ALL of its events here — including SessionStart — so a
         # session you deleted stays gone: no phantom rows, no events leaking into
@@ -458,7 +467,24 @@ class Server:
         await _write_json(writer, 200, {"ok": ok})
 
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
-        await _write_json(writer, 200, {"sessions": self.history.sessions()})
+        rows = self.history.sessions()
+        titles = await self._terminal_titles()
+        if titles:
+            for r in rows:
+                title = titles.get(str(r.get("tty") or ""))
+                if title:
+                    r["terminal_title"] = title
+        await _write_json(writer, 200, {"sessions": rows})
+
+    async def _terminal_titles(self) -> dict[str, str]:
+        """tty -> iTerm tab title, cached ~10s. One osascript round-trip costs
+        100-300ms, and the dashboard polls /sessions every couple of seconds —
+        without the cache every poll would pay it."""
+        now = time.monotonic()
+        if now - self._titles_at > 10:
+            self._titles = await asyncio.to_thread(terminal_titles)
+            self._titles_at = now
+        return self._titles
 
     async def _launch(self, writer: asyncio.StreamWriter, body: bytes) -> None:
         try:

@@ -22,12 +22,7 @@ export interface RubberduckEvent {
 }
 
 export type SessionState =
-  | "idle"
-  | "busy"
-  | "waiting"
-  | "terminated"
-  | "stopped"
-  | "archived";
+  "idle" | "busy" | "waiting" | "terminated" | "stopped" | "archived";
 
 export interface SessionView {
   key: string;
@@ -80,6 +75,7 @@ export interface PersistedSession {
   name?: string | null;
   notes?: string | null;
   grp?: string | null;
+  terminal_title?: string | null; // the iTerm tab title, matched by tty server-side
 }
 
 // The repo label for a card. repo_path's basename is the repo name for a plain
@@ -98,7 +94,10 @@ export function repoNameFrom(
 export function viewFromPersisted(s: PersistedSession): SessionView {
   return {
     key: s.session_key,
-    label: s.name || s.source_app || s.session_key.slice(0, 8),
+    // An explicit rename wins; then the terminal tab's own title (what the user
+    // called this session in iTerm); then the cwd folder name.
+    label:
+      s.name || s.terminal_title || s.source_app || s.session_key.slice(0, 8),
     // Server already settled this row's state; if it's idle, backdate idleSince
     // so effectiveState shows idle immediately rather than after a fresh grace.
     state: s.state === "idle" ? "busy" : s.state,
