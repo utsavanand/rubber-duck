@@ -3,6 +3,15 @@
 Drafted 2026-06-17. Companion to
 [terminal-forward-design.md](./terminal-forward-design.md).
 
+**Executed 2026-07-18 → [utsavanand/duckterm](https://github.com/utsavanand/duckterm).**
+Name decided: **duckterm** (repo, PyPI dist, npm scope, CLI command — all free at
+creation). The fork happened AFTER the terminal build finished on
+`terminal-forward-design` (30 commits), not at its start as originally planned —
+so the new repo starts from the branch's finished state, and this checklist was
+updated (below) to cover the files that didn't exist when it was drafted:
+Terminal.tsx, Messages.tsx, ContextPanel.tsx, AgentsMdModal.tsx, the
+`annotations` table + endpoints, `parse_messages`, and `agents/tmux.py`.
+
 **When to fork:** at the START of the terminal build (the first binary-WS +
 xterm.js commit) — not before. Until then the new take is "Rubberduck + a design
 doc," and forking just drags the legacy along. The terminal implementation is
@@ -20,22 +29,28 @@ terminal. No watched mode, no AppleScript terminal tabs.
 Python core:
 
 - `core/eventbus.py` (87) — event fan-out. Pure core. Move as-is.
-- `core/orchestrator.py` (409) — PTY/tmux supervisor, the heart. Move; this is
-  where the raw-byte streaming change lands.
+- `core/orchestrator.py` (497) — PTY/tmux supervisor, the heart. Move; the
+  raw-byte streaming change already landed on the branch.
+- `agents/tmux.py` (118) — tmux pane driver the orchestrator uses. Move as-is
+  (post-draft addition; not the AppleScript `agents/terminal.py`, which is DROP).
 - `core/approvals.py` (179) — approval registry. Move as-is.
 - `runtimes/base.py` `runtimes/claude_code.py` `runtimes/generic.py` — the agent
   adapters. Move claude + generic; codex/copilot optional (see DECIDE).
+  `claude_code.py` now also carries `parse_messages` (structured transcript
+  reader feeding `/sessions/:key/messages` and annotations) — move.
 - `harnesses.py` (42) — runtime registry. Move; trim to shipped adapters.
 - `git/worktrees.py` `git/gitdetect.py` `git/spotlight.py` — worktree isolation,
   a kept differentiator. Move as-is.
-- `persistence/history.py` (648) — SQLite session/event store. Move; it carries
-  schema for forks + lineage (needed for the sub-agent tree).
+- `persistence/history.py` (746) — SQLite session/event store. Move; it carries
+  schema for forks + lineage (sub-agent tree) and the `annotations` table.
 - `persistence/checkpoints.py` (261) — move if keeping checkpoints (it's a real
   feature); otherwise DEFER.
 - `transport/httpio.py` (132) — HTTP/SSE primitives. Move as-is.
-- `transport/websocket.py` (78) — **DO NOT move as-is.** Replace with a vetted WS
-  library in the new repo (binary + bidirectional + keepalive). Keep this file
-  only as a reference for the handshake until the lib is wired.
+- `transport/websocket.py` (115) — **decision reversed 2026-07-18: move as-is.**
+  The branch made it binary + bidirectional and it's what the shipped terminal
+  runs on, covered by the terminal e2e specs. Swapping in a WS library now would
+  replace working tested code with an unproven integration. Trigger to revisit:
+  a masking/fragmentation/backpressure bug in the wild.
 - `helpers/paths.py` `helpers/security.py` `helpers/metrics.py` — small support.
   Move what the moved modules import; drop the rest.
 - `llm/summarizer.py` `llm/insights.py` — outcome summaries. Move if keeping
@@ -47,14 +62,18 @@ Web (TypeScript/React):
   `useTheme.ts` `main.tsx` — the app spine. Move.
 - `web/src/AgentTree.tsx` (621) `ForkTree.tsx` — the lineage tree UI; the
   sub-agent tree extends this. Move.
-- `web/src/Approvals.tsx` `SessionDetail.tsx` `App.tsx` — move; rework
-  SessionDetail to host the xterm pane.
+- `web/src/Approvals.tsx` `SessionDetail.tsx` `App.tsx` — move; SessionDetail
+  already hosts the xterm pane on the branch.
+- `web/src/Terminal.tsx` `Messages.tsx` `ContextPanel.tsx` `AgentsMdModal.tsx` —
+  the terminal-forward UI built on the branch (xterm pane, structured Messages
+  view + annotation send-back, context panel, cross-agent AGENTS.md editor).
+  Move; this IS the product surface.
 - `web/src/LaunchModal.tsx` `ForkModal.tsx` `CompareModal.tsx`
   `NewFolderModal.tsx` `SnapshotsModal.tsx` — move the ones whose features
   survive (launch, fork). Snapshots → DECIDE.
-- `web/src/LiveOutput.tsx` — **DO NOT move.** Replaced by the xterm.js terminal
-  component. Reference only.
-- `web/src/Pulse.tsx` (217) — DECIDE (user called it low-utility).
+- `web/src/LiveOutput.tsx` — **DO NOT move.** Replaced by Terminal.tsx.
+  Reference only.
+- `web/src/Pulse.tsx` — RESOLVED: already deleted on the branch.
 
 Infra:
 
@@ -72,56 +91,55 @@ Infra:
 - `agents/terminal.py` (334) — the AppleScript open/close/focus/answer-by-tty
   path. The whole macOS-fragility reason for the pivot. Verified leaf: imported
   ONLY by `server.py` and `cli.py`. Delete, and delete its call sites.
-- **Watched mode** — the hooks-only-observe path. The new take is launched-only.
-  Drop: `agents/hooks_install.py` (188), `hooks/rubberduck-hook.sh`, the
-  `install-hooks`/`uninstall-hooks` CLI commands, `doctor.py` (138, it mostly
-  checks hook wiring), and the `/events` ingest-from-external-hook path.
-  - NOTE: keep the *event vocabulary* and the in-process event emission
-    (orchestrator `_emit`). We drop external-hook *ingestion*, not events.
-  - NOTE: Claude's `SubagentStart/Stop` for the sub-agent tree still arrive — but
-    as a launched session we read them from the agent's own output/transcript,
-    not from an installed external hook. Confirm the source during the build.
+- **Watched mode — REVISED 2026-07-18 after the confirm-during-the-build check.**
+  The original plan assumed launched sessions could read `SubagentStart/Stop`
+  (and the rest of the smarts) from the transcript instead of hooks. That
+  alternative was never built: on the branch, approvals, state, and the
+  sub-agent tree for LAUNCHED sessions are still powered by the installed hooks
+  POSTing to `/events`, and `duckterm run` depends on `/heartbeat` to bind the
+  current terminal. So the hook layer MOVES: `agents/hooks_install.py`, the hook
+  script (renamed `duckterm-hook.sh`), `install-hooks`/`uninstall-hooks`,
+  `doctor.py`, `/events` ingestion, `/heartbeat`. What actually gets dropped is
+  the AppleScript tab management (above) and its tty call sites: `/terminals`,
+  `/sessions/:key/focus`, close-tab-on-stop/delete, answer-prompt-by-tty.
+  Transcript-as-event-source remains a future simplification, not a fork
+  precondition.
 - `mac/` Swift shell — DECIDE, don't auto-move (see below).
-- Heartbeat/tty plumbing in `server.py` — the `with_heartbeat`, tty-tracking, and
-  `close/focus_terminal_by_tty` handlers exist only to manage AppleScript tabs.
-  Drop with watched/terminal.
 - `scripts/seed_demo.py` — demo seeding; regenerate fresh if needed.
 
 ---
 
 ## REWRITE — don't copy, rebuild clean
 
-- `server.py` (1628) — **the biggest trap. Do NOT copy wholesale.** ~87 lines are
-  coupled to terminal/watched/snapshot/tty; the routing table mixes core and
-  legacy. Stand up a fresh, smaller server in the new repo and port handlers
-  selectively: keep events, sessions, launch, fork, approvals decide, diff,
-  worktree; add the binary-WS terminal attach + `/resize`; leave behind every
-  `*_terminal_by_tty`, snapshot-restore-in-terminal, and install-hooks route.
-  Target: a server you can read top-to-bottom, not 1628 lines.
-- `cli.py` (452) — rebuild around the surviving commands (`serve`, `launch`,
-  `run`, `dashboard`) minus `install-hooks`/`uninstall-hooks`/`doctor`/`snapshot`
-  if those features don't carry.
+- `server.py` (1826) — **the biggest trap. Do NOT copy wholesale.** The routing
+  table mixes core and legacy. Port handlers selectively: keep events, heartbeat,
+  sessions, launch, fork, approvals, diff, worktree, terminal WS attach + resize,
+  messages, annotations, snapshots, checkpoints, folders, agents-md; leave
+  behind every `*_terminal_by_tty` call site and the `/terminals` +
+  `/sessions/:key/focus` routes (REVISED 2026-07-18: hooks/heartbeat stay —
+  see DROP).
+- `cli.py` (452) — rebuild around the surviving commands: `serve`, `launch`,
+  `run`, `dashboard`, `install-hooks`/`uninstall-hooks`, `doctor`, `snapshot`
+  (all carry; only AppleScript-dependent behavior goes).
 
 ---
 
-## DECIDE — call these explicitly before the fork
+## DECIDE — resolved 2026-07-18 at fork time
 
-- **codex / copilot adapters** — keep multi-agent agnostic (a stated edge), or
-  start claude-only and re-add once the terminal works? Recommend: keep `generic`
-  + `claude-code` for MVP; re-add codex/copilot right after (they're ~100 lines
-  each and prove "any CLI agent").
-- **tmux vs pure-PTY** — orchestrator supports both. tmux survives server
-  restarts and is the better default for persistent sessions (Superset/CodeLayer
-  both persist). Recommend keep tmux path.
-- **Mac shell (`mac/`)** — the `WKWebView` host is real and cheap to keep, but if
-  the new take rethinks packaging (e.g. a Tauri shell to bundle the WS/PTY side
-  natively), don't carry the Swift. Recommend: keep the existing Swift webview
-  for MVP (it works), revisit packaging later.
-- **Snapshots, Pulse, checkpoints, LLM summaries** — each is a real feature with
-  real code. Keep the ones that serve the new pitch; defer the rest. Pulse:
-  user-flagged low-utility → defer. Checkpoints/history: keep (feeds learning).
-- **New name** — working title stays Rubberduck; pick at fork time. (Earlier
-  shortlist: Concerto, Tutti, Prospero, Calliope — unresolved, not blocking.)
+- **codex / copilot adapters** — KEEP all four (generic, claude-code, codex,
+  copilot). They exist, are tested, and prove "any CLI agent"; dropping working
+  code only to re-add it is churn.
+- **tmux vs pure-PTY** — KEEP both; tmux stays the default for persistence
+  (it's also what the browser-resize fix depends on).
+- **Mac shell (`mac/`)** — KEEP the Swift webview, renamed Duckterm. Revisit
+  packaging only if a concrete packaging problem appears.
+- **Snapshots, checkpoints, LLM summaries** — KEEP. Snapshot restore is a plain
+  argv (`restore_command_for`), not AppleScript-coupled. Pulse: gone (deleted
+  upstream on the branch).
+- **New name** — **duckterm.** Keeps the rubber-duck brand family (Rubberduck =
+  classic/no terminal, Duckterm = terminal-forward), one typable word, and was
+  free on GitHub/PyPI/npm at creation. The orchestra shortlist (Concerto, Tutti,
+  Prospero, Calliope) was all registry-taken.
 
 ---
 
