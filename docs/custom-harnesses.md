@@ -1,67 +1,92 @@
-# Custom harnesses (overlays)
+# Custom harnesses (suites)
 
 Two layers, two contracts:
 
-| Layer | Contract | Examples | What it owns |
+| Layer | Contract | Examples | What it is |
 |---|---|---|---|
-| Coding harness | `Harness` (`runtimes/base.py`) | claude-code, codex, copilot | Runs the model: launch/resume, state, transcript, hooks, `ApprovalSpec` |
-| Custom harness (overlay) | `Overlay` (`overlays.py`) | UV Suite, a team's language wrapper | Wraps a coding harness: its own session identity (name/tags), later launch wrapping + skills |
+| Coding harness | `Harness` (`runtimes/base.py`) | claude-code, codex, copilot | The agent CLI that runs the model |
+| Custom harness | manifest + `overlays.py` | UV Suite, a team's Ruby wrapper | A suite of skills/hooks/guardrails installed on top of a coding harness |
 
-An overlay never runs a model, so it inherits everything a session needs from
-its `base` coding harness. What it declares is only what it *adds*.
+## What a CODING harness can extend (`Harness`)
 
-## The v1 contract
+One adapter class per agent, registered in `harnesses.py`:
 
-```python
-class Overlay:
-    name: str   # registry id, e.g. "uv-suite"
-    base: str   # coding harness it wraps, e.g. "claude-code"
+| Member | What it teaches Rubberduck |
+|---|---|
+| `launch_command(cwd, session_key, initial_prompt)` | how to start the agent |
+| `restore_command(cwd, session_key)` | how to resume a stopped session |
+| `detect_state(recent_output)` | busy/waiting/idle from raw output (fallback when hooks are absent) |
+| `tool_in(recent_output)` | which tool is running, from output |
+| `locate_transcript / read_transcript` | where its conversation lives and how to parse it (checkpoints, forks) |
+| `hook_spec: HookSpec` | where its hook config lives + merge/strip, so watched sessions stream in |
+| `approval: ApprovalSpec` | which hook event blocks for dashboard Approve/Deny and the exact decision JSON it expects (`None` = observe-only) |
 
-    def session_meta(self, *, cwd, overlay_session) -> dict:
-        # {"name": ...} at minimum, plus whatever tags it keeps
-        # (UV Suite: kind, priority, purpose). {} when unknown.
+## What a CUSTOM harness can extend (the manifest)
+
+The contract is the suite's manifest — `duckterm-harness.json` at the suite's
+root, established by Rubberterm. **One manifest per suite; each product reads
+the fields it consumes and ignores the rest** (Rubberterm's loader already
+tolerates unknown fields).
+
+| Field | What it declares | Consumed by | Status |
+|---|---|---|---|
+| `name`, `description` | identity | both | shipped |
+| `install` (argv, `{dir}` placeholder) | how to install the suite into a project | Rubberterm dashboard (`suites.py`) | shipped |
+| `uninstall` (argv) | how to remove it | Rubberterm | shipped |
+| `args_choices` (flag → allowed values) | installer options, rendered as pickers | Rubberterm | shipped |
+| `base` | which coding harness it wraps — the session inherits that harness's transcript/approval/hooks | Rubberduck | shipped (this change) |
+| `session_meta` (`sessions_dir`, `pointer`, `fields`) | where the suite keeps per-session name/tags | Rubberduck `/sessions` labeling | shipped (this change) |
+| skills listing | which skills the suite adds | both | deferred — build with the all-skills dashboard view |
+| custom hook events | suite-specific data pushed at runtime | Rubberduck | informal today: `POST /events` accepts extra fields, `PATCH /sessions/:key` sets the name. Formalize a schema when a second suite needs more |
+| launch-through-suite | starting a suite session from New session | Rubberduck | deferred — needs a launcher argv field |
+
+UV Suite's entry (currently built-in data in `overlays.OVERLAYS`; the shape is
+exactly the manifest's, so moving to reading its `duckterm-harness.json` from
+disk is mechanical once suite registration lands here):
+
+```json
+{
+  "name": "uv-suite",
+  "base": "claude-code",
+  "session_meta": {
+    "sessions_dir": ".uv-suite-state/sessions",
+    "pointer": ".uv-suite-state/current-session.txt",
+    "fields": ["name", "kind", "priority", "purpose"]
+  }
+}
 ```
 
-Registered in `overlays.OVERLAYS`. One adapter exists: `UVSuiteOverlay`, which
-reads `<cwd>/.uv-suite-state/sessions/<id>.json`.
+## How a session gets its suite — the announcement protocol
 
-## How a session gets its overlay — the announcement protocol
-
-The overlay's launcher exports, before starting the base agent:
+The suite's launcher exports, before starting the base agent:
 
 ```sh
 export RUBBERDUCK_OVERLAY=uv-suite
-export RUBBERDUCK_OVERLAY_SESSION=<the overlay's own session id>
+export RUBBERDUCK_OVERLAY_SESSION=<the suite's own session id>
 ```
 
 Hook processes inherit the env, so the shared hook script forwards both fields
-on every event with no per-overlay logic in bash (same principle as
+on every event with no per-suite logic in bash (same principle as
 ApprovalSpec: bash stays generic, Python knows the specifics). The server
 validates `overlay` against the registry and `overlay_session` against a
 path-safe charset (it's interpolated into a filename), persists both on the
-session row, and `GET /sessions` attaches `overlay_name` resolved by the
-adapter.
+session row, and `GET /sessions` attaches `overlay_name`.
 
 Sessions that predate the announcement (today's UV Suite doesn't export yet)
-are probed: for each registered overlay whose `base` matches the session's
-runtime, the adapter may fall back to its own discovery — UV Suite uses the
-`current-session.txt` pointer. Correct for one overlay session per project
-directory; two concurrent ones in the same cwd both show the pointed-at name
-until their launchers announce.
+are probed via the manifest's `pointer` file. Correct for one suite session
+per project directory; two concurrent ones in the same cwd both show the
+pointed-at name until their launchers announce.
 
 ## Label priority (dashboard)
 
 explicit rename > `overlay_name` > iTerm tab title > cwd folder name > key prefix
 
-## Deferred, with triggers
+## Reconciliation state vs Rubberterm
 
-- **Launch through the overlay** (New session picker offering "claude-code via
-  UV Suite"): build when someone wants to *start* overlay sessions from the
-  dashboard, not just watch them. Needs one more contract field (the launcher
-  argv wrapper).
-- **Skills listing** (`skills() -> list[...]`): build together with the
-  roadmap's all-skills dashboard view — it's that view's data source.
-- **Overlay event vocabulary / custom hooks**: overlays that want to push
-  richer data already have an HTTP surface — `POST /events` accepts extra
-  fields and `PATCH /sessions/:key` sets the explicit name. Formalize a schema
-  only when a second overlay actually needs more than name/tags.
+- Rubberterm `suites.py` owns **installation** (manifest `install`/`uninstall`/
+  `args_choices`); Rubberduck `overlays.py` owns **runtime identity** (`base`/
+  `session_meta` + the env announcement). Same manifest, disjoint fields — no
+  conflict, and either product can adopt the other's fields later.
+- Rubberterm's `runtimes/base.py` is a pre-ApprovalSpec fork of the `Harness`
+  contract (no `approval` field). When syncing the repos, pull Rubberduck's
+  base.py forward — the ApprovalSpec change is additive.
