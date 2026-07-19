@@ -41,9 +41,14 @@ esac
 if command -v jq >/dev/null 2>&1; then
   # Field names differ across agents: Claude/Codex use snake_case (session_id,
   # tool_name); Copilot uses camelCase (sessionId, toolName). Accept either.
+  #
+  # RUBBERDUCK_OVERLAY(_SESSION) are exported by a custom harness's launcher
+  # (e.g. UV Suite) before it starts the base agent — the announcement protocol
+  # in overlays.py. Forwarded as-is; the server validates against its registry.
   PAYLOAD=$(printf '%s' "$INPUT" | jq -c \
     --arg etype "$EVENT_TYPE" --arg skey "$SESSION_KEY" --arg rt "$RUNTIME" \
-    --arg atty "$AGENT_TTY" --argjson apid "$PPID" '
+    --arg atty "$AGENT_TTY" --arg ovl "${RUBBERDUCK_OVERLAY:-}" \
+    --arg ovls "${RUBBERDUCK_OVERLAY_SESSION:-}" --argjson apid "$PPID" '
     {
       event_type: $etype,
       session_key: (if $skey == "" then null else $skey end),
@@ -55,7 +60,9 @@ if command -v jq >/dev/null 2>&1; then
       prompt: .prompt,
       runtime: $rt,
       agent_pid: $apid,
-      tty: (if $atty == "" then null else $atty end)
+      tty: (if $atty == "" then null else $atty end),
+      overlay: (if $ovl == "" then null else $ovl end),
+      overlay_session: (if $ovls == "" then null else $ovls end)
     } | with_entries(select(.value != null))' 2>/dev/null)
 fi
 

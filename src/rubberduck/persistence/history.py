@@ -153,6 +153,12 @@ _SESSIONS_COLUMNS = {
     # has no heartbeat — this is how the liveness sweep tells a still-running
     # agent from one whose terminal was closed.
     "agent_pid": "INTEGER",
+    # Custom harness (overlay) identity, announced by the overlay's launcher via
+    # RUBBERDUCK_OVERLAY(_SESSION) env and forwarded by the hook. overlay is a
+    # registry name (overlays.py); overlay_session is the overlay's OWN session
+    # id (e.g. UVS_SESSION_ID), distinct from the coding harness's session id.
+    "overlay": "TEXT",
+    "overlay_session": "TEXT",
 }
 
 
@@ -507,8 +513,8 @@ class HistoryStore:
                 "(session_key, runtime, repo_path, worktree_path, branch, "
                 " parent_session_key, compare_group, state, source_app, cwd, "
                 " last_event_type, last_tool, event_count, started_at, updated_at, ended_at, "
-                " last_seen, launched, test, agent_pid, tty) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " last_seen, launched, test, agent_pid, tty, overlay, overlay_session) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     key,
                     event.get("runtime"),
@@ -530,6 +536,8 @@ class HistoryStore:
                     1 if event.get("test") else 0,
                     event.get("agent_pid"),
                     event.get("tty"),
+                    event.get("overlay"),
+                    event.get("overlay_session"),
                 ),
             )
         else:
@@ -558,7 +566,10 @@ class HistoryStore:
                 "agent_pid = COALESCE(?, agent_pid), "
                 # Newest tty wins (an agent resumed in a different tab should
                 # relabel), but a tty-less event never clears a known one.
-                "tty = COALESCE(?, tty) " "WHERE session_key = ?",
+                "tty = COALESCE(?, tty), "
+                "overlay = COALESCE(?, overlay), "
+                "overlay_session = COALESCE(?, overlay_session) "
+                "WHERE session_key = ?",
                 (
                     event.get("runtime"),
                     event.get("repo_path"),
@@ -577,6 +588,8 @@ class HistoryStore:
                     1 if event.get("test") else 0,
                     event.get("agent_pid"),
                     event.get("tty"),
+                    event.get("overlay"),
+                    event.get("overlay_session"),
                     key,
                 ),
             )

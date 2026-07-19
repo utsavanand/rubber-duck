@@ -60,6 +60,7 @@ from rubberduck.git.spotlight import spotlight_to_main
 from rubberduck.git.worktrees import GitError
 from rubberduck.harnesses import REGISTRY, runtime_for
 from rubberduck.helpers import browse, security
+from rubberduck.overlays import OVERLAYS, enrich_with_overlay, valid_overlay_session
 from rubberduck.persistence.checkpoints import build_checkpoint
 from rubberduck.persistence.history import HistoryStore
 from rubberduck.persistence.snapshots import SnapshotManager, restore_command_for
@@ -392,6 +393,13 @@ class Server:
         # same /dev/tty… constraint as the heartbeat's.
         if "tty" in raw and not security.valid_tty(raw.get("tty")):
             raw["tty"] = None
+        # Overlay identity is hook-forwarded env: the name must be a registered
+        # custom harness, and the overlay session id lands in a file path (the
+        # adapter reads <cwd>/…/<id>.json), so both are validated or dropped.
+        if "overlay" in raw and raw.get("overlay") not in OVERLAYS:
+            raw["overlay"] = None
+        if "overlay_session" in raw and not valid_overlay_session(raw.get("overlay_session")):
+            raw["overlay_session"] = None
         # A deleted (tombstoned) session whose agent is still running keeps firing
         # hooks. Drop ALL of its events here — including SessionStart — so a
         # session you deleted stays gone: no phantom rows, no events leaking into
@@ -469,11 +477,11 @@ class Server:
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
         rows = self.history.sessions()
         titles = await self._terminal_titles()
-        if titles:
-            for r in rows:
-                title = titles.get(str(r.get("tty") or ""))
-                if title:
-                    r["terminal_title"] = title
+        for r in rows:
+            title = titles.get(str(r.get("tty") or ""))
+            if title:
+                r["terminal_title"] = title
+            enrich_with_overlay(r)
         await _write_json(writer, 200, {"sessions": rows})
 
     async def _terminal_titles(self) -> dict[str, str]:

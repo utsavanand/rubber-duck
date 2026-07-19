@@ -46,6 +46,22 @@ describe("viewFromPersisted", () => {
     ).toBe("My name");
   });
 
+  it("prefers the custom harness's session name over the tab title", () => {
+    expect(
+      viewFromPersisted(
+        persisted({
+          overlay_name: "rubber-duck [uv-suite]",
+          terminal_title: "Tab title",
+          source_app: "rubber-duck",
+        }),
+      ).label,
+    ).toBe("rubber-duck [uv-suite]");
+    expect(
+      viewFromPersisted(persisted({ name: "Renamed", overlay_name: "uv name" }))
+        .label,
+    ).toBe("Renamed");
+  });
+
   it("maps the grp column to the group field, leaving ungrouped as undefined", () => {
     expect(viewFromPersisted(persisted({ grp: "payments" })).group).toBe(
       "payments",
