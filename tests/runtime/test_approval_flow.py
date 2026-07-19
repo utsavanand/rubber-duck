@@ -73,11 +73,11 @@ def test_permission_request_surfaces_as_approval(tmp_path: Path) -> None:
     assert status == 200
 
 
-def test_blocking_approval_round_trip(tmp_path: Path) -> None:
-    """The real path: a hook registers a request, the dashboard decides it, and
-    the hook reads the decision back (then it's forgotten)."""
+def _round_trip(tmp_path: Path, runtime: str, decision: str) -> tuple[dict, dict, dict]:
+    """Register a blocking request for `runtime`, decide it, and poll the
+    decision back the way the hook script does. Returns (before, after, gone)."""
 
-    async def scenario() -> tuple[str, str, str]:
+    async def scenario() -> tuple[dict, dict, dict]:
         store = HistoryStore(tmp_path / "db.sqlite")
         srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
         port = srv.sockets[0].getsockname()[1]
@@ -86,21 +86,49 @@ def test_blocking_approval_round_trip(tmp_path: Path) -> None:
                 _post,
                 port,
                 "/approvals",
-                {"session_key": "s1", "tool_name": "WebFetch", "tool_input": {"url": "http://x"}},
+                {
+                    "session_key": "s1",
+                    "tool_name": "WebFetch",
+                    "tool_input": {"url": "http://x"},
+                    "runtime": runtime,
+                },
             )
             rid = reg["id"]  # type: ignore[index]
             before = await asyncio.to_thread(_get, port, f"/approvals/{rid}/decision")
-            await asyncio.to_thread(
-                _post, port, f"/approvals/{rid}/decide", {"decision": "approve"}
-            )
+            await asyncio.to_thread(_post, port, f"/approvals/{rid}/decide", {"decision": decision})
             after = await asyncio.to_thread(_get, port, f"/approvals/{rid}/decision")
             gone = await asyncio.to_thread(_get, port, f"/approvals/{rid}/decision")
-        return before["status"], after["status"], gone["status"]  # type: ignore[index]
+        return before, after, gone  # type: ignore[return-value]
 
-    before, after, gone = asyncio.run(scenario())
-    assert before == "pending"
-    assert after == "approve"
-    assert gone == "gone"  # forgotten after the hook consumed it
+    return asyncio.run(scenario())
+
+
+def test_blocking_approval_round_trip(tmp_path: Path) -> None:
+    """The real path: a hook registers a request, the dashboard decides it, and
+    the hook reads the decision back (then it's forgotten). The decided response
+    carries the harness's exact stdout JSON, rendered from its ApprovalSpec."""
+    before, after, gone = _round_trip(tmp_path, "claude-code", "approve")
+    assert before["status"] == "pending"
+    assert after["status"] == "approve"
+    assert json.loads(after["output"]) == {  # type: ignore[arg-type]
+        "hookSpecificOutput": {
+            "hookEventName": "PermissionRequest",
+            "decision": {"behavior": "allow"},
+        }
+    }
+    assert gone["status"] == "gone"  # forgotten after the hook consumed it
+
+
+def test_decision_output_is_per_harness(tmp_path: Path) -> None:
+    """Copilot gets its own decision shape; a runtime with no ApprovalSpec (or
+    none given) gets no output at all — the hook prints nothing and the agent
+    falls through to its inline prompt."""
+    _, copilot, _ = _round_trip(tmp_path, "copilot", "deny")
+    assert json.loads(copilot["output"]) == {"permissionDecision": "deny"}  # type: ignore[arg-type]
+
+    _, unknown, _ = _round_trip(tmp_path, "", "approve")
+    assert unknown["status"] == "approve"
+    assert "output" not in unknown
 
 
 def test_ask_user_question_is_not_registered(tmp_path: Path) -> None:

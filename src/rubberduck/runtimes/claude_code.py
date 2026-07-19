@@ -23,7 +23,7 @@ import shlex
 from pathlib import Path
 
 from rubberduck.agents.hooks_install import claude_style_build, claude_style_strip
-from rubberduck.runtimes.base import Harness, HookSpec, SessionState
+from rubberduck.runtimes.base import ApprovalSpec, Harness, HookSpec, SessionState
 
 
 def project_slug(cwd: Path) -> str:
@@ -43,6 +43,15 @@ class ClaudeCodeRuntime(Harness):
         repo_rel=Path(".claude") / "settings.json",
         build=claude_style_build,
         strip=claude_style_strip,
+    )
+    # Claude's PermissionRequest hook blocks and accepts a decision on stdout
+    # (https://docs.anthropic.com/en/docs/claude-code/hooks — permissionDecision).
+    approval = ApprovalSpec(
+        blocking_event="PermissionRequest",
+        allow='{"hookSpecificOutput":{"hookEventName":"PermissionRequest",'
+        '"decision":{"behavior":"allow"}}}',
+        deny='{"hookSpecificOutput":{"hookEventName":"PermissionRequest",'
+        '"decision":{"behavior":"deny"}}}',
     )
 
     def __init__(self, command: str = "claude") -> None:

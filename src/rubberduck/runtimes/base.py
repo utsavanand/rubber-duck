@@ -20,6 +20,21 @@ SessionState = Literal["idle", "busy", "waiting", "terminated", "stopped", "arch
 
 
 @dataclass(frozen=True)
+class ApprovalSpec:
+    """An agent's external-approval half: which (canonical) hook event blocks
+    waiting for the dashboard's decision, and the exact JSON the agent expects
+    on the hook's stdout for each outcome. None on a Harness means the agent
+    can't route approval externally (observe-only — answer in its terminal)."""
+
+    blocking_event: str
+    allow: str
+    deny: str
+
+    def output(self, decision: str) -> str:
+        return self.allow if decision == "approve" else self.deny
+
+
+@dataclass(frozen=True)
 class HookSpec:
     """An agent's observe half: where its hook config lives and how to merge/strip
     Rubberduck's entries. `build` and `strip` operate on the parsed JSON config so
@@ -44,6 +59,9 @@ class Harness(ABC):
     name: str
     # An agent's observe half; None for driven-only agents (no hook system).
     hook_spec: HookSpec | None = None
+    # External-approval capability; None means observe-only (e.g. Codex, whose
+    # approval prompts are interactive-only upstream).
+    approval: ApprovalSpec | None = None
 
     @abstractmethod
     def __init__(self, command: str) -> None: ...

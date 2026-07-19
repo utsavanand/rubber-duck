@@ -69,6 +69,9 @@ class Approval:
     # True when a blocking hook is waiting on this decision (the dashboard is the
     # authority). False for observe-only rows (answer in the terminal).
     blocking: bool = field(default=False)
+    # Which harness asked (claude-code | copilot | …) — the decision endpoint
+    # renders that harness's ApprovalSpec output shape from it.
+    runtime: str = field(default="")
 
 
 class ApprovalRegistry:
@@ -86,6 +89,7 @@ class ApprovalRegistry:
         created_at: int,
         *,
         blocking: bool,
+        runtime: str = "",
     ) -> Approval:
         """Create a pending approval (from the blocking hook's POST, or from a
         PermissionRequest event). Returns it with its server-assigned id."""
@@ -96,6 +100,7 @@ class ApprovalRegistry:
             detail=request_detail(tool_input, tool_name),
             created_at=created_at,
             blocking=blocking,
+            runtime=runtime,
         )
         self._pending[approval.id] = approval
         return approval

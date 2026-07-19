@@ -43,9 +43,20 @@ _MARKER = "rubberduck"  # present in our command string so we can find/remove it
 # The pre-exec permission event must BLOCK so the hook can long-poll Rubberduck
 # for the user's decision and return it to the agent (the dashboard becomes the
 # approval authority). All other events stay fire-and-forget. Timeout must exceed
-# the hook's poll cap (~180s) so the agent waits for a real answer.
-_BLOCKING_EVENT = "PermissionRequest"
+# the hook's poll cap (~180s) so the agent waits for a real answer. Which event
+# blocks (if any) is each harness's ApprovalSpec.blocking_event.
 _BLOCKING_TIMEOUT = 200
+
+
+def _blocking_event(runtime: str) -> str | None:
+    """The canonical event that blocks for `runtime`'s external approval, or
+    None for harnesses that can't route approval (their hooks all stay
+    fire-and-forget). Lazy import: the runtimes import this module's build/strip
+    helpers, so importing the registry at module level would be circular."""
+    from rubberduck.harnesses import REGISTRY
+
+    cls = REGISTRY.get(runtime)
+    return cls.approval.blocking_event if cls and cls.approval else None
 
 
 def hook_script_path() -> Path:
@@ -63,21 +74,21 @@ def _is_ours(command: str) -> bool:
 def claude_style_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
     # Codex shares the file shape but does NOT support the `async` key — it skips
     # any hook that has one ("async hooks are not supported yet"). So for codex we
-    # omit `async` entirely (its hooks run synchronously, bounded by `timeout`);
-    # codex also has no blocking-approval support, so there's no blocking event.
+    # omit `async` entirely (its hooks run synchronously, bounded by `timeout`).
     supports_async = runtime != "codex"
+    blocking_event = _blocking_event(runtime)
     hooks: dict[str, Any] = config.setdefault("hooks", {})
     for event in _EVENTS:
         entries = hooks.setdefault(event, [])
         entries[:] = [e for e in entries if not _claude_entry_is_ours(e)]
-        blocking = supports_async and event == _BLOCKING_EVENT
+        blocking = event == blocking_event
         hook: dict[str, Any] = {
             "type": "command",
             "command": f'"{script}" {event} {runtime}',
             "timeout": _BLOCKING_TIMEOUT if blocking else 5,
         }
         if supports_async:
-            # The permission event blocks (waits for the dashboard's decision);
+            # The approval event blocks (waits for the dashboard's decision);
             # everything else is fire-and-forget.
             hook["async"] = not blocking
         entries.append({"matcher": "*", "hooks": [hook]})
@@ -117,6 +128,7 @@ _COPILOT_EVENTS = {
 
 
 def copilot_build(config: dict[str, Any], script: str, runtime: str) -> dict[str, Any]:
+    blocking_event = _blocking_event(runtime)
     config.setdefault("version", 1)
     hooks: dict[str, Any] = config.setdefault("hooks", {})
     for canonical, cop_event in _COPILOT_EVENTS.items():
@@ -129,7 +141,9 @@ def copilot_build(config: dict[str, Any], script: str, runtime: str) -> dict[str
                 # canonical event name (so the server's vocabulary is uniform)
                 # and the runtime so events are attributed to copilot.
                 "command": f'"{script}" {canonical} {runtime}',
-                "timeoutSec": 5,
+                # The approval event must outlive the hook's ~180s decision
+                # poll; everything else stays short.
+                "timeoutSec": _BLOCKING_TIMEOUT if canonical == blocking_event else 5,
             }
         )
     return config
