@@ -106,26 +106,17 @@ RID=$(printf '%s' "$PAYLOAD" | curl -s -m 5 -X POST "$URL/approvals" \
 
 # Long-poll for the decision. Cap total wait so the agent isn't blocked forever
 # if you never answer (then fall through to its own prompt). ~3 minutes.
+# A decided response carries `output`: the decision JSON this harness expects,
+# rendered server-side from its ApprovalSpec — print it verbatim. No output
+# (old server, unknown runtime) -> print nothing -> the agent prompts inline.
 DEADLINE=$(( $(date +%s) + 180 ))
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-  STATUS=$(curl -s -m 5 "$URL/approvals/$RID/decision" \
-    -H "X-Rubberduck-Token: $TOKEN" 2>/dev/null | jq -r '.status // "gone"')
+  RESP=$(curl -s -m 5 "$URL/approvals/$RID/decision" \
+    -H "X-Rubberduck-Token: $TOKEN" 2>/dev/null)
+  STATUS=$(printf '%s' "$RESP" | jq -r '.status // "gone"')
   case "$STATUS" in
-    approve)
-      # Per-harness allow shape.
-      if [ "$RUNTIME" = "copilot" ]; then
-        printf '{"permissionDecision":"allow"}'
-      else
-        printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
-      fi
-      exit 0
-      ;;
-    deny)
-      if [ "$RUNTIME" = "copilot" ]; then
-        printf '{"permissionDecision":"deny"}'
-      else
-        printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}'
-      fi
+    approve|deny)
+      printf '%s' "$RESP" | jq -rj '.output // empty'
       exit 0
       ;;
     gone)

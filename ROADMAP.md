@@ -67,11 +67,14 @@ Organized by type of work. `★` marks the current highest-leverage item.
   Harness interface (`ApprovalSpec`). Design: `docs/approval-routing-design.md`.
   - [x] Server: decision store + `GET /approvals/:id/decision` (hook long-polls)
     + `/approvals/:id/decide` repointed at it.
-  - [ ] `ApprovalSpec` on `Harness`; Claude + Copilot declare it, Codex = None.
+  - [x] `ApprovalSpec` on `Harness`; Claude + Copilot declare it, Codex = None.
+    The spec carries the blocking event + the exact allow/deny stdout JSON;
+    `/approvals/:id/decision` renders it (`output`), the hook prints it
+    verbatim (no per-runtime branching in bash), and hook install derives the
+    blocking event + long timeout from it (fixes Copilot's permissionRequest
+    hook being capped at 5s). E2E: `web/e2e/approvals.spec.ts`.
   - [x] Hook script: blocks, long-polls, emits per-runtime decision JSON, fail-open;
     PermissionRequest installed async:false. Claude + Copilot route externally.
-  - [ ] Optional: lift the per-runtime decision shape into an `ApprovalSpec` on
-    Harness (currently branched in the hook script).
 - [ ] **Session lifecycle: stop / resume / archive / delete.** Stop is a dead
   end today (kills the agent, row drops from Active, no way back). Make Stop
   *pause* a resumable session, add Archive as the declutter middle-ground, and

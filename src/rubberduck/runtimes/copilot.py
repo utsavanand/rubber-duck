@@ -11,7 +11,7 @@ import sqlite3
 from pathlib import Path
 
 from rubberduck.agents.hooks_install import copilot_build, copilot_strip
-from rubberduck.runtimes.base import Harness, HookSpec, SessionState
+from rubberduck.runtimes.base import ApprovalSpec, Harness, HookSpec, SessionState
 
 _WORKING = re.compile(r"(working|thinking|running|generating)", re.IGNORECASE)
 _WAITING = re.compile(r"(allow|approve|\(y/n\)|continue\?)", re.IGNORECASE)
@@ -24,6 +24,12 @@ class CopilotRuntime(Harness):
         repo_rel=Path(".github") / "hooks" / "rubberduck.json",
         build=copilot_build,
         strip=copilot_strip,
+    )
+    # Canonical event name — copilot_build maps it to Copilot's permissionRequest.
+    approval = ApprovalSpec(
+        blocking_event="PermissionRequest",
+        allow='{"permissionDecision":"allow"}',
+        deny='{"permissionDecision":"deny"}',
     )
 
     def __init__(self, command: str = "copilot") -> None:

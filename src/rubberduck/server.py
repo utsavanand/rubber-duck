@@ -57,7 +57,7 @@ from rubberduck.core.orchestrator import Orchestrator
 from rubberduck.git import gitdetect
 from rubberduck.git.spotlight import spotlight_to_main
 from rubberduck.git.worktrees import GitError
-from rubberduck.harnesses import runtime_for
+from rubberduck.harnesses import REGISTRY, runtime_for
 from rubberduck.helpers import browse, security
 from rubberduck.persistence.checkpoints import build_checkpoint
 from rubberduck.persistence.history import HistoryStore
@@ -1172,13 +1172,17 @@ class Server:
             req.get("tool_input") or {},
             int(time.time() * 1000),
             blocking=True,
+            runtime=str(req.get("runtime") or ""),
         )
         await _write_json(writer, 200, {"id": approval.id})
 
     async def _approval_decision(self, writer: asyncio.StreamWriter, approval_id: str) -> None:
         """The blocking hook polls this for the user's decision. `pending` while
         unanswered; `approve`/`deny` once decided; `gone` if the request was
-        cleared (the hook should then fall through to the agent's own prompt)."""
+        cleared (the hook should then fall through to the agent's own prompt).
+        A decided response carries `output`: the exact JSON the agent expects on
+        the hook's stdout, rendered from its harness's ApprovalSpec — so the hook
+        script prints it verbatim instead of knowing per-harness shapes."""
         a = self.approvals.get(approval_id)
         if a is None:
             await _write_json(writer, 200, {"status": "gone"})
@@ -1189,7 +1193,12 @@ class Server:
         # Decided: report it, then forget so the registry doesn't accumulate.
         decision = a.decided
         self.approvals.forget(approval_id)
-        await _write_json(writer, 200, {"status": decision})
+        cls = REGISTRY.get(a.runtime)
+        spec = cls.approval if cls else None
+        payload: dict[str, Any] = {"status": decision}
+        if spec:
+            payload["output"] = spec.output(decision)
+        await _write_json(writer, 200, payload)
 
     async def _list_approvals(self, writer: asyncio.StreamWriter) -> None:
         pending = [

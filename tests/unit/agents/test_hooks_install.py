@@ -23,6 +23,38 @@ def test_install_creates_settings_with_all_events(tmp_path: Path) -> None:
     assert cmd.endswith(" PostToolUse claude-code")
 
 
+def test_claude_permission_event_blocks_for_the_dashboard_decision(tmp_path: Path) -> None:
+    """Claude's ApprovalSpec makes PermissionRequest synchronous with a timeout
+    that outlives the hook's ~180s decision poll; every other event stays
+    fire-and-forget with a short timeout."""
+    install(global_scope=False, project_dir=tmp_path)
+    hooks = read_settings(tmp_path)["hooks"]
+    permission = hooks["PermissionRequest"][0]["hooks"][0]
+    assert permission["async"] is False
+    assert permission["timeout"] == 200
+    post = hooks["PostToolUse"][0]["hooks"][0]
+    assert post["async"] is True
+    assert post["timeout"] == 5
+
+
+def test_codex_has_no_blocking_event(tmp_path: Path) -> None:
+    """Codex declares no ApprovalSpec (approval is interactive-only upstream),
+    so nothing blocks — and no `async` key at all, which codex would reject."""
+    install(global_scope=False, project_dir=tmp_path, agent="codex")
+    config = json.loads((tmp_path / ".codex" / "hooks.json").read_text())
+    for event in _EVENTS:
+        hook = config["hooks"][event][0]["hooks"][0]
+        assert "async" not in hook
+        assert hook["timeout"] == 5
+
+
+def test_copilot_permission_event_gets_the_blocking_timeout(tmp_path: Path) -> None:
+    install(global_scope=False, project_dir=tmp_path, agent="copilot")
+    config = json.loads((tmp_path / ".github" / "hooks" / "rubberduck.json").read_text())
+    assert config["hooks"]["permissionRequest"][0]["timeoutSec"] == 200
+    assert config["hooks"]["postToolUse"][0]["timeoutSec"] == 5
+
+
 def test_install_is_idempotent(tmp_path: Path) -> None:
     install(global_scope=False, project_dir=tmp_path)
     install(global_scope=False, project_dir=tmp_path)
