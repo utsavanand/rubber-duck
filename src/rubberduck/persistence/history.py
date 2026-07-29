@@ -445,13 +445,33 @@ class HistoryStore:
 
     def touch(self, key: str, ts: int, *, tty: str | None = None) -> bool:
         """Record a liveness ping (and the tab's tty, so delete can close it).
-        Returns whether the session exists."""
-        cur = self._conn.execute(
+        Returns whether the session exists.
+
+        A ping also REVIVES an archived session: the sweep archives a launched
+        tab after 60s of silence, but sleep pauses the ping loop too, so every
+        laptop sleep false-archived live tabs on wake. Resumed pings prove the
+        tab is alive — and can't misfire on a deliberately-archived session,
+        because manual archive closes the tab (nothing left to ping from).
+        The revived state is recomputed from the last agent event, so a
+        session that was waiting on you resurfaces as waiting, not as a
+        generic busy. Stopped stays stopped: that's an explicit user action,
+        undone only by Resume."""
+        row = self._conn.execute(
+            "SELECT state, last_event_type FROM sessions WHERE session_key = ?", (key,)
+        ).fetchone()
+        if row is None:
+            return False
+        self._conn.execute(
             "UPDATE sessions SET last_seen = ?, tty = COALESCE(?, tty) WHERE session_key = ?",
             (ts, tty, key),
         )
+        if row["state"] == "archived":
+            revived = derive_state({"event_type": row["last_event_type"]}, None)
+            self._conn.execute(
+                "UPDATE sessions SET state = ? WHERE session_key = ?", (revived, key)
+            )
         self._conn.commit()
-        return cur.rowcount > 0
+        return True
 
     # States we never sweep — the session is already at rest or put away.
     _AT_REST = ("terminated", "stopped", "archived")
@@ -565,7 +585,10 @@ class HistoryStore:
                 # source_app is identity: set once on the first event, never
                 # overwritten — later events (hooks) only carry a cwd-basename guess.
                 "cwd = COALESCE(?, cwd), "
-                "last_event_type = ?, "
+                # COALESCE: a lifecycle-only marker (sweep archive, stop) has no
+                # event_type and must not erase the last real agent event — the
+                # ping-revival path recomputes state from it.
+                "last_event_type = COALESCE(?, last_event_type), "
                 "last_tool = COALESCE(?, last_tool), "
                 "event_count = event_count + 1, "
                 "updated_at = ?, "

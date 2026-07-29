@@ -366,3 +366,32 @@ def test_create_folder_is_idempotent(tmp_path: Path) -> None:
     store.create_folder("dup")
     store.create_folder("dup")
     assert store.folders().count("dup") == 1
+
+
+def test_ping_revives_a_falsely_archived_session(tmp_path: Path) -> None:
+    """Sleep pauses the heartbeat loop, so the sweep false-archives live tabs
+    on wake. A resumed ping proves the tab is alive and revives the session —
+    back to the state its last agent event implies (a session that was waiting
+    on you resurfaces as waiting, not generic busy). Deliberate archives can't
+    misfire: manual archive closes the tab, so nothing pings again."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "launched": True})
+    bus.publish({"event_type": "Notification", "session_key": "s1"})
+    bus.publish({"session_key": "s1", "lifecycle": "archived"})  # the sweep's guess
+    assert store.session("s1")["state"] == "archived"
+
+    assert store.touch("s1", 1_000_000) is True
+    assert store.session("s1")["state"] == "waiting"  # from the Notification
+
+
+def test_ping_never_revives_a_stopped_session(tmp_path: Path) -> None:
+    """Stopped is an explicit user action, undone only by Resume — a stray
+    heartbeat from a not-yet-dead tab must not flip it back."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "launched": True})
+    bus.publish({"session_key": "s1", "lifecycle": "stopped"})
+
+    store.touch("s1", 1_000_000)
+    assert store.session("s1")["state"] == "stopped"
