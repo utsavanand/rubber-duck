@@ -49,8 +49,12 @@ def test_derive_state_transitions() -> None:
     assert derive_state({"event_type": "PreToolUse"}, "stopped") == "stopped"
     assert derive_state({"event_type": "Stop"}, "stopped") == "stopped"
     assert derive_state({"event_type": "SessionStart"}, "stopped") == "busy"
-    # Archived behaves the same; an explicit lifecycle marker sets state directly.
-    assert derive_state({"event_type": "PreToolUse"}, "archived") == "archived"
+    # Archived is a sweep's GUESS that the agent is gone — any proof of life
+    # revives it (an archived-while-alive session was invisible even when it
+    # hit "waiting on you"). Explicit lifecycle markers still set it directly.
+    assert derive_state({"event_type": "PreToolUse"}, "archived") == "busy"
+    assert derive_state({"event_type": "Notification"}, "archived") == "waiting"
+    assert derive_state({"event_type": "Stop"}, "archived") == "idle"
     assert derive_state({"lifecycle": "archived"}, "busy") == "archived"
     assert derive_state({"lifecycle": "stopped"}, "busy") == "stopped"
     assert derive_state({"event_type": "SessionStart"}, "archived") == "busy"

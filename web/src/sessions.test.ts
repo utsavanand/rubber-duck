@@ -4,6 +4,7 @@ import {
   applyEvent,
   effectiveState,
   IDLE_SETTLE_MS,
+  matchesQuery,
 } from "./sessions";
 import { RubberduckEvent, SessionView } from "./types";
 
@@ -147,5 +148,32 @@ describe("applyAll", () => {
     expect(s.launched).toBe(true);
     expect(s.eventCount).toBe(3);
     expect(s.idleSince).toBe(9000);
+  });
+});
+
+describe("matchesQuery", () => {
+  const s: SessionView = {
+    key: "k1",
+    label: "Entourage Sprint 7/18",
+    state: "busy",
+    lastEventType: "",
+    startedAt: 0,
+    updatedAt: 0,
+    eventCount: 1,
+    repoName: "railway-deploy",
+    group: "Interview Prep",
+  };
+
+  it("matches label, repo, and folder case-insensitively", () => {
+    expect(matchesQuery(s, "entourage")).toBe(true);
+    expect(matchesQuery(s, "RAILWAY")).toBe(true);
+    expect(matchesQuery(s, "interview")).toBe(true);
+    expect(matchesQuery(s, "rails ")).toBe(false);
+    expect(matchesQuery(s, "system design")).toBe(false);
+  });
+
+  it("empty or whitespace query matches everything", () => {
+    expect(matchesQuery(s, "")).toBe(true);
+    expect(matchesQuery(s, "   ")).toBe(true);
   });
 });

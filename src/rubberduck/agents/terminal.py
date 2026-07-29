@@ -51,7 +51,7 @@ def open_in_terminal(
     exports = "".join(f"export {k}={_q(v)}; " for k, v in (env or {}).items())
     agent = " ".join(_q(a) for a in argv)
     if heartbeat is not None:
-        agent = with_heartbeat(agent, *heartbeat)
+        agent = with_heartbeat(agent, *heartbeat, title=title)
     command = f"cd {_q(cwd)} && {exports}{agent}"
     if title:
         # Set the tab title via an OSC sequence before the agent runs. (iTerm and
@@ -284,10 +284,14 @@ def _close_iterm_by_tty(tty: str) -> str:
     )
 
 
-def with_heartbeat(agent: str, url: str, session_key: str) -> str:
+def with_heartbeat(agent: str, url: str, session_key: str, title: str | None = None) -> str:
     """Wrap the agent command so the tab pings `url` every 20s while alive and
     stops when the agent exits or the tab is killed. The trap kills the loop on
-    EXIT; killing the tab takes the whole shell (loop included) down with it."""
+    EXIT; killing the tab takes the whole shell (loop included) down with it.
+    When `title` is given, each ping also re-writes the tab title (OSC 0 to the
+    tab's own tty): agents like Claude continuously set their own title, which
+    clobbers the session name the launcher set — reasserting every 20s keeps
+    the tab findable by the name you gave the session."""
     # $(tty) is the tab's device (e.g. /dev/ttys003) — stable and reported on
     # every ping so the server can find and close this exact tab on delete.
     #
@@ -311,6 +315,8 @@ def with_heartbeat(agent: str, url: str, session_key: str) -> str:
         '-d "{\\"session_key\\":\\"$__rd_key\\",\\"tty\\":\\"$__rd_tty\\"}" '
         ">/dev/null 2>&1"
     )
+    if title:
+        ping += f"; printf '\\033]0;%s\\007' {_q(title)} > \"$__rd_tty\" 2>/dev/null"
     return (
         f"{tty_var}( while true; do {ping}; sleep 20; done ) & __rd_hb=$!; "
         f'trap "kill $__rd_hb 2>/dev/null" EXIT; {agent}'

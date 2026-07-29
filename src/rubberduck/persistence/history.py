@@ -88,6 +88,18 @@ def session_key_of(event: Event) -> str | None:
     return str(key) if key else None
 
 
+# Events only a running agent emits — proof of life for the archived guard.
+_ALIVE_EVENTS = {
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
+    "Notification",
+    "Stop",
+}
+
+
 def derive_state(event: Event, prev: SessionState | None) -> SessionState:
     # An explicit lifecycle marker (a deliberate stop/archive/sweep) always wins.
     lifecycle = event.get("lifecycle")
@@ -95,11 +107,19 @@ def derive_state(event: Event, prev: SessionState | None) -> SessionState:
         return "archived"
     if lifecycle == "stopped":
         return "stopped"
-    # A stopped or archived session is at rest: only an explicit resume
-    # (SessionStart) revives it. A stray late event — including the resumed-then-
-    # exited agent's SessionEnd — must NOT flip it (e.g. archived -> terminated).
+    # A stopped session is at rest: only an explicit resume (SessionStart)
+    # revives it. A stray late event — including the resumed-then-exited
+    # agent's SessionEnd — must NOT flip it (e.g. stopped -> terminated).
     # This guard runs before the SessionEnd/terminated rule on purpose.
-    if prev in ("stopped", "archived") and event.get("event_type") != "SessionStart":
+    if prev == "stopped" and event.get("event_type") != "SessionStart":
+        return prev
+    # Archived is softer: the sweep archives a session when its agent LOOKS
+    # gone (pid missing, heartbeat lapsed) — but that's a guess, and a wrong
+    # one left live agents invisible: archived-while-alive sessions kept
+    # working, even hit "waiting on you", and never surfaced (only
+    # SessionStart revived them). Any event that proves the agent is alive
+    # un-archives; the stray late SessionEnd stays guarded like stopped.
+    if prev == "archived" and event.get("event_type") not in _ALIVE_EVENTS:
         return prev
     if lifecycle == "terminated" or event.get("event_type") == "SessionEnd":
         return "terminated"
