@@ -117,3 +117,15 @@ export function applyEvent(
 export function applyAll(events: RubberduckEvent[]): Map<string, SessionView> {
   return events.reduce(applyEvent, new Map<string, SessionView>());
 }
+
+// Case-insensitive session search over the fields a user thinks of as "the
+// name": the display label, the repo, and the folder. Used by the left panel's
+// search box; an active query searches every lifecycle (including Archived) so
+// a put-away session is still findable by name.
+export function matchesQuery(s: SessionView, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [s.label, s.repoName ?? "", s.group ?? ""].some((f) =>
+    f.toLowerCase().includes(q),
+  );
+}

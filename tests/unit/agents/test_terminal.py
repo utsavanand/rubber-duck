@@ -103,6 +103,19 @@ def test_heartbeat_reports_tty_so_the_tab_can_be_found() -> None:
     assert "trap" in cmd and "claude" in cmd
 
 
+def test_heartbeat_reasserts_the_tab_title_each_ping() -> None:
+    """Claude keeps rewriting the tab title with its own status; the heartbeat
+    loop writes the session name back (OSC 0 to the tab's tty) every ping so
+    the tab stays findable by the name the session was given."""
+    cmd = with_heartbeat("claude", "http://x/heartbeat", "sess-1", title="My Session")
+    reassert = "printf '\\033]0;%s\\007' 'My Session' > \"$__rd_tty\""
+    assert reassert in cmd
+    # Inside the loop (after `while true`), not a one-shot before the agent.
+    assert cmd.index("while true") < cmd.index(reassert)
+    # No title -> no reassert (nothing to fight for).
+    assert "]0;" not in with_heartbeat("claude", "http://x/heartbeat", "sess-1")
+
+
 def test_close_scripts_match_on_tty() -> None:
     term = _close_terminal_by_tty("/dev/ttys003")
     iterm = _close_iterm_by_tty("/dev/ttys003")

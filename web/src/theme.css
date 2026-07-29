@@ -843,6 +843,22 @@ code,
   align-items: stretch;
   gap: 10px;
 }
+.rd-search {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background-color: var(--card);
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 100%;
+}
+.rd-search::placeholder {
+  color: var(--muted);
+}
+.rd-search:focus {
+  outline: none;
+  border-color: var(--accent, #e6b800);
+}
 .rd-filters {
   display: flex;
   align-items: center;
