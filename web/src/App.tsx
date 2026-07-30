@@ -9,7 +9,7 @@ import { NewFolderModal } from "./NewFolderModal";
 import { Pulse } from "./Pulse";
 import { SessionDetail } from "./SessionDetail";
 import { SnapshotsModal } from "./SnapshotsModal";
-import { effectiveState } from "./sessions";
+import { effectiveState, matchesQuery } from "./sessions";
 import { SessionView } from "./types";
 import { ToastProvider, useToast } from "./ui";
 import { useEventStream } from "./useEventStream";
@@ -85,6 +85,7 @@ function Dashboard() {
 
   const [lifecycle, setLifecycle] = useState<Lifecycle>("active");
   const [origin, setOrigin] = useState<Origin>("all");
+  const [query, setQuery] = useState("");
   const [modal, setModal] = useState<
     "launch" | "compare" | "snapshots" | "folder" | null
   >(null);
@@ -159,8 +160,12 @@ function Dashboard() {
     },
   ];
 
-  const shown =
-    lifecycle === "active"
+  // An active search looks across EVERY lifecycle (archived included): the
+  // point of searching by name is finding a session wherever it's filed.
+  const searching = query.trim() !== "";
+  const shown = searching
+    ? inOrigin.filter((s) => matchesQuery(s, query))
+    : lifecycle === "active"
       ? live.filter(isActive)
       : lifecycle === "idle"
         ? live.filter(isIdle)
@@ -227,6 +232,14 @@ function Dashboard() {
         <section className="rd-agents">
           <div className="rd-panel-head rd-panel-head-stacked">
             <span>Agents</span>
+            <input
+              className="rd-search"
+              type="search"
+              placeholder="Search sessions by name…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search sessions by name"
+            />
             <div className="rd-filters">
               <div className="rd-segment">
                 {LIFECYCLES.map((f) => (
@@ -256,9 +269,11 @@ function Dashboard() {
           </div>
           {shown.length === 0 ? (
             <p className="rd-panel-empty">
-              {sessions.length === 0
-                ? "No agents yet. Launch one, or run Claude Code in a hooked repo."
-                : "Nothing here. Switch to All to see terminated agents."}
+              {searching
+                ? `No sessions match “${query.trim()}”.`
+                : sessions.length === 0
+                  ? "No agents yet. Launch one, or run Claude Code in a hooked repo."
+                  : "Nothing here. Switch to All to see terminated agents."}
             </p>
           ) : (
             <AgentTree

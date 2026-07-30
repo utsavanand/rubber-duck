@@ -107,20 +107,24 @@ export function useEventStream(): {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/sessions")
-      .then((r) => r.json())
-      .then((data: { sessions: PersistedSession[] }) => {
-        if (!cancelled) dispatch({ kind: "seed", sessions: data.sessions });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
+    // Seed from the durable store, and RE-seed every time the stream
+    // (re)connects: a page loaded while the server was down (a deploy restart)
+    // got an empty one-shot seed, and quiet sessions have no events to come
+    // back through — they'd stay invisible until a manual reload. EventSource
+    // retries on its own, so onopen is exactly "the server is back".
+    const seed = () =>
+      fetch("/sessions")
+        .then((r) => r.json())
+        .then((data: { sessions: PersistedSession[] }) => {
+          if (!cancelled) dispatch({ kind: "seed", sessions: data.sessions });
+        })
+        .catch(() => undefined);
+    seed();
     const source = new EventSource("/stream");
-    source.onopen = () => setConnected(true);
+    source.onopen = () => {
+      setConnected(true);
+      seed();
+    };
     source.onerror = () => setConnected(false);
     source.onmessage = (msg) => {
       const data: unknown = JSON.parse(msg.data);
@@ -135,7 +139,10 @@ export function useEventStream(): {
         setRecentEvents((prev) => [event, ...prev].slice(0, 100));
       }
     };
-    return () => source.close();
+    return () => {
+      cancelled = true;
+      source.close();
+    };
   }, []);
 
   // Stable order: newest session first by START time, which never changes —

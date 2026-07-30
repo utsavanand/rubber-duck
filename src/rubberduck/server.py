@@ -474,10 +474,23 @@ class Server:
         ok = self.history.touch(str(key), int(time.time() * 1000), tty=tty)
         await _write_json(writer, 200, {"ok": ok})
 
+    # States whose recorded tty can be trusted to still belong to the session.
+    # ttys are RECYCLED: a terminated/stopped/archived session's device number
+    # is often reassigned to a newer tab, and matching it would dress a dead
+    # row in a live session's tab title (a terminated "Entourage Sprint 7/25"
+    # impersonating the running one).
+    _TITLED_STATES = ("busy", "waiting", "idle")
+
     async def _sessions(self, writer: asyncio.StreamWriter) -> None:
         rows = self.history.sessions()
         titles = await self._terminal_titles()
         for r in rows:
+            # Only live rows get borrowed identity (tab title, overlay name):
+            # ttys are recycled and the overlay probe's pointer file names the
+            # CURRENT suite session — on a dead row either would impersonate
+            # the live session in the same tab/cwd.
+            if r.get("state") not in self._TITLED_STATES:
+                continue
             title = titles.get(str(r.get("tty") or ""))
             if title:
                 r["terminal_title"] = title

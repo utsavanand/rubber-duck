@@ -76,6 +76,46 @@ def test_tty_event_yields_terminal_title(tmp_path: Path, monkeypatch) -> None:  
     assert "terminal_title" not in rows["untitled"]
 
 
+def test_dead_sessions_never_wear_a_live_tabs_title(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """ttys are recycled: a terminated session's device number is often handed
+    to a newer tab. Matching it would dress the dead row in the live session's
+    tab title — two rows with one name, and the dead one reads as "your
+    session terminated". Only live states get titles."""
+    monkeypatch.setattr(
+        server_mod, "terminal_titles", lambda: {"/dev/ttys006": "Entourage Sprint 7/25"}
+    )
+
+    async def scenario() -> list[dict[str, object]]:
+        store = HistoryStore(tmp_path / "db.sqlite")
+        srv = await asyncio.start_server(Server(history=store).handle, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        async with srv:
+            for key, last in (("old", True), ("live", False)):
+                await asyncio.to_thread(
+                    _post_event,
+                    port,
+                    {
+                        "event_type": "SessionStart",
+                        "session_key": key,
+                        "cwd": "/tmp/entourage",
+                        "tty": "/dev/ttys006",
+                        "test": True,
+                    },
+                )
+                if last:
+                    await asyncio.to_thread(
+                        _post_event,
+                        port,
+                        {"event_type": "SessionEnd", "session_key": key, "test": True},
+                    )
+            return await asyncio.to_thread(_sessions, port)
+
+    rows = {str(r["session_key"]): r for r in asyncio.run(scenario())}
+    assert rows["live"]["terminal_title"] == "Entourage Sprint 7/25"
+    assert rows["old"]["state"] == "terminated"
+    assert "terminal_title" not in rows["old"]
+
+
 def test_malformed_tty_is_dropped_at_ingest(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """The tty is hook-supplied and later matched/injected into AppleScript, so
     anything outside the /dev/tty… shape is discarded, not stored."""

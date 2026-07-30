@@ -49,8 +49,12 @@ def test_derive_state_transitions() -> None:
     assert derive_state({"event_type": "PreToolUse"}, "stopped") == "stopped"
     assert derive_state({"event_type": "Stop"}, "stopped") == "stopped"
     assert derive_state({"event_type": "SessionStart"}, "stopped") == "busy"
-    # Archived behaves the same; an explicit lifecycle marker sets state directly.
-    assert derive_state({"event_type": "PreToolUse"}, "archived") == "archived"
+    # Archived is a sweep's GUESS that the agent is gone — any proof of life
+    # revives it (an archived-while-alive session was invisible even when it
+    # hit "waiting on you"). Explicit lifecycle markers still set it directly.
+    assert derive_state({"event_type": "PreToolUse"}, "archived") == "busy"
+    assert derive_state({"event_type": "Notification"}, "archived") == "waiting"
+    assert derive_state({"event_type": "Stop"}, "archived") == "idle"
     assert derive_state({"lifecycle": "archived"}, "busy") == "archived"
     assert derive_state({"lifecycle": "stopped"}, "busy") == "stopped"
     assert derive_state({"event_type": "SessionStart"}, "archived") == "busy"
@@ -362,3 +366,32 @@ def test_create_folder_is_idempotent(tmp_path: Path) -> None:
     store.create_folder("dup")
     store.create_folder("dup")
     assert store.folders().count("dup") == 1
+
+
+def test_ping_revives_a_falsely_archived_session(tmp_path: Path) -> None:
+    """Sleep pauses the heartbeat loop, so the sweep false-archives live tabs
+    on wake. A resumed ping proves the tab is alive and revives the session —
+    back to the state its last agent event implies (a session that was waiting
+    on you resurfaces as waiting, not generic busy). Deliberate archives can't
+    misfire: manual archive closes the tab, so nothing pings again."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "launched": True})
+    bus.publish({"event_type": "Notification", "session_key": "s1"})
+    bus.publish({"session_key": "s1", "lifecycle": "archived"})  # the sweep's guess
+    assert store.session("s1")["state"] == "archived"
+
+    assert store.touch("s1", 1_000_000) is True
+    assert store.session("s1")["state"] == "waiting"  # from the Notification
+
+
+def test_ping_never_revives_a_stopped_session(tmp_path: Path) -> None:
+    """Stopped is an explicit user action, undone only by Resume — a stray
+    heartbeat from a not-yet-dead tab must not flip it back."""
+    store = HistoryStore(tmp_path / "db.sqlite")
+    bus = make_bus(store)
+    bus.publish({"event_type": "SessionStart", "session_key": "s1", "launched": True})
+    bus.publish({"session_key": "s1", "lifecycle": "stopped"})
+
+    store.touch("s1", 1_000_000)
+    assert store.session("s1")["state"] == "stopped"
