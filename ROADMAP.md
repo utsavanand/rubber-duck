@@ -58,6 +58,18 @@ Organized by type of work. `★` marks the current highest-leverage item.
 
 ## ✨ Features
 
+- [x] **Custom harnesses (overlays) — v1: identity.** Two layers: a coding
+  harness runs the model (`Harness`, runtimes/); a custom harness wraps one
+  (UV Suite on claude-code, a team's language wrapper). v1 contract
+  (`overlays.py`): `name`, `base`, `session_meta(cwd, overlay_session)`.
+  Launchers announce via `RUBBERDUCK_OVERLAY(_SESSION)` env, the hook forwards
+  it, /sessions resolves the overlay's own session name; label priority is
+  rename > overlay name > iTerm tab title > folder. UV Suite adapter reads
+  `.uv-suite-state/sessions/<id>.json` (pointer-file fallback for
+  pre-announcement sessions). Design + deferred pieces (launch-through-overlay,
+  skills listing, event vocabulary) with triggers: `docs/custom-harnesses.md`.
+  - [ ] UV Suite side: export the two env vars in its launcher so multi-session
+    projects resolve exactly (pointer fallback covers single-session today).
 - [ ] **Approve / Deny from the dashboard (blocking, cross-harness).** Today the
   permission hook is fire-and-forget and "Approve" injects keystrokes into the
   terminal (fragile; misses many prompts). Make the pre-exec hook block and let
