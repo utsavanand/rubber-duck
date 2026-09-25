@@ -5,7 +5,7 @@
 // the dark background.
 import { ImageResponse } from "next/og";
 
-export const alt = "RubberDuckHQ — headquarters for your team of agents";
+export const alt = "DuckTerm — One place for your coding agents";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -13,7 +13,7 @@ export const contentType = "image/png";
 // Satori (the OG renderer) takes <img>, not inline <svg>.
 const DUCK = `data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="160" height="160">
-    <g fill="#FFB020">
+    <g fill="#2eab75">
       <ellipse cx="30" cy="42" rx="22" ry="14"/>
       <circle cx="41" cy="26" r="13"/>
     </g>
@@ -50,7 +50,7 @@ export default function Image() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={DUCK} width={120} height={120} alt="" />
         <span style={{ fontSize: 56, fontWeight: 700, color: "#f5f5f5" }}>
-          RubberDuckHQ
+          DuckTerm
         </span>
       </div>
       <div
@@ -63,8 +63,8 @@ export default function Image() {
           lineHeight: 1.05,
         }}
       >
-        <div>Headquarters for your</div>
-        <div>team of agents.</div>
+        <div>Many agents.</div>
+        <div>One place to work.</div>
       </div>
       <div
         style={{ fontSize: 34, color: "#9a9aa0", marginTop: 36, maxWidth: 940 }}
@@ -77,11 +77,11 @@ export default function Image() {
           bottom: 56,
           right: 90,
           fontSize: 28,
-          color: "#f5821f",
+          color: "#29c48a",
           fontWeight: 600,
         }}
       >
-        github.com/utsavanand/rubber-duck
+        duckterm.utsava.xyz
       </div>
     </div>,
     size,
