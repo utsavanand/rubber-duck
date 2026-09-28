@@ -2,7 +2,7 @@
 
 Reuse the approved hero button for the stable Apple Silicon Mac ZIP. Keep the latest release page available, resolve the CLI wheel through GitHub with five-minute revalidation and a readable fallback, and explain external CLI/tmux prerequisites and the first-launch Privacy & Security step. The demo download remains the MP4 recording.
 
-Lesson: a current download page needs both a stable app URL and a release-aware CLI command; test the complete first-launch path instead of only the ZIP response.
+Lesson: check documentation anchors against the current README heading (Install). A current download page needs both a stable app URL and a release-aware CLI command; test the complete first-launch path instead of only the ZIP response.
 
 # DuckTerm website refresh — 2026-09-25
 
