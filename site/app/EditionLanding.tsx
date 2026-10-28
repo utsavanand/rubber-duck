@@ -70,7 +70,7 @@ export default function EditionLanding() {
               <div className="ed-action-area">
                 {item.id === "lite" ? <>
                   <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download Lite <span aria-hidden="true">↙</span></a>
-                  <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>Requires the matching CLI. <a href="#install">Installation steps</a></p>
+                  <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>No Python, tmux or Homebrew setup. <a href="#install">Installation steps</a></p>
                 </> : <p className="ed-availability ed-invite"><span className="ed-status-dot"/>{item.availability}</p>}
               </div>
             </div>
@@ -109,11 +109,11 @@ export default function EditionLanding() {
       <section className="ed-width ed-tools" aria-label="Supported coding tools"><p>BRING YOUR TOOLS</p><div><span>Claude Code</span><span>Codex</span><span>Copilot</span><span>OpenCode</span><span>Custom commands</span></div></section>
       <section className="ed-width ed-release ed-install" id="install" aria-labelledby="release-title">
         <div className="ed-section-head"><h2 id="release-title">Install DuckTerm Lite</h2><a href={installationGuide} className="ed-text-link">Full installation guide ↗</a></div>
-        <p>For Apple Silicon Macs running macOS 13+. You need Python 3.11+, pipx, tmux, and an installed, signed-in coding-agent CLI. The Mac app requires the CLI backend; it does not bundle it.</p>
+        <p>For Apple Silicon Macs running macOS 13+. The app includes its own Python backend, tmux and jq, so there is nothing to install first: no pipx or Homebrew. You only need the coding-agent CLIs you want to use, installed and signed in.</p>
         <ol className="ed-install-steps">
-          <li><h3>Prepare your terminal</h3><p>With Homebrew already installed:</p><pre><code>{"brew install pipx tmux\npipx ensurepath"}</code></pre><p>Open a new terminal before continuing.</p></li>
-          <li><h3>Install the matching CLI</h3><p>This download pairs with DuckTerm Lite 0.4.178:</p><pre><code>pipx install --force https://github.com/utsavanand/duckterm/releases/download/v0.4.178/duckterm-0.4.178-py3-none-any.whl</code></pre></li>
-          <li><h3>Open Lite</h3><p><a href={liteDownload}>Download the Mac app</a>, unzip it, move <strong>DuckTerm Lite.app</strong> to Applications, then open it. The app selects Lite automatically.</p><p>Or use the browser version:</p><pre><code>duckterm serve --edition lite</code></pre><p>Keep that terminal running. The dashboard opens at <code>http://127.0.0.1:4300</code>. Always use the app and CLI from the same release.</p></li>
+          <li><h3>Download and unzip</h3><p><a href={liteDownload}>Download DuckTerm Lite</a> and unzip it.</p></li>
+          <li><h3>Move it to Applications</h3><p>Move <strong>DuckTerm Lite.app</strong> to Applications, then open it from there. The app selects Lite automatically.</p></li>
+          <li><h3>Use your coding agents</h3><p>Start sessions with the coding-agent CLIs you already have installed and signed in, such as Claude Code or Codex. DuckTerm does not install them or sign in for you.</p></li>
         </ol>
       </section>
     </main>
