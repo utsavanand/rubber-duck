@@ -27,7 +27,7 @@ export default function DemoPlayback() {
     };
     const onTime = () => {
       progress.style.width = (video.duration ? video.currentTime / video.duration * 100 : 0) + "%";
-      step.textContent = video.currentTime < 6 ? "An agent at work" : video.currentTime < 16 ? "Running the checkout tests" : video.currentTime < 23 ? "Read and pin a reply" : "Return to the saved message";
+      step.textContent = video.currentTime < 8 ? "Sessions grouped in folders" : video.currentTime < 18 ? "Give an agent a task" : video.currentTime < 33 ? "Watch it work in a real terminal" : "Read and pin a reply";
     };
     const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync(); }, { threshold: .15 });
     observer.observe(video);
