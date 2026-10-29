@@ -69,8 +69,8 @@ export default function EditionLanding() {
               <p className="ed-description">{item.description}</p>
               <div className="ed-action-area">
                 {item.id === "lite" ? <>
-                  <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download Lite <span aria-hidden="true">↙</span></a>
-                  <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>No Python, tmux or Homebrew setup. <a href="#install">Installation steps</a></p>
+                  <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download for Mac <span aria-hidden="true">↙</span></a>
+                  <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>Download, unzip, open. <a href="#install">Installation steps</a></p>
                 </> : <p className="ed-availability ed-invite"><span className="ed-status-dot"/>{item.availability}</p>}
               </div>
             </div>
@@ -109,11 +109,11 @@ export default function EditionLanding() {
       <section className="ed-width ed-tools" aria-label="Supported coding tools"><p>BRING YOUR TOOLS</p><div><span>Claude Code</span><span>Codex</span><span>Copilot</span><span>OpenCode</span><span>Custom commands</span></div></section>
       <section className="ed-width ed-release ed-install" id="install" aria-labelledby="release-title">
         <div className="ed-section-head"><h2 id="release-title">Install DuckTerm Lite</h2><a href={installationGuide} className="ed-text-link">Full installation guide ↗</a></div>
-        <p>For Apple Silicon Macs running macOS 13+. The app includes its own Python backend, tmux and jq, so there is nothing to install first: no pipx or Homebrew. You only need the coding-agent CLIs you want to use, installed and signed in.</p>
+        <p>For Apple Silicon Macs running macOS 13+. Everything needed to run DuckTerm is included. Install and sign in to the coding agents you want to use separately.</p>
         <ol className="ed-install-steps">
-          <li><h3>Download and unzip</h3><p><a href={liteDownload}>Download DuckTerm Lite</a> and unzip it.</p></li>
-          <li><h3>Move it to Applications</h3><p>Move <strong>DuckTerm Lite.app</strong> to Applications, then open it from there. The app selects Lite automatically.</p></li>
-          <li><h3>Use your coding agents</h3><p>Start sessions with the coding-agent CLIs you already have installed and signed in, such as Claude Code or Codex. DuckTerm does not install them or sign in for you.</p></li>
+          <li><h3>Download</h3><p><a href={liteDownload}>Get DuckTerm Lite for Mac</a>. Signed and notarized for macOS.</p></li>
+          <li><h3>Add to Applications</h3><p>Unzip the download and move <strong>DuckTerm Lite.app</strong> to your Applications folder.</p></li>
+          <li><h3>Open and start a session</h3><p>Open DuckTerm Lite, choose <strong>New → New session</strong>, and select an installed coding agent and your project.</p><p>Git is needed for Git workstreams.</p></li>
         </ol>
       </section>
     </main>
