@@ -20,7 +20,7 @@ const rows = [
 ];
 
 // Pin the bundled Lite asset so installation instructions match this download.
-const liteDownload = "https://github.com/utsavanand/duckterm/releases/download/v0.4.180/DuckTerm-Lite-0.4.180-macos-arm64.zip";
+const liteDownload = "https://github.com/utsavanand/duckterm/releases/download/v0.4.182/DuckTerm-Lite-0.4.182-macos-arm64.zip";
 const installationGuide = "https://github.com/utsavanand/duckterm#install";
 
 function Mark({ value }: { value: string }) {
