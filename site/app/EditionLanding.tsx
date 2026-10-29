@@ -19,8 +19,8 @@ const rows = [
   { name: "Oracle, remote workspaces & Artifacts", cells: ["no", "no", "yes"] },
 ];
 
-// Lite-specific asset verified against the v0.4.178 checksum and app edition.
-const liteDownload = "https://github.com/utsavanand/duckterm/releases/download/v0.4.178/DuckTerm-Lite-macos-arm64.zip";
+// Pin the bundled Lite asset so installation instructions match this download.
+const liteDownload = "https://github.com/utsavanand/duckterm/releases/download/v0.4.180/DuckTerm-Lite-0.4.180-macos-arm64.zip";
 const installationGuide = "https://github.com/utsavanand/duckterm#install";
 
 function Mark({ value }: { value: string }) {
