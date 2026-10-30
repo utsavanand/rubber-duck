@@ -277,3 +277,6 @@
 .ed-install pre { margin: 12px 0; padding: 14px 16px; background: var(--ed-panel); border: 1px solid var(--ed-line); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
 .ed-install code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .ed-install a, .ed-availability a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* AI analysis uses the installed harness by default. */
+.ed-ai-note { max-width: 475px; margin: 20px 0 0; font-size: 12px; line-height: 1.7; color: var(--ed-muted); letter-spacing: 0; }
