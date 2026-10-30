@@ -73,6 +73,7 @@ export default function EditionLanding() {
                   <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>Download, unzip, open. <a href="#install">Installation steps</a></p>
                 </> : <p className="ed-availability ed-invite"><span className="ed-status-dot"/>{item.availability}</p>}
               </div>
+              {item.id !== "lite" && <p className="ed-ai-note">By default, AI analysis uses your installed coding harness, such as Claude Code or Codex, and its existing login. Responses may take a little longer.</p>}
             </div>
             <DuckScene/>
           </div>)}
