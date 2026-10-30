@@ -1,0 +1,177 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { createCodeDownloadHandler, type CodeDownloadDependencies } from "../../lib/code-download/handler.ts";
+
+const ORIGIN = "https://duckterm.utsava.xyz";
+const EMAIL = "Ada+Code@gmail.com";
+const LINK = `${ORIGIN}/api/code-download/file?token=PRIVATE_SIGNED_TOKEN`;
+const PRIVATE_ERROR = `Provider secret PRIVATE_API_KEY for ${EMAIL}: ${LINK}`;
+function request(body: unknown = { email: " Ada+Code@GMAIL.COM ", website: "" }, headers: Record<string, string> = {}): Request {
+  return new Request(`${ORIGIN}/api/code-download`, { method: "POST", headers: { origin: ORIGIN, "sec-fetch-site": "same-origin", "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+}
+function harness(overrides: Partial<CodeDownloadDependencies> = {}) {
+  const calls: string[] = [];
+  const dependencies: CodeDownloadDependencies = {
+    rateLimit: async (_request, email) => { calls.push("rate"); assert.equal(email, EMAIL); return { allowed: true }; },
+    lookupMailbox: async domain => { calls.push("dns"); assert.equal(domain, "gmail.com"); return { status: "valid" }; },
+    createDownloadLink: async email => { calls.push("sign"); assert.equal(email, EMAIL); return LINK; },
+    sendMail: async message => { calls.push("send"); assert.deepEqual(message, { to: EMAIL, downloadUrl: LINK }); return { accepted: true }; },
+    ...overrides,
+  };
+  return { calls, dependencies, handle: createCodeDownloadHandler({ allowedOrigin: ORIGIN }, dependencies) };
+}
+async function privateResponse(response: Response, status: number) {
+  assert.equal(response.status, status);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const text = await response.text();
+  for (const secret of [EMAIL, "PRIVATE_SIGNED_TOKEN", "PRIVATE_API_KEY", "https://"]) assert.ok(!text.includes(secret), text);
+  return JSON.parse(text) as { ok: boolean; error?: string; message?: string };
+}
+
+test("success follows rate limit, DNS, signing and provider acceptance and reveals no URL", async () => {
+  const { handle, calls } = harness();
+  const body = await privateResponse(await handle(request()), 200);
+  assert.equal(body.ok, true);
+  assert.match(body.message!, /inbox/);
+  assert.deepEqual(calls, ["rate", "dns", "sign", "send"]);
+});
+
+test("a pending send cannot report success before the provider accepts", { timeout: 1000 }, async () => {
+  let accept!: (value: { accepted: boolean }) => void;
+  let started!: () => void;
+  const startedSending = new Promise<void>(resolve => { started = resolve; });
+  const acceptance = new Promise<{ accepted: boolean }>(resolve => { accept = resolve; });
+  const { handle } = harness({ sendMail: async () => { started(); return acceptance; } });
+  let settled = false;
+  const pending = handle(request()).then(response => { settled = true; return response; });
+  await startedSending;
+  assert.equal(settled, false);
+  accept({ accepted: true });
+  await privateResponse(await pending, 200);
+});
+
+test("origin, Fetch Metadata and content type checks run before dependencies", async () => {
+  for (const headers of [{ origin: "https://attacker.invalid" }, { origin: "null" }, { "sec-fetch-site": "cross-site" }, { "sec-fetch-site": "same-site" }, { "sec-fetch-site": "none" }] as Record<string, string>[]) {
+    const { handle, calls } = harness();
+    await privateResponse(await handle(request(undefined, headers)), 403);
+    assert.deepEqual(calls, []);
+  }
+  for (const omitted of ["origin", "sec-fetch-site"]) {
+    const { handle, calls } = harness();
+    const req = request(); req.headers.delete(omitted);
+    await privateResponse(await handle(req), 403);
+    assert.deepEqual(calls, []);
+  }
+  const { handle, calls } = harness();
+  await privateResponse(await handle(new Request("https://other.invalid/api/code-download", request())), 403);
+  for (const headers of [{ "content-type": "text/plain" }, { "content-encoding": "gzip" }] as Record<string, string>[]) await privateResponse(await handle(request(undefined, headers)), 415);
+  assert.deepEqual(calls, []);
+});
+
+test("non-POST, invalid configuration and absent dependencies fail closed", async () => {
+  const { handle, dependencies, calls } = harness();
+  const method = await handle(new Request(`${ORIGIN}/api/code-download`));
+  await privateResponse(method, 405);
+  assert.equal(method.headers.get("allow"), "POST");
+  for (const allowedOrigin of ["", "not a URL", "https://user:secret@duckterm.utsava.xyz", `${ORIGIN}/extra`, "http://duckterm.utsava.xyz"]) await privateResponse(await createCodeDownloadHandler({ allowedOrigin }, dependencies)(request()), 503);
+  await privateResponse(await createCodeDownloadHandler({ allowedOrigin: ORIGIN }, {} as CodeDownloadDependencies)(request()), 503);
+  assert.deepEqual(calls, []);
+});
+
+test("invalid JSON, email and honeypot fields never reach DNS or sending", async () => {
+  for (const body of ["{", "", "null", "[]", "42", {}, { email: "invalid" }, { email: "a@example.com" }, { email: "a@mailinator.com" }, { email: EMAIL, website: "filled" }, { email: EMAIL, website: false }, { email: EMAIL, unexpected: "value" }]) {
+    const { handle, calls } = harness();
+    await privateResponse(await handle(request(body)), 400);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test("body limit rejects declared and actual stream excess, including a lying Content-Length", async () => {
+  const { handle, calls } = harness();
+  await privateResponse(await handle(request(undefined, { "content-length": "4097" })), 413);
+  await privateResponse(await handle(request(undefined, { "content-length": "invalid" })), 400);
+  for (const length of [undefined, "1"]) {
+    let cancelled = false;
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new Uint8Array(++sent === 1 ? 4096 : 1)); },
+      cancel() { cancelled = true; },
+    });
+    const headers: Record<string, string> = { origin: ORIGIN, "sec-fetch-site": "same-origin", "content-type": "application/json" };
+    if (length) headers["content-length"] = length;
+    const req = new Request(`${ORIGIN}/api/code-download`, { method: "POST", headers, body, duplex: "half" } as RequestInit & { duplex: "half" });
+    await privateResponse(await handle(req), 413);
+    assert.equal(cancelled, true);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("exactly 4096 bytes of valid JSON is accepted; malformed UTF-8 is rejected", async () => {
+  const { handle } = harness();
+  const json = JSON.stringify({ email: EMAIL });
+  await privateResponse(await handle(request(json.padEnd(4096, " "))), 200);
+  const invalid = new Request(`${ORIGIN}/api/code-download`, { method: "POST", headers: request().headers, body: new Uint8Array([0xff]) });
+  await privateResponse(await handle(invalid), 400);
+});
+
+test("rate rejection stops the pipeline before DNS and carries a bounded retry delay", async () => {
+  const { handle, calls } = harness({ rateLimit: async () => { calls.push("rate"); return { allowed: false, retryAfterSeconds: 12.1 }; } });
+  const response = await handle(request());
+  await privateResponse(response, 429);
+  assert.equal(response.headers.get("retry-after"), "13");
+  assert.deepEqual(calls, ["rate"]);
+});
+
+test("invalid domains are rejected while temporary DNS trouble is retryable", async () => {
+  for (const [status, expected] of [["invalid", 400], ["unavailable", 503]] as const) {
+    const { handle, calls } = harness({ lookupMailbox: async () => { calls.push("dns"); return { status }; } });
+    const response = await handle(request());
+    await privateResponse(response, expected);
+    if (expected === 503) assert.equal(response.headers.get("retry-after"), "60");
+    assert.deepEqual(calls, ["rate", "dns"]);
+  }
+});
+
+test("dependency exceptions stay private and never continue the pipeline", async () => {
+  const stages = ["rateLimit", "lookupMailbox", "createDownloadLink", "sendMail"] as const;
+  for (const [index, stage] of stages.entries()) {
+    const { handle, calls, dependencies } = harness();
+    dependencies[stage] = async () => { throw new Error(PRIVATE_ERROR); };
+    const body = await privateResponse(await handle(request()), 503);
+    assert.equal(body.ok, false);
+    assert.deepEqual(calls, ["rate", "dns", "sign", "send"].slice(0, index));
+  }
+});
+
+test("unsafe signed links and provider rejection cannot produce success", async () => {
+  for (const link of ["http://downloads.invalid/file", "javascript:alert(1)", "https://user:secret@downloads.invalid/file", "not a URL"]) {
+    const { handle, calls } = harness({ createDownloadLink: async () => { calls.push("sign"); return link; } });
+    await privateResponse(await handle(request()), 503);
+    assert.deepEqual(calls, ["rate", "dns", "sign"]);
+  }
+  const { handle } = harness({ sendMail: async () => ({ accepted: false }) });
+  await privateResponse(await handle(request()), 503);
+});
+
+test("deadline stops a stalled dependency and never sends after it eventually resolves", async () => {
+  let finish!: (value: { allowed: boolean }) => void;
+  const { calls, dependencies } = harness({ rateLimit: () => new Promise(resolve => { finish = resolve; }) });
+  const handle = createCodeDownloadHandler({ allowedOrigin: ORIGIN, timeoutMs: 30 }, dependencies);
+  await privateResponse(await handle(request()), 503);
+  finish({ allowed: true });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(calls, []);
+});
+
+test("aborted requests and stalled bodies never reach sending", async () => {
+  const { calls, dependencies } = harness();
+  const handle = createCodeDownloadHandler({ allowedOrigin: ORIGIN, timeoutMs: 30 }, dependencies);
+  let cancelled = false;
+  const body = new ReadableStream({ cancel() { cancelled = true; } });
+  const req = new Request(`${ORIGIN}/api/code-download`, { method: "POST", headers: request().headers, body, duplex: "half" } as RequestInit & { duplex: "half" });
+  await privateResponse(await handle(req), 400);
+  assert.equal(cancelled, true);
+  const controller = new AbortController(); controller.abort();
+  await privateResponse(await handle(new Request(request(), { signal: controller.signal })), 400);
+  assert.deepEqual(calls, []);
+});

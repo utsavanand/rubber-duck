@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import DemoPlayback from "./DemoPlayback";
 import DuckScene from "./DuckScene";
+import CodeDownloadForm from "./CodeDownloadForm";
 import "./editions.css";
 
 type EditionId = "lite" | "code" | "full";
@@ -71,7 +72,7 @@ export default function EditionLanding() {
                 {item.id === "lite" ? <>
                   <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download for Mac <span aria-hidden="true">↙</span></a>
                   <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>Download, unzip, open. <a href="#install">Installation steps</a></p>
-                </> : <p className="ed-availability ed-invite"><span className="ed-status-dot"/>{item.availability}</p>}
+                </> : item.id === "code" ? <CodeDownloadForm/> : <p className="ed-availability ed-invite"><span className="ed-status-dot"/>{item.availability}</p>}
               </div>
               {item.id !== "lite" && <p className="ed-ai-note">By default, AI analysis uses your installed coding harness, such as Claude Code or Codex, and its existing login. Responses may take a little longer.</p>}
             </div>
