@@ -280,3 +280,12 @@
 
 /* AI analysis uses the installed harness by default. */
 .ed-ai-note { max-width: 475px; margin: 20px 0 0; font-size: 12px; line-height: 1.7; color: var(--ed-muted); letter-spacing: 0; }
+
+/* Download email policies share the existing footer's license area. */
+.policy-footer-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; justify-content: flex-end; }
+.ed-footer .policy-footer-copy { text-align: right; }
+.policy-footer-links a { font-size: 11px; }
+@media(max-width:620px) {
+  .ed-footer .policy-footer-copy { text-align: left; }
+  .policy-footer-links { justify-content: flex-start; gap: 8px 18px; }
+}
