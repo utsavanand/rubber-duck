@@ -1,19 +1,12 @@
-import type { Storage } from "@google-cloud/storage";
+export type DownloadEdition = "code" | "full";
 
-type Release = { bucket: string; object: string; generation: string };
+// These public aliases are release-managed. A request can select an edition,
+// never a host, path, version, or arbitrary URL.
+const downloads = {
+  code: { edition: "code", name: "DuckTerm Code", bundle: "DuckTerm Code.app", url: "https://github.com/utsavanand/duckterm/releases/latest/download/DuckTerm-Code-macos-arm64.zip" },
+  full: { edition: "full", name: "DuckTerm Full", bundle: "DuckTerm.app", url: "https://github.com/utsavanand/duckterm/releases/latest/download/DuckTerm-Full-macos-arm64.zip" },
+} as const;
 
-export function createDownloadLink(release: Release, storage: Storage, now: () => number = Date.now) {
-  return async (): Promise<string> => {
-    const filename = release.object.split("/").at(-1)!;
-    if (!/^DuckTerm-Code-\d+\.\d+\.\d+-macos-arm64\.zip$/.test(filename) || !/^[1-9]\d*$/.test(release.generation)) throw new Error("Invalid download release");
-    // Pin the signed link to an immutable object generation; a later release
-    // cannot silently change the bytes behind an already emailed link.
-    const [url] = await storage.bucket(release.bucket).file(release.object).getSignedUrl({
-      version: "v4", action: "read", expires: now() + 24 * 60 * 60 * 1000,
-      queryParams: { generation: release.generation },
-      responseDisposition: `attachment; filename="${filename}"`,
-      responseType: "application/zip",
-    });
-    return url;
-  };
+export function publicDownload(edition: unknown) {
+  return edition === "code" || edition === "full" ? downloads[edition] : null;
 }

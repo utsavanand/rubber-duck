@@ -1,5 +1,4 @@
 import { Firestore } from "@google-cloud/firestore";
-import { Storage } from "@google-cloud/storage";
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
 import type { DownloadConfig } from "./config.ts";
@@ -23,7 +22,6 @@ export function createGoogleServices(config: DownloadConfig) {
   if (!client) throw new Error("Download authentication is unavailable");
   const auth = new GoogleAuth({ authClient: client, projectId: config.projectId });
   return {
-    storage: new Storage({ projectId: config.projectId, authClient: auth, timeout: 4000, retryOptions: { autoRetry: false } }),
     database: new Firestore({ projectId: config.projectId, databaseId: config.database, auth, preferRest: true }),
   };
 }

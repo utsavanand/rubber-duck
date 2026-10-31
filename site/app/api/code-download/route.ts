@@ -5,7 +5,6 @@ import { createCodeDownloadHandler } from "../../../lib/code-download/handler.ts
 import { createGmailSender } from "../../../lib/code-download/gmail.ts";
 import { createMailboxLookup } from "../../../lib/code-download/mailbox.ts";
 import { createRateLimiter } from "../../../lib/code-download/rate-limit.ts";
-import { createDownloadLink } from "../../../lib/code-download/download-link.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +21,6 @@ export async function POST(request: Request) {
     return await createCodeDownloadHandler({ allowedOrigin: config.origin }, {
       rateLimit: createRateLimiter({ hmacSecret: config.rateSecret }, database),
       lookupMailbox: createMailboxLookup(resolver),
-      createDownloadLink: createDownloadLink(config, services.storage),
       sendMail: createGmailSender(config),
     })(request);
   } catch {

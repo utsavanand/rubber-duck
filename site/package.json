@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@google-cloud/firestore": "^9.4.0",
-    "@google-cloud/storage": "^8.4.0",
     "@vercel/oidc": "^4.0.5",
     "google-auth-library": "^11.3.2",
     "next": "^15.1.3",

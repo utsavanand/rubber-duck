@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { test } from "node:test";
 import { Timestamp, type Firestore } from "@google-cloud/firestore";
 import { createRateLimiter } from "../../lib/code-download/rate-limit.ts";
+import { createCodeDownloadHandler } from "../../lib/code-download/handler.ts";
 
 const SECRET = "test-only-high-entropy-hmac-secret-32-bytes";
 const START = 1_800_000_000_000;
@@ -209,4 +210,42 @@ test("invalid configuration, malformed stored history and clock rollback fail cl
   history(f.database, "email")[0].reservations.push(Number.NaN);
   await assert.rejects(f.limit(request(), "ada@business.dev"), /state unavailable/);
   assert.equal(f.database.writes, writes);
+});
+
+function editionRequest(edition: "code" | "full", email: string): Request {
+  return new Request("https://duckterm.utsava.xyz/api/code-download", {
+    method: "POST", headers: { origin: "https://duckterm.utsava.xyz", "sec-fetch-site": "same-origin", "content-type": "application/json", "x-vercel-forwarded-for": "192.0.2.10" },
+    body: JSON.stringify({ email, edition }),
+  });
+}
+
+test("switching editions cannot bypass an email cooldown, including concurrent requests", async () => {
+  const f = fixture();
+  const sent: string[] = [];
+  const handler = () => createCodeDownloadHandler({ allowedOrigin: "https://duckterm.utsava.xyz" }, {
+    rateLimit: f.newLimiter(), lookupMailbox: async () => ({ status: "valid" }),
+    sendMail: async ({ edition }) => { sent.push(edition); return { accepted: true }; },
+  });
+  const responses = await Promise.all([handler()(editionRequest("code", "ada@business.dev")), handler()(editionRequest("full", "ada@business.dev"))]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 429]);
+  assert.equal(sent.length, 1);
+  assert.equal(f.database.writes, 3);
+  assert.equal(f.database.rows.size, 3);
+});
+
+test("alternating Code and Full shares the same IP and global reservations", async () => {
+  const f = fixture();
+  const sent: string[] = [];
+  const handle = createCodeDownloadHandler({ allowedOrigin: "https://duckterm.utsava.xyz" }, {
+    rateLimit: f.limit, lookupMailbox: async () => ({ status: "valid" }),
+    sendMail: async ({ edition }) => { sent.push(edition); return { accepted: true }; },
+  });
+  for (let index = 0; index < 6; index++) {
+    const response = await handle(editionRequest(index % 2 ? "full" : "code", `person${index}@business.dev`));
+    assert.equal(response.status, index < 5 ? 200 : 429);
+  }
+  assert.deepEqual(sent, ["code", "full", "code", "full", "code"]);
+  assert.equal(history(f.database, "ip").length, 1);
+  assert.equal(history(f.database, "global").length, 1);
+  assert.equal(history(f.database, "global")[0].reservations.length, 5);
 });

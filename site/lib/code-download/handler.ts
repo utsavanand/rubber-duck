@@ -1,12 +1,12 @@
 import { validateEmail } from "./email.ts";
 import type { MailboxResult } from "./mailbox.ts";
+import { publicDownload, type DownloadEdition } from "./download-link.ts";
 
 export type CodeDownloadConfig = { allowedOrigin: string; timeoutMs?: number };
 export type CodeDownloadDependencies = {
   rateLimit(request: Request, normalizedEmail: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }>;
   lookupMailbox(domain: string): Promise<MailboxResult>;
-  createDownloadLink(normalizedEmail: string): Promise<string>;
-  sendMail(message: { to: string; downloadUrl: string }, signal?: AbortSignal): Promise<{ accepted: boolean }>;
+  sendMail(message: { to: string; edition: DownloadEdition }, signal?: AbortSignal): Promise<{ accepted: boolean }>;
 };
 
 const MAX_BODY_BYTES = 4096;
@@ -83,7 +83,7 @@ async function readBody(request: Request, deadline: number, signal: AbortSignal)
 }
 
 // Import this Node-only core from the API route. Infrastructure adapters own
-// trusted IP extraction, persistent limits, signing, provider calls and timeouts.
+// trusted IP extraction, persistent limits, provider calls and timeouts.
 export function createCodeDownloadHandler(config: CodeDownloadConfig, dependencies: CodeDownloadDependencies): (request: Request) => Promise<Response> {
   return async request => {
     const duration = Number.isFinite(config.timeoutMs) ? Math.max(1, Math.min(24000, config.timeoutMs!)) : 24000;
@@ -95,7 +95,7 @@ export function createCodeDownloadHandler(config: CodeDownloadConfig, dependenci
     try {
       if (request.method !== "POST") return failure(405, "Use POST for this request.", { Allow: "POST" });
       const origin = configuredOrigin(config?.allowedOrigin);
-      if (!origin || !dependencies || ["rateLimit", "lookupMailbox", "createDownloadLink", "sendMail"].some(key => typeof dependencies[key as keyof CodeDownloadDependencies] !== "function")) return unavailable();
+      if (!origin || !dependencies || ["rateLimit", "lookupMailbox", "sendMail"].some(key => typeof dependencies[key as keyof CodeDownloadDependencies] !== "function")) return unavailable();
       if (request.headers.get("origin") !== origin || new URL(request.url).origin !== origin || request.headers.get("sec-fetch-site") !== "same-origin") return failure(403, "This request is not allowed.");
       if (request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json" || ![null, "identity"].includes(request.headers.get("content-encoding"))) return failure(415, "Send this request as JSON.");
 
@@ -104,12 +104,17 @@ export function createCodeDownloadHandler(config: CodeDownloadConfig, dependenci
       catch (error) { return failure(error instanceof BodyError ? error.status : 400, error instanceof BodyError && error.status === 413 ? "This request is too large." : "This request is invalid."); }
       if (!body || typeof body !== "object" || Array.isArray(body)) return failure(400, "This request is invalid.");
       const fields = body as Record<string, unknown>;
-      if (Object.keys(fields).some(key => key !== "email" && key !== "website") || (fields.website !== undefined && fields.website !== "")) return failure(400, "This request is invalid.");
+      if (Object.keys(fields).some(key => key !== "email" && key !== "website" && key !== "edition") || (fields.website !== undefined && fields.website !== "")) return failure(400, "This request is invalid.");
+      // Preserve the original Code form contract while allowing an explicit
+      // Full selection. The allowlist also rejects objects/prototype keys.
+      const download = publicDownload(fields.edition === undefined ? "code" : fields.edition);
+      if (!download) return failure(400, "This request is invalid.");
       const email = validateEmail(fields.email);
       if (!email.valid) return failure(400, "Enter a valid email address.");
 
       try {
-        // Charge before DNS, signing or sending, including repeated invalid domains.
+        // Charge before DNS or sending, including repeated invalid domains.
+        // Edition is deliberately absent from the shared quota identity.
         const limit = await run(() => dependencies.rateLimit(request, email.email));
         if (!limit || typeof limit.allowed !== "boolean") return unavailable();
         if (!limit.allowed) {
@@ -119,12 +124,9 @@ export function createCodeDownloadHandler(config: CodeDownloadConfig, dependenci
         const mailbox = await run(() => dependencies.lookupMailbox(email.domain));
         if (mailbox?.status === "invalid") return failure(400, "Enter a valid email address.");
         if (mailbox?.status !== "valid") return unavailable();
-        const downloadUrl = await run(() => dependencies.createDownloadLink(email.email));
-        const link = new URL(downloadUrl);
-        if (link.protocol !== "https:" || link.username || link.password) return unavailable();
-        const delivery = await run(() => dependencies.sendMail({ to: email.email, downloadUrl }, signal));
+        const delivery = await run(() => dependencies.sendMail({ to: email.email, edition: download.edition }, signal));
         if (delivery?.accepted !== true) return unavailable();
-        return json(200, { ok: true, message: "Check your inbox for the Duckterm Code download link." });
+        return json(200, { ok: true, message: "Check your inbox for the download link." });
       } catch {
         // Dependency errors may contain addresses, provider credentials or signed
         // URLs. Do not log or serialize them into the browser response.

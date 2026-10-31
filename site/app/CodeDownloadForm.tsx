@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { DownloadEdition } from "../lib/code-download/download-link.ts";
 
-const sentMessage = "Check your inbox for the download link. It expires in 24 hours. If it hasn’t arrived, check your spam folder.";
+const sentMessage = "Check your inbox for the download link. If it hasn’t arrived, check your spam folder.";
 const unavailableMessage = "We couldn’t send the download link. Please try again shortly.";
 
-export default function CodeDownloadForm() {
+export default function DownloadForm({ edition }: { edition: DownloadEdition }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -28,7 +29,7 @@ export default function CodeDownloadForm() {
       const response = await fetch("/api/code-download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), website: website.current?.value ?? "" }),
+        body: JSON.stringify({ email: email.trim(), website: website.current?.value ?? "", edition }),
         signal: controller.signal,
         cache: "no-store",
       });
@@ -51,13 +52,13 @@ export default function CodeDownloadForm() {
   }
 
   return <form className="ed-code-form" onSubmit={submit} aria-busy={state === "sending"}>
-    <label htmlFor="code-email">Email address</label>
+    <label htmlFor={`${edition}-email`}>Email address</label>
     <div className="ed-code-fields">
-      <input id="code-email" type="email" name="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={event => { setEmail(event.target.value); setState("idle"); setMessage(""); setInvalid(false); }} readOnly={state === "sending"} required maxLength={254} aria-invalid={invalid || undefined} aria-describedby="code-email-note code-email-status"/>
+      <input id={`${edition}-email`} type="email" name="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={event => { setEmail(event.target.value); setState("idle"); setMessage(""); setInvalid(false); }} readOnly={state === "sending"} required maxLength={254} aria-invalid={invalid || undefined} aria-describedby={`${edition}-email-note ${edition}-email-status`}/>
       <button className="ed-primary" type="submit" disabled={state === "sending"}>{state === "sending" ? "Sending…" : "Email download link"}</button>
     </div>
-    <div className="ed-code-honeypot" aria-hidden="true"><label htmlFor="code-website">Leave this field empty</label><input id="code-website" name="website" type="text" autoComplete="off" tabIndex={-1} ref={website}/></div>
-    <p id="code-email-note" className="ed-availability">macOS 13+ · Apple silicon<br/>We’ll email a download link valid for 24 hours. No newsletter signup.</p>
-    <p id="code-email-status" className="ed-code-status" role={state === "error" ? "alert" : "status"}>{message}</p>
+    <div className="ed-code-honeypot" aria-hidden="true"><label htmlFor={`${edition}-website`}>Leave this field empty</label><input id={`${edition}-website`} name="website" type="text" autoComplete="off" tabIndex={-1} ref={website}/></div>
+    <p id={`${edition}-email-note`} className="ed-availability">macOS 13+ · Apple silicon<br/>We’ll email you the public download link. No newsletter signup.</p>
+    <p id={`${edition}-email-status`} className="ed-code-status" role={state === "error" ? "alert" : "status"}>{message}</p>
   </form>;
 }

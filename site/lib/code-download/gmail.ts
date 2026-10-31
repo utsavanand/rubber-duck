@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { validateEmail } from "./email.ts";
+import { publicDownload, type DownloadEdition } from "./download-link.ts";
 
 export type GmailConfig = {
   clientId: string;
@@ -8,18 +9,19 @@ export type GmailConfig = {
   from: string;
 };
 
-type DownloadEmail = { to: string; downloadUrl: string };
+type DownloadEmail = { to: string; edition: DownloadEdition };
 
 // Server-only, send-only OAuth credentials. No mailbox-reading permission is
 // needed. Configure the authenticated Gmail address or an authorized send-as.
 export function createGmailSender(config: GmailConfig, send: typeof fetch = fetch) {
-  return async ({ to, downloadUrl }: DownloadEmail, signal?: AbortSignal): Promise<{ accepted: boolean }> => {
+  return async ({ to, edition }: DownloadEmail, signal?: AbortSignal): Promise<{ accepted: boolean }> => {
     signal?.throwIfAborted();
     const sender = validateEmail(config.from);
     const recipient = validateEmail(to);
     if (!sender.valid || !recipient.valid || !config.clientId || !config.clientSecret || !config.refreshToken) return { accepted: false };
-    const link = new URL(downloadUrl);
-    if (link.protocol !== "https:" || link.username || link.password || /\s/.test(downloadUrl) || downloadUrl.length > 8192) return { accepted: false };
+    const download = publicDownload(edition);
+    if (!download) return { accepted: false };
+    const downloadUrl = download.url;
 
     const authorization = await send("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -39,22 +41,22 @@ export function createGmailSender(config: GmailConfig, send: typeof fetch = fetc
     if (typeof token?.access_token !== "string" || !token.access_token || /[\r\n]/.test(token.access_token)) return { accepted: false };
 
     const body = [
-      "Your DuckTerm Code download",
+      `Your ${download.name} download`,
       "",
       downloadUrl,
       "",
-      "This link expires in 24 hours. You can request another at https://duckterm.utsava.xyz/#code.",
+      "This is the public download link for the latest release.",
       "",
-      "For Apple silicon Macs running macOS 13 or later. Unzip the download, move DuckTerm Code.app to Applications, and open it.",
+      `For Apple silicon Macs running macOS 13 or later. Unzip the download, move ${download.bundle} to Applications, and open it.`,
       "",
-      "You received this because someone requested a DuckTerm Code download for this address. If that wasn't you, you can ignore this email.",
+      `You received this because someone requested a ${download.name} download for this address. If that wasn't you, you can ignore this email.`,
       "This request does not subscribe you to a newsletter.",
     ].join("\r\n");
     const encodedBody = Buffer.from(body).toString("base64").match(/.{1,76}/g)!.join("\r\n");
     const mime = [
       `From: DuckTerm Downloads <${sender.email}>`,
       `To: ${recipient.email}`,
-      "Subject: Your DuckTerm Code download",
+      `Subject: Your ${download.name} download`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: <${randomUUID()}@duckterm.utsava.xyz>`,
       "MIME-Version: 1.0",

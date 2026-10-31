@@ -9,9 +9,6 @@ export function readDownloadConfig(env: Record<string, string | undefined>) {
     pool: env.GCP_WORKLOAD_IDENTITY_POOL_ID,
     provider: env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
     database: env.GCP_FIRESTORE_DATABASE,
-    bucket: env.CODE_DOWNLOAD_BUCKET,
-    object: env.CODE_DOWNLOAD_OBJECT,
-    generation: env.CODE_DOWNLOAD_GENERATION,
     rateSecret: env.CODE_DOWNLOAD_RATE_SECRET,
     clientId: env.GMAIL_CLIENT_ID,
     clientSecret: env.GMAIL_CLIENT_SECRET,
@@ -24,9 +21,7 @@ export function readDownloadConfig(env: Record<string, string | undefined>) {
       !/^\d{6,20}$/.test(config.projectNumber) || !/^[a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$/.test(config.serviceAccount) ||
       !config.serviceAccount.endsWith(`@${config.projectId}.iam.gserviceaccount.com`) ||
       ![config.pool, config.provider, config.database].every(value => /^[a-z][a-z0-9-]{2,62}$/.test(value)) ||
-      !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(config.bucket) ||
-      !/^(?:[a-zA-Z0-9_-]+\/)*DuckTerm-Code-\d+\.\d+\.\d+-macos-arm64\.zip$/.test(config.object) ||
-      !/^[1-9]\d{0,19}$/.test(config.generation) || Buffer.byteLength(config.rateSecret) < 32) return null;
+      Buffer.byteLength(config.rateSecret) < 32) return null;
   return config;
 }
 

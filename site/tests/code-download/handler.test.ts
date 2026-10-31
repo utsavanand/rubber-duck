@@ -14,8 +14,7 @@ function harness(overrides: Partial<CodeDownloadDependencies> = {}) {
   const dependencies: CodeDownloadDependencies = {
     rateLimit: async (_request, email) => { calls.push("rate"); assert.equal(email, EMAIL); return { allowed: true }; },
     lookupMailbox: async domain => { calls.push("dns"); assert.equal(domain, "gmail.com"); return { status: "valid" }; },
-    createDownloadLink: async email => { calls.push("sign"); assert.equal(email, EMAIL); return LINK; },
-    sendMail: async message => { calls.push("send"); assert.deepEqual(message, { to: EMAIL, downloadUrl: LINK }); return { accepted: true }; },
+    sendMail: async message => { calls.push("send"); assert.deepEqual(message, { to: EMAIL, edition: "code" }); return { accepted: true }; },
     ...overrides,
   };
   return { calls, dependencies, handle: createCodeDownloadHandler({ allowedOrigin: ORIGIN }, dependencies) };
@@ -28,12 +27,12 @@ async function privateResponse(response: Response, status: number) {
   return JSON.parse(text) as { ok: boolean; error?: string; message?: string };
 }
 
-test("success follows rate limit, DNS, signing and provider acceptance and reveals no URL", async () => {
+test("success follows rate limit, DNS and provider acceptance and reveals no URL", async () => {
   const { handle, calls } = harness();
   const body = await privateResponse(await handle(request()), 200);
   assert.equal(body.ok, true);
   assert.match(body.message!, /inbox/);
-  assert.deepEqual(calls, ["rate", "dns", "sign", "send"]);
+  assert.deepEqual(calls, ["rate", "dns", "send"]);
 });
 
 test("a pending send cannot report success before the provider accepts", { timeout: 1000 }, async () => {
@@ -133,24 +132,39 @@ test("invalid domains are rejected while temporary DNS trouble is retryable", as
 });
 
 test("dependency exceptions stay private and never continue the pipeline", async () => {
-  const stages = ["rateLimit", "lookupMailbox", "createDownloadLink", "sendMail"] as const;
+  const stages = ["rateLimit", "lookupMailbox", "sendMail"] as const;
   for (const [index, stage] of stages.entries()) {
     const { handle, calls, dependencies } = harness();
     dependencies[stage] = async () => { throw new Error(PRIVATE_ERROR); };
     const body = await privateResponse(await handle(request()), 503);
     assert.equal(body.ok, false);
-    assert.deepEqual(calls, ["rate", "dns", "sign", "send"].slice(0, index));
+    assert.deepEqual(calls, ["rate", "dns", "send"].slice(0, index));
   }
 });
 
-test("unsafe signed links and provider rejection cannot produce success", async () => {
-  for (const link of ["http://downloads.invalid/file", "javascript:alert(1)", "https://user:secret@downloads.invalid/file", "not a URL"]) {
-    const { handle, calls } = harness({ createDownloadLink: async () => { calls.push("sign"); return link; } });
-    await privateResponse(await handle(request()), 503);
-    assert.deepEqual(calls, ["rate", "dns", "sign"]);
-  }
+test("provider rejection cannot produce success", async () => {
   const { handle } = harness({ sendMail: async () => ({ accepted: false }) });
   await privateResponse(await handle(request()), 503);
+});
+
+test("only Code and Full can be selected and no client URL reaches delivery", async () => {
+  for (const edition of ["code", "full"] as const) {
+    const sent: unknown[] = [];
+    const { handle, calls } = harness({ sendMail: async message => { calls.push("send"); sent.push(message); return { accepted: true }; } });
+    await privateResponse(await handle(request({ email: EMAIL, edition })), 200);
+    assert.deepEqual(sent, [{ to: EMAIL, edition }]);
+    assert.deepEqual(calls, ["rate", "dns", "send"]);
+  }
+  for (const edition of [null, "", "lite", "Code", " full", "__proto__", "constructor", {}, ["code"], 1]) {
+    const { handle, calls } = harness();
+    await privateResponse(await handle(request({ email: EMAIL, edition })), 400);
+    assert.deepEqual(calls, []);
+  }
+  for (const field of ["url", "downloadUrl", "version", "bucket", "generation"]) {
+    const { handle, calls } = harness();
+    await privateResponse(await handle(request({ email: EMAIL, edition: "full", [field]: "https://attacker.invalid/evil.zip" })), 400);
+    assert.deepEqual(calls, []);
+  }
 });
 
 test("deadline stops a stalled dependency and never sends after it eventually resolves", async () => {
