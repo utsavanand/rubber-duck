@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import DemoPlayback from "./DemoPlayback";
 import DuckScene from "./DuckScene";
+import DownloadForm from "./CodeDownloadForm";
 import DownloadPolicyLinks from "./DownloadPolicyLinks";
 import "./editions.css";
 
@@ -10,8 +11,8 @@ type EditionId = "lite" | "code" | "full";
 type Edition = { id: EditionId; name: string; short: string; purpose: string; lead: string; description: string; scope: string; availability: string; bars: [string, string][] };
 const editions: Edition[] = [
   { id: "lite", name: "DuckTerm Lite", short: "Lite", purpose: "Sessions", lead: "Run coding agents side by side.", description: "Organize sessions in folders and workstreams. Use terminal layouts, Shell, Messages, session status, and supported forks with your installed coding agents.", scope: "Desktop", availability: "Public download", bars: [["Work", "Terminal / Shell / Messages"], ["Organize", "Folders / Workstreams"], ["Branch out", "Native forks / Custom commands"]] },
-  { id: "code", name: "DuckTerm Code", short: "Code", purpose: "Code review", lead: "Review files, changes, and pull requests.", description: "Lite’s session tools, plus files, Git, checkpoints, handoff, and the PR review platform.", scope: "Desktop", availability: "Invite-only · public availability to be announced", bars: [["Inspect", "File explorer / Editing / Git"], ["Continue", "Checkpoints / Context / Handoff"], ["Review", "PR review platform"]] },
-  { id: "full", name: "DuckTerm Full", short: "Full", purpose: "Agent fleet", lead: "Monitor agents across local and remote workspaces.", description: "Everything in Code, including PR review, plus Oracle, remote workspace management, and Artifacts.", scope: "Desktop", availability: "Invite-only · public availability to be announced", bars: [["See", "Oracle"], ["Run", "Remote workspaces"], ["Keep", "Artifacts"]] },
+  { id: "code", name: "DuckTerm Code", short: "Code", purpose: "Code review", lead: "Review files, changes, and pull requests.", description: "Lite’s session tools, plus files, Git, checkpoints, handoff, and the PR review platform.", scope: "Desktop", availability: "Public download", bars: [["Inspect", "File explorer / Editing / Git"], ["Continue", "Checkpoints / Context / Handoff"], ["Review", "PR review platform"]] },
+  { id: "full", name: "DuckTerm Full", short: "Full", purpose: "Agent fleet", lead: "Monitor agents across local and remote workspaces.", description: "Everything in Code, including PR review, plus Oracle, remote workspace management, and Artifacts.", scope: "Desktop", availability: "Public download", bars: [["See", "Oracle"], ["Run", "Remote workspaces"], ["Keep", "Artifacts"]] },
 ];
 const rows = [
   { name: "Files, Git, checkpoints & handoff", cells: ["no", "yes", "yes"] },
@@ -72,7 +73,7 @@ export default function EditionLanding() {
                 {item.id === "lite" ? <>
                   <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download for Mac <span aria-hidden="true">↙</span></a>
                   <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>Download, unzip, open. <a href="#install">Installation steps</a></p>
-                </> : <p className="ed-availability ed-invite"><span className="ed-status-dot"/>{item.availability}</p>}
+                </> : <DownloadForm edition={item.id}/>}
               </div>
               {item.id !== "lite" && <p className="ed-ai-note">By default, AI analysis uses your installed coding harness, such as Claude Code or Codex, and its existing login. Responses may take a little longer.</p>}
             </div>
