@@ -39,3 +39,44 @@ test("public downloads need no storage configuration and obsolete storage fields
   assert.equal("object" in config, false);
   assert.equal("generation" in config, false);
 });
+
+const DEPLOYMENT_HOST = "rubber-duck-ab12cd345-utsavs-projects-b9d729c7.vercel.app";
+
+test("staged production requires explicit deployment mode and resolves only the server deployment URL", () => {
+  const canonical = readDownloadConfig(env);
+  assert.ok(canonical);
+  assert.deepEqual(readDownloadConfig({ ...env, VERCEL_URL: DEPLOYMENT_HOST }), canonical);
+  const candidate = readDownloadConfig({ ...env, CODE_DOWNLOAD_ORIGIN: "deployment", VERCEL_URL: DEPLOYMENT_HOST });
+  assert.deepEqual(candidate, { ...canonical, origin: `https://${DEPLOYMENT_HOST}` });
+  for (const CODE_DOWNLOAD_ORIGIN of [undefined, "", "Deployment", "deployment ", DEPLOYMENT_HOST, `https://${DEPLOYMENT_HOST}`]) {
+    assert.equal(readDownloadConfig({ ...env, CODE_DOWNLOAD_ORIGIN, VERCEL_URL: DEPLOYMENT_HOST }), null, CODE_DOWNLOAD_ORIGIN);
+  }
+});
+
+test("staged production rejects missing, noncanonical and foreign deployment hosts", () => {
+  for (const VERCEL_URL of [
+    undefined, "", "duckterm.utsava.xyz", "rubber-duck-nine.vercel.app",
+    "rubber-duck-git-main-utsavs-projects-b9d729c7.vercel.app",
+    "rubber-duck-ab12cd345-other-team.vercel.app",
+    "other-project-ab12cd345-utsavs-projects-b9d729c7.vercel.app",
+    DEPLOYMENT_HOST.replace("ab12cd345", "ab12cd34"),
+    DEPLOYMENT_HOST.replace("ab12cd345", "ab12cd3456"),
+    DEPLOYMENT_HOST.replace("ab12cd345", "Ab12cd345"),
+    DEPLOYMENT_HOST.toUpperCase(), `www.${DEPLOYMENT_HOST}`, `${DEPLOYMENT_HOST}.`,
+    `https://${DEPLOYMENT_HOST}`, `http://${DEPLOYMENT_HOST}`, `${DEPLOYMENT_HOST}:443`,
+    `${DEPLOYMENT_HOST}/`, `${DEPLOYMENT_HOST}/api`, `${DEPLOYMENT_HOST}?test=1`, `${DEPLOYMENT_HOST}#test`,
+    `${DEPLOYMENT_HOST}.attacker.invalid`, `${DEPLOYMENT_HOST}@attacker.invalid`, `user@${DEPLOYMENT_HOST}`,
+    ` ${DEPLOYMENT_HOST}`, `${DEPLOYMENT_HOST} `, `${DEPLOYMENT_HOST}\n`, `${DEPLOYMENT_HOST}\r\n`,
+    DEPLOYMENT_HOST.replace("ab12cd345", "ab12 cd345"),
+  ]) assert.equal(readDownloadConfig({ ...env, CODE_DOWNLOAD_ORIGIN: "deployment", VERCEL_URL }), null, JSON.stringify(VERCEL_URL));
+});
+
+test("deployment mode never enables previews, development or disabled production", () => {
+  for (const VERCEL_ENV of [undefined, "", "preview", "development"]) {
+    assert.equal(readDownloadConfig({ ...env, CODE_DOWNLOAD_ORIGIN: "deployment", VERCEL_URL: DEPLOYMENT_HOST, VERCEL_ENV }), null);
+  }
+  for (const CODE_DOWNLOAD_ENABLED of [undefined, "", "false", "TRUE"]) {
+    assert.equal(readDownloadConfig({ ...env, CODE_DOWNLOAD_ORIGIN: "deployment", VERCEL_URL: DEPLOYMENT_HOST, CODE_DOWNLOAD_ENABLED }), null);
+  }
+  assert.equal(readDownloadConfig({ ...env, CODE_DOWNLOAD_ORIGIN: "deployment", VERCEL_URL: DEPLOYMENT_HOST, GMAIL_REFRESH_TOKEN: undefined }), null);
+});

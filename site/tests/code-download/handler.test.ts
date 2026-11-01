@@ -67,6 +67,38 @@ test("origin, Fetch Metadata and content type checks run before dependencies", a
   assert.deepEqual(calls, []);
 });
 
+test("staged production accepts only its exact origin, request URL and same-origin Fetch Metadata", async () => {
+  const candidate = "https://rubber-duck-ab12cd345-utsavs-projects-b9d729c7.vercel.app";
+  const otherDeployment = candidate.replace("ab12cd345", "zy98xw765");
+  const { dependencies, calls } = harness();
+  const handle = createCodeDownloadHandler({ allowedOrigin: candidate }, dependencies);
+  const makeRequest = (url: string, origin: string | null, site: string | null = "same-origin") => {
+    const req = new Request(`${url}/api/code-download`, request());
+    if (origin === null) req.headers.delete("origin"); else req.headers.set("origin", origin);
+    if (site === null) req.headers.delete("sec-fetch-site"); else req.headers.set("sec-fetch-site", site);
+    return req;
+  };
+  await privateResponse(await handle(makeRequest(candidate, candidate)), 200);
+  assert.deepEqual(calls, ["rate", "dns", "send"]);
+  calls.length = 0;
+  for (const other of [ORIGIN, otherDeployment, "https://rubber-duck-nine.vercel.app", `${candidate}.attacker.invalid`, candidate.replace("https:", "http:"), `${candidate}:444`]) {
+    for (const [url, origin] of [[candidate, other], [other, candidate], [other, other]]) {
+      const req = makeRequest(url, origin);
+      // Forwarded/Host headers must not override the request URL or Origin.
+      req.headers.set("host", new URL(candidate).host);
+      req.headers.set("x-forwarded-host", new URL(candidate).host);
+      req.headers.set("x-forwarded-proto", "https");
+      await privateResponse(await handle(req), 403);
+    }
+  }
+  for (const origin of [null, "null", `${candidate}/`]) await privateResponse(await handle(makeRequest(candidate, origin)), 403);
+  for (const site of [null, "same-site", "cross-site", "none"]) await privateResponse(await handle(makeRequest(candidate, candidate, site)), 403);
+  assert.deepEqual(calls, []);
+  const canonical = harness();
+  await privateResponse(await canonical.handle(makeRequest(candidate, candidate)), 403);
+  assert.deepEqual(canonical.calls, []);
+});
+
 test("non-POST, invalid configuration and absent dependencies fail closed", async () => {
   const { handle, dependencies, calls } = harness();
   const method = await handle(new Request(`${ORIGIN}/api/code-download`));
