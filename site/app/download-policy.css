@@ -1,0 +1,17 @@
+.policy-main { padding-block: 44px 68px; }
+.policy-main article { max-width: 760px; }
+.policy-main h1 { font-size: clamp(34px,3.4vw,48px); letter-spacing: -1.6px; }
+.policy-date { margin: 0 0 30px; font-size: 12px; color: var(--ed-muted); }
+.policy-main .policy-intro { font-size: 17px; color: var(--ed-fg); line-height: 1.65; margin: 0 0 32px; }
+.policy-main h2 { font-size: 21px; line-height: 1.35; margin: 30px 0 10px; letter-spacing: -.4px; }
+.policy-main p { color: var(--ed-muted); line-height: 1.75; margin: 0 0 14px; }
+.policy-main p a { color: var(--ed-fg); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+@media(max-width:620px) {
+  .policy-main { padding-block: 30px 42px; }
+  .policy-main .policy-intro { font-size: 16px; }
+  .policy-main h1 { font-size: 34px; line-height: 1.12; letter-spacing: -1px; }
+  .policy-main h2 { font-size: 20px; }
+  .policy-date { margin-bottom: 24px; }
+  .policy-main p { font-size: 15px; }
+  .policy-nav-link { font-size: 12px; }
+}

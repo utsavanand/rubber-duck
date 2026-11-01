@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import DemoPlayback from "./DemoPlayback";
 import DuckScene from "./DuckScene";
 import DownloadForm from "./CodeDownloadForm";
+import DownloadPolicyLinks from "./DownloadPolicyLinks";
 import "./editions.css";
 
 type EditionId = "lite" | "code" | "full";
@@ -119,7 +120,7 @@ export default function EditionLanding() {
         </ol>
       </section>
     </main>
-    <footer className="ed-width ed-footer"><a href="#lite" className="ed-brand" onClick={event => { event.preventDefault(); choose("lite"); window.scrollTo({top:0}); }}><img src="/duckmark.svg" alt="" width="22" height="22"/>DuckTerm</a><p>Source available · <a href="https://github.com/utsavanand/duckterm/blob/main/LICENSE">FSL-1.1-MIT</a><br/>Becomes MIT after two years.</p></footer>
+    <footer className="ed-width ed-footer"><a href="#lite" className="ed-brand" onClick={event => { event.preventDefault(); choose("lite"); window.scrollTo({top:0}); }}><img src="/duckmark.svg" alt="" width="22" height="22"/>DuckTerm</a><p className="policy-footer-copy">Source available · <a href="https://github.com/utsavanand/duckterm/blob/main/LICENSE">FSL-1.1-MIT</a><br/>Becomes MIT after two years.<DownloadPolicyLinks/></p></footer>
     <DemoPlayback/>
   </div>;
 }

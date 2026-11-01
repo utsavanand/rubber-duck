@@ -296,3 +296,12 @@
 }
 
 .ed-code-honeypot { display: none; }
+
+/* Download email policies share the existing footer's license area. */
+.policy-footer-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; justify-content: flex-end; }
+.ed-footer .policy-footer-copy { text-align: right; }
+.policy-footer-links a { font-size: 11px; }
+@media(max-width:620px) {
+  .ed-footer .policy-footer-copy { text-align: left; }
+  .policy-footer-links { justify-content: flex-start; gap: 8px 18px; }
+}
