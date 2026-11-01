@@ -278,8 +278,24 @@
 .ed-install code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .ed-install a, .ed-availability a { text-decoration: underline; text-underline-offset: 3px; }
 
-/* AI analysis uses the installed harness by default. */
+/* Code download access and the Code/Full AI note. */
+.ed-code-form { max-width: 510px; }
+.ed-code-form label { display: block; margin-bottom: 7px; color: var(--ed-fg); font-size: 12px; letter-spacing: 0; }
+.ed-code-fields { display: flex; gap: 8px; }
+.ed-code-fields input { min-width: 0; flex: 1; min-height: 44px; padding: 10px 12px; border: 1px solid var(--ed-line); border-radius: 0; background: var(--ed-panel); color: var(--ed-fg); font: 14px Arial, Helvetica, sans-serif; }
+.ed-code-fields input::placeholder { color: var(--ed-muted); }
+.ed-code-fields input:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 3px; }
+.ed-code-fields .ed-primary { border-radius: 0; white-space: nowrap; padding-inline: 14px; }
+.ed-code-status { margin: 10px 0 0; font-size: 12px; line-height: 1.6; color: var(--ed-accent); }
+.ed-code-status:empty { display: none; }
 .ed-ai-note { max-width: 475px; margin: 20px 0 0; font-size: 12px; line-height: 1.7; color: var(--ed-muted); letter-spacing: 0; }
+@media(max-width:620px) {
+  .ed-code-fields { flex-direction: column; }
+  .ed-code-fields input { font-size: 16px; }
+  .ed-code-fields .ed-primary { justify-content: center; }
+}
+
+.ed-code-honeypot { display: none; }
 
 /* Download email policies share the existing footer's license area. */
 .policy-footer-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; justify-content: flex-end; }
