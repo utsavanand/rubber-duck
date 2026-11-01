@@ -8,6 +8,7 @@
     "start": "next start -p 3001",
     "lint": "next lint",
     "test:downloads": "node --experimental-strip-types --test tests/code-download/*.test.ts",
+    "test:built-downloads": "node --test tests/built/code-download.test.cjs",
     "gmail:authorize": "node --experimental-strip-types scripts/gmail-authorize.ts"
   },
   "dependencies": {
