@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { test } from "node:test";
+import { DownloadStageError } from "../../lib/code-download/diagnostics.ts";
 import { Timestamp, type Firestore } from "@google-cloud/firestore";
 import { createRateLimiter } from "../../lib/code-download/rate-limit.ts";
 import { createCodeDownloadHandler } from "../../lib/code-download/handler.ts";
@@ -135,7 +136,7 @@ test("IP hourly limit is atomic across distinct email addresses", async () => {
 test("only a single valid Vercel IP is trusted and other forwarding headers cannot substitute", async () => {
   const f = fixture();
   for (const ip of [null, "", "unknown", "192.0.2.1, 192.0.2.2", "192.0.2.1:443", "[2001:db8::1]", "2001:db8::1%en0", "999.2.3.4"]) {
-    await assert.rejects(f.limit(request(ip, { "x-forwarded-for": "192.0.2.1", forwarded: "for=192.0.2.1", "x-real-ip": "192.0.2.1" }), "ada@business.dev"), /Trusted client IP unavailable/);
+    await assert.rejects(f.limit(request(ip, { "x-forwarded-for": "192.0.2.1", forwarded: "for=192.0.2.1", "x-real-ip": "192.0.2.1" }), "ada@business.dev"), error => error instanceof DownloadStageError && error.stage === "trusted_ip");
   }
   assert.equal(f.database.calls, 0);
   for (let index = 0; index < 6; index++) {

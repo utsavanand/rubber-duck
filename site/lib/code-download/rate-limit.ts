@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { Timestamp, type Firestore } from "@google-cloud/firestore";
 import { validateEmail } from "./email.ts";
+import { DownloadStageError } from "./diagnostics.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -57,7 +58,11 @@ export function createRateLimiter(config: { hmacSecret: string }, database: Fire
   if (typeof config?.hmacSecret !== "string" || Buffer.byteLength(config.hmacSecret, "utf8") < 32) throw new Error("Rate limit configuration unavailable");
   const key = (kind: string, value: string) => `${kind}-${createHmac("sha256", config.hmacSecret).update(`${kind}\0${value}`).digest("hex")}`;
   return async (request, email) => {
-    const identities = [emailIdentity(email), clientIP(request), "all"];
+    const identity = emailIdentity(email);
+    let ip: string;
+    try { ip = clientIP(request); }
+    catch (error) { throw new DownloadStageError("trusted_ip", error); }
+    const identities = [identity, ip, "all"];
     const references = POLICIES.map((policy, index) => database.collection(COLLECTION).doc(key(policy.kind, identities[index])));
     return database.runTransaction(async transaction => {
       // Read the complete decision set before staging any writes. Retries repeat

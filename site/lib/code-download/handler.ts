@@ -1,12 +1,14 @@
 import { validateEmail } from "./email.ts";
 import type { MailboxResult } from "./mailbox.ts";
 import { publicDownload, type DownloadEdition } from "./download-link.ts";
+import { reportDownloadFailure, type DownloadFailureReporter, type DownloadFailureStage } from "./diagnostics.ts";
 
 export type CodeDownloadConfig = { allowedOrigin: string; timeoutMs?: number };
 export type CodeDownloadDependencies = {
   rateLimit(request: Request, normalizedEmail: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }>;
   lookupMailbox(domain: string): Promise<MailboxResult>;
   sendMail(message: { to: string; edition: DownloadEdition }, signal?: AbortSignal): Promise<{ accepted: boolean }>;
+  reportFailure?: DownloadFailureReporter;
 };
 
 const MAX_BODY_BYTES = 4096;
@@ -112,24 +114,37 @@ export function createCodeDownloadHandler(config: CodeDownloadConfig, dependenci
       const email = validateEmail(fields.email);
       if (!email.valid) return failure(400, "Enter a valid email address.");
 
+      let stage: DownloadFailureStage = "rate_limit";
       try {
         // Charge before DNS or sending, including repeated invalid domains.
         // Edition is deliberately absent from the shared quota identity.
         const limit = await run(() => dependencies.rateLimit(request, email.email));
-        if (!limit || typeof limit.allowed !== "boolean") return unavailable();
+        if (!limit || typeof limit.allowed !== "boolean") {
+          reportDownloadFailure(stage, undefined, dependencies.reportFailure);
+          return unavailable();
+        }
         if (!limit.allowed) {
           const retry = Number.isFinite(limit.retryAfterSeconds) ? Math.max(1, Math.min(86400, Math.ceil(limit.retryAfterSeconds!))) : 60;
           return failure(429, "Too many requests. Please try again later.", { "Retry-After": String(retry) });
         }
+        stage = "mailbox";
         const mailbox = await run(() => dependencies.lookupMailbox(email.domain));
         if (mailbox?.status === "invalid") return failure(400, "Enter a valid email address.");
-        if (mailbox?.status !== "valid") return unavailable();
+        if (mailbox?.status !== "valid") {
+          reportDownloadFailure(stage, undefined, dependencies.reportFailure);
+          return unavailable();
+        }
+        stage = "gmail";
         const delivery = await run(() => dependencies.sendMail({ to: email.email, edition: download.edition }, signal));
-        if (delivery?.accepted !== true) return unavailable();
+        if (delivery?.accepted !== true) {
+          reportDownloadFailure(stage, undefined, dependencies.reportFailure);
+          return unavailable();
+        }
         return json(200, { ok: true, message: "Check your inbox for the download link." });
-      } catch {
-        // Dependency errors may contain addresses, provider credentials or signed
-        // URLs. Do not log or serialize them into the browser response.
+      } catch (error) {
+        // Report only fixed stages and allowlisted numeric/provider codes.
+        // SDK messages, request details and credentials stay private.
+        reportDownloadFailure(stage, error, dependencies.reportFailure);
         return unavailable();
       }
     } finally { controller.abort(); clearTimeout(timer); }

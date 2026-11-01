@@ -2,6 +2,7 @@ import { Firestore } from "@google-cloud/firestore";
 import { ExternalAccountClient, GoogleAuth } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
 import type { DownloadConfig } from "./config.ts";
+import { DownloadStageError } from "./diagnostics.ts";
 
 export function createGoogleServices(config: DownloadConfig) {
   const audience = `//iam.googleapis.com/projects/${config.projectNumber}/locations/global/workloadIdentityPools/${config.pool}/providers/${config.provider}`;
@@ -15,7 +16,10 @@ export function createGoogleServices(config: DownloadConfig) {
     service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${config.serviceAccount}:generateAccessToken`,
     // This is Google's exchange audience. The provider's allowed audience must
     // separately match the platform-issued token: https://vercel.com/TEAM_SLUG.
-    subject_token_supplier: { getSubjectToken: () => getVercelOidcToken() },
+    subject_token_supplier: { getSubjectToken: async () => {
+      try { return await getVercelOidcToken(); }
+      catch (error) { throw new DownloadStageError("oidc", error); }
+    } },
     scopes: ["https://www.googleapis.com/auth/cloud-platform"],
     transporterOptions: { timeout: 4000, retry: false },
   });

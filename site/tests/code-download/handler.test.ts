@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCodeDownloadHandler, type CodeDownloadDependencies } from "../../lib/code-download/handler.ts";
+import { DownloadStageError, type DownloadFailureEvent } from "../../lib/code-download/diagnostics.ts";
 
 const ORIGIN = "https://duckterm.utsava.xyz";
 const EMAIL = "Ada+Code@gmail.com";
@@ -15,6 +16,7 @@ function harness(overrides: Partial<CodeDownloadDependencies> = {}) {
     rateLimit: async (_request, email) => { calls.push("rate"); assert.equal(email, EMAIL); return { allowed: true }; },
     lookupMailbox: async domain => { calls.push("dns"); assert.equal(domain, "gmail.com"); return { status: "valid" }; },
     sendMail: async message => { calls.push("send"); assert.deepEqual(message, { to: EMAIL, edition: "code" }); return { accepted: true }; },
+    reportFailure: () => {},
     ...overrides,
   };
   return { calls, dependencies, handle: createCodeDownloadHandler({ allowedOrigin: ORIGIN }, dependencies) };
@@ -220,4 +222,38 @@ test("aborted requests and stalled bodies never reach sending", async () => {
   const controller = new AbortController(); controller.abort();
   await privateResponse(await handle(new Request(request(), { signal: controller.signal })), 400);
   assert.deepEqual(calls, []);
+});
+
+test("dependency failures emit one sanitized stage report without changing private 503 responses", async () => {
+  for (const [dependency, stage] of [["rateLimit", "rate_limit"], ["lookupMailbox", "mailbox"], ["sendMail", "gmail"]] as const) {
+    const events: DownloadFailureEvent[] = [];
+    const { handle } = harness({
+      [dependency]: async () => { throw Object.assign(new Error(PRIVATE_ERROR), { code: 7, response: { status: 403, data: { error: { details: [{ reason: "IAM_PERMISSION_DENIED", metadata: { token: PRIVATE_ERROR } }] } } } }); },
+      reportFailure: event => events.push(event),
+    });
+    await privateResponse(await handle(request()), 503);
+    assert.deepEqual(events, [{ stage, httpStatus: 403, grpcStatus: 7, reason: "IAM_PERMISSION_DENIED" }]);
+  }
+  for (const stage of ["trusted_ip", "oidc"] as const) {
+    const events: DownloadFailureEvent[] = [];
+    const { handle } = harness({ rateLimit: async () => { throw new Error(PRIVATE_ERROR, { cause: new DownloadStageError(stage, new Error(PRIVATE_ERROR)) }); }, reportFailure: event => events.push(event) });
+    await privateResponse(await handle(request()), 503);
+    assert.deepEqual(events, [{ stage }]);
+  }
+});
+
+test("success and expected request/quota rejection remain quiet; unavailable results report their stage", async () => {
+  const events: DownloadFailureEvent[] = [];
+  const reportFailure = (event: DownloadFailureEvent) => { events.push(event); };
+  const { handle } = harness({ reportFailure });
+  await privateResponse(await handle(request()), 200);
+  await privateResponse(await handle(request({ email: "invalid" })), 400);
+  await privateResponse(await handle(request(undefined, { origin: "https://other.invalid" })), 403);
+  await privateResponse(await harness({ reportFailure, rateLimit: async () => ({ allowed: false }) }).handle(request()), 429);
+  await privateResponse(await harness({ reportFailure, lookupMailbox: async () => ({ status: "invalid" }) }).handle(request()), 400);
+  assert.deepEqual(events, []);
+  await privateResponse(await harness({ reportFailure, lookupMailbox: async () => ({ status: "unavailable" }) }).handle(request()), 503);
+  await privateResponse(await harness({ reportFailure, sendMail: async () => ({ accepted: false }) }).handle(request()), 503);
+  assert.deepEqual(events, [{ stage: "mailbox" }, { stage: "gmail" }]);
+  await privateResponse(await harness({ reportFailure: () => { throw new Error(PRIVATE_ERROR); }, sendMail: async () => ({ accepted: false }) }).handle(request()), 503);
 });

@@ -5,6 +5,7 @@ import { createCodeDownloadHandler } from "../../../lib/code-download/handler.ts
 import { createGmailSender } from "../../../lib/code-download/gmail.ts";
 import { createMailboxLookup } from "../../../lib/code-download/mailbox.ts";
 import { createRateLimiter } from "../../../lib/code-download/rate-limit.ts";
+import { reportDownloadFailure } from "../../../lib/code-download/diagnostics.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +24,8 @@ export async function POST(request: Request) {
       lookupMailbox: createMailboxLookup(resolver),
       sendMail: createGmailSender(config),
     })(request);
-  } catch {
-    // SDK errors can contain provider details; never render or log them here.
+  } catch (error) {
+    reportDownloadFailure("rate_limit", error);
     return Response.json({ ok: false, error: "We couldn't send the download link. Please try again shortly." }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "60" } });
   } finally {
     resolver.cancel();
