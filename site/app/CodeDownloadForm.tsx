@@ -42,7 +42,7 @@ export default function DownloadForm({ edition }: { edition: DownloadEdition }) 
     </>}
     <div className="ed-code-honeypot" aria-hidden="true"><label htmlFor={`${edition}-website`}>Leave this field empty</label><input id={`${edition}-website`} name="website" type="text" autoComplete="off" tabIndex={-1} ref={website}/></div>
     <p id={`${edition}-email-status`} className="ed-code-status" role={state === "error" || state === "fallback" ? "alert" : "status"}>{message}</p>
-    {(state === "ready" || state === "fallback") && <a className="ed-primary ed-download-result" href={download.url}>Download {download.name} for Mac <span aria-hidden="true">↙</span></a>}
+    {(state === "ready" || state === "fallback") && <a className="ed-primary ed-download-result" href={download.url}>Download {download.name} for Mac</a>}
     <p id={`${edition}-email-note`} className="ed-availability">macOS 13+ · Apple silicon{state !== "ready" && state !== "fallback" && <><br/>We keep your email for 30 days after each request.</>}</p>
   </form>;
 }

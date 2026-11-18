@@ -53,7 +53,7 @@ export default function EditionLanding() {
     <a className="ed-skip" href="#edition-content">Skip to edition details</a>
     <header className="ed-nav ed-width">
       <div className="ed-brand-group"><a href="#lite" className="ed-brand" aria-label="DuckTerm home" onClick={event => { event.preventDefault(); choose("lite"); window.scrollTo({top:0}); }}><img src="/duckmark.svg" alt="" width="25" height="25"/>DuckTerm</a><a className="ed-maker" href="https://utsava.xyz">Made by Utsav</a></div>
-      <div className="ed-nav-links"><a href="#compare">Compare</a><a href="#ducky">Ducky<span className="ed-nav-detail"> for iPhone</span></a><a href="https://github.com/utsavanand/duckterm#readme">Docs ↗</a><a href="https://github.com/utsavanand/duckterm">GitHub ↗</a></div>
+      <div className="ed-nav-links"><a href="#compare">Compare</a><a href="#ducky">Ducky<span className="ed-nav-detail"> for iPhone</span></a><a href="https://github.com/utsavanand/duckterm#readme">Docs</a><a href="https://github.com/utsavanand/duckterm">GitHub</a></div>
     </header>
     <main>
       <section className="ed-width ed-top" aria-label="DuckTerm editions">
@@ -71,7 +71,7 @@ export default function EditionLanding() {
               <p className="ed-description">{item.description}</p>
               <div className="ed-action-area">
                 {item.id === "lite" ? <>
-                  <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download for Mac <span aria-hidden="true">↙</span></a>
+                  <a className="ed-primary" href={liteDownload} aria-describedby="lite-download-note">Download for Mac</a>
                   <p id="lite-download-note" className="ed-availability">macOS 13+ · Apple silicon<br/>Download, unzip, open. <a href="#install">Installation steps</a></p>
                 </> : <DownloadForm edition={item.id}/>}
               </div>
@@ -86,7 +86,7 @@ export default function EditionLanding() {
         <div id="animated-demo" className="ed-demo">
           <video id="demo-video" muted loop playsInline preload="metadata" poster="/duckterm-dashboard-poster.jpg" aria-label="DuckTerm dashboard recording with fictional demo sessions"><source src="/duckterm-dashboard.mp4" type="video/mp4"/>Your browser does not support this recording.</video>
           <div className="ed-video-progress" aria-hidden="true"><div id="video-progress"/></div>
-          <div className="ed-video-controls"><span id="demo-step">Sessions grouped in folders</span><button id="demo-pause" type="button">Play</button><button id="demo-replay" type="button">Replay</button><button id="demo-expand" type="button">Full screen ↗</button></div>
+          <div className="ed-video-controls"><span id="demo-step">Sessions grouped in folders</span><button id="demo-pause" type="button">Play</button><button id="demo-replay" type="button">Replay</button><button id="demo-expand" type="button">Full screen</button></div>
         </div>
         <p className="ed-demo-caption">Real app recording. Fictional projects and messages. Available tools vary by edition.</p>
       </section>
@@ -111,7 +111,7 @@ export default function EditionLanding() {
       </section>
       <section className="ed-width ed-tools" aria-label="Supported coding tools"><p>BRING YOUR TOOLS</p><div><span>Claude Code</span><span>Codex</span><span>Copilot</span><span>OpenCode</span><span>Custom commands</span></div></section>
       <section className="ed-width ed-release ed-install" id="install" aria-labelledby="release-title">
-        <div className="ed-section-head"><h2 id="release-title">Install DuckTerm Lite</h2><a href={installationGuide} className="ed-text-link">Full installation guide ↗</a></div>
+        <div className="ed-section-head"><h2 id="release-title">Install DuckTerm Lite</h2><a href={installationGuide} className="ed-text-link">Full installation guide</a></div>
         <p>For Apple Silicon Macs running macOS 13+. Everything needed to run DuckTerm is included. Install and sign in to the coding agents you want to use separately.</p>
         <ol className="ed-install-steps">
           <li><h3>Download</h3><p><a href={liteDownload}>Get DuckTerm Lite for Mac</a>. Signed and notarized for macOS.</p></li>

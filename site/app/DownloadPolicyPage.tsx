@@ -8,7 +8,7 @@ export default function DownloadPolicyPage({ title, children }: { title: string;
     <a className="ed-skip" href="#policy">Skip to content</a>
     <header className="ed-nav ed-width">
       <div className="ed-brand-group"><a href="/" className="ed-brand"><img src="/duckmark.svg" width="25" height="25" alt=""/>DuckTerm</a><a className="ed-maker" href="https://utsava.xyz">Made by Utsav</a></div>
-      <a className="policy-nav-link" href="/">Back to downloads ↗</a>
+      <a className="policy-nav-link" href="/">Back to downloads</a>
     </header>
     <main id="policy" className="ed-width policy-main"><article>
       <h1>{title}</h1>
